@@ -29,8 +29,8 @@ COPY packages ./packages
 COPY services/notification-service/package.json ./services/notification-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/notification-service...
 COPY --from=build /app/services/notification-service/dist ./services/notification-service/dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/services/notification-service/node_modules/.prisma ./services/notification-service/node_modules/.prisma
+COPY --from=build /app/services/notification-service/node_modules/@prisma ./services/notification-service/node_modules/@prisma
 COPY services/notification-service/prisma ./services/notification-service/prisma
 WORKDIR /app/services/notification-service
 EXPOSE 3008

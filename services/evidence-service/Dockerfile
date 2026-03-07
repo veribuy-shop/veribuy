@@ -29,8 +29,8 @@ COPY packages ./packages
 COPY services/evidence-service/package.json ./services/evidence-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/evidence-service...
 COPY --from=build /app/services/evidence-service/dist ./services/evidence-service/dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/services/evidence-service/node_modules/.prisma ./services/evidence-service/node_modules/.prisma
+COPY --from=build /app/services/evidence-service/node_modules/@prisma ./services/evidence-service/node_modules/@prisma
 COPY services/evidence-service/prisma ./services/evidence-service/prisma
 WORKDIR /app/services/evidence-service
 EXPOSE 3006
