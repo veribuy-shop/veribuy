@@ -11,18 +11,17 @@ COPY packages ./packages
 COPY services/transaction-service/package.json ./services/transaction-service/
 RUN pnpm install --frozen-lockfile --filter @veribuy/transaction-service...
 
-# Build stage
+# Build stage - everything runs from /app (workspace root)
 FROM base AS build
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY packages ./packages
 COPY services/transaction-service ./services/transaction-service
-# Build shared packages first
-RUN pnpm --filter @veribuy/common build || true
-RUN pnpm --filter @veribuy/redis-cache build || true
-WORKDIR /app/services/transaction-service
-RUN cp prisma/prisma.config.ts prisma.config.ts
-RUN pnpm exec prisma generate
-RUN pnpm build
+RUN pnpm --filter @veribuy/common run build || true
+RUN pnpm --filter @veribuy/redis-cache run build || true
+RUN cp services/transaction-service/prisma/prisma.config.ts services/transaction-service/prisma.config.ts
+RUN pnpm --filter @veribuy/transaction-service exec prisma generate
+RUN pnpm --filter @veribuy/transaction-service run build
 
 # Production stage
 FROM base AS production

@@ -11,18 +11,17 @@ COPY packages ./packages
 COPY services/evidence-service/package.json ./services/evidence-service/
 RUN pnpm install --frozen-lockfile --filter @veribuy/evidence-service...
 
-# Build stage
+# Build stage - everything runs from /app (workspace root)
 FROM base AS build
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY packages ./packages
 COPY services/evidence-service ./services/evidence-service
-# Build shared packages first
-RUN pnpm --filter @veribuy/common build || true
-RUN pnpm --filter @veribuy/redis-cache build || true
-WORKDIR /app/services/evidence-service
-RUN cp prisma/prisma.config.ts prisma.config.ts
-RUN pnpm exec prisma generate
-RUN pnpm build
+RUN pnpm --filter @veribuy/common run build || true
+RUN pnpm --filter @veribuy/redis-cache run build || true
+RUN cp services/evidence-service/prisma/prisma.config.ts services/evidence-service/prisma.config.ts
+RUN pnpm --filter @veribuy/evidence-service exec prisma generate
+RUN pnpm --filter @veribuy/evidence-service run build
 
 # Production stage
 FROM base AS production
