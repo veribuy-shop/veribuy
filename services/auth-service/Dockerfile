@@ -14,7 +14,6 @@ RUN pnpm install --frozen-lockfile --filter @veribuy/auth-service...
 # Build stage
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/services/auth-service/node_modules ./services/auth-service/node_modules 2>/dev/null || true
 COPY packages ./packages
 COPY services/auth-service ./services/auth-service
 # Build shared packages first

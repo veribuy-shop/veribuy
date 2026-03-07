@@ -14,7 +14,6 @@ RUN pnpm install --frozen-lockfile --filter @veribuy/transaction-service...
 # Build stage
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/services/transaction-service/node_modules ./services/transaction-service/node_modules 2>/dev/null || true
 COPY packages ./packages
 COPY services/transaction-service ./services/transaction-service
 # Build shared packages first

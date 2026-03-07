@@ -14,7 +14,6 @@ RUN pnpm install --frozen-lockfile --filter @veribuy/user-service...
 # Build stage
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/services/user-service/node_modules ./services/user-service/node_modules 2>/dev/null || true
 COPY packages ./packages
 COPY services/user-service ./services/user-service
 # Build shared packages first
