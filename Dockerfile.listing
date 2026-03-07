@@ -34,8 +34,7 @@ COPY --from=build /app/packages/redis-cache/dist ./packages/redis-cache/dist
 COPY --from=build /app/services/listing-service/dist ./services/listing-service/dist
 COPY --from=build /app/services/listing-service/node_modules/.prisma ./services/listing-service/node_modules/.prisma
 COPY --from=build /app/services/listing-service/node_modules/@prisma ./services/listing-service/node_modules/@prisma
-COPY --from=build /app/services/listing-service/node_modules/prisma ./services/listing-service/node_modules/prisma
 COPY services/listing-service/prisma ./services/listing-service/prisma
 WORKDIR /app/services/listing-service
 EXPOSE 3003
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy --schema=prisma/schema.prisma && node dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]
