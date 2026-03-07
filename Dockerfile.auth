@@ -33,7 +33,7 @@ COPY --from=build /app/packages/common/dist ./packages/common/dist
 COPY --from=build /app/services/auth-service/dist ./services/auth-service/dist
 COPY --from=build /app/services/auth-service/node_modules/.prisma ./services/auth-service/node_modules/.prisma
 COPY --from=build /app/services/auth-service/node_modules/@prisma ./services/auth-service/node_modules/@prisma
-COPY --from=build /app/services/auth-service/node_modules/.bin/prisma ./services/auth-service/node_modules/.bin/prisma
+COPY --from=build /app/services/auth-service/node_modules/prisma ./services/auth-service/node_modules/prisma
 COPY services/auth-service/prisma ./services/auth-service/prisma
 WORKDIR /app/services/auth-service
 EXPOSE 3001
