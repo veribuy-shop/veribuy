@@ -28,6 +28,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages ./packages
 COPY services/listing-service/package.json ./services/listing-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/listing-service...
+# Overwrite raw package sources with compiled dist from build stage
+COPY --from=build /app/packages/common/dist ./packages/common/dist
+COPY --from=build /app/packages/redis-cache/dist ./packages/redis-cache/dist
 COPY --from=build /app/services/listing-service/dist ./services/listing-service/dist
 COPY --from=build /app/services/listing-service/node_modules/.prisma ./services/listing-service/node_modules/.prisma
 COPY --from=build /app/services/listing-service/node_modules/@prisma ./services/listing-service/node_modules/@prisma
