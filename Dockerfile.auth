@@ -29,8 +29,8 @@ COPY packages ./packages
 COPY services/auth-service/package.json ./services/auth-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/auth-service...
 COPY --from=build /app/services/auth-service/dist ./services/auth-service/dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/services/auth-service/node_modules/.prisma ./services/auth-service/node_modules/.prisma
+COPY --from=build /app/services/auth-service/node_modules/@prisma ./services/auth-service/node_modules/@prisma
 COPY services/auth-service/prisma ./services/auth-service/prisma
 WORKDIR /app/services/auth-service
 EXPOSE 3001

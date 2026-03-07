@@ -29,8 +29,8 @@ COPY packages ./packages
 COPY services/listing-service/package.json ./services/listing-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/listing-service...
 COPY --from=build /app/services/listing-service/dist ./services/listing-service/dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/services/listing-service/node_modules/.prisma ./services/listing-service/node_modules/.prisma
+COPY --from=build /app/services/listing-service/node_modules/@prisma ./services/listing-service/node_modules/@prisma
 COPY services/listing-service/prisma ./services/listing-service/prisma
 WORKDIR /app/services/listing-service
 EXPOSE 3003
