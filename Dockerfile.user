@@ -29,8 +29,8 @@ COPY packages ./packages
 COPY services/user-service/package.json ./services/user-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/user-service...
 COPY --from=build /app/services/user-service/dist ./services/user-service/dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/services/user-service/node_modules/.prisma ./services/user-service/node_modules/.prisma
+COPY --from=build /app/services/user-service/node_modules/@prisma ./services/user-service/node_modules/@prisma
 COPY services/user-service/prisma ./services/user-service/prisma
 WORKDIR /app/services/user-service
 EXPOSE 3002

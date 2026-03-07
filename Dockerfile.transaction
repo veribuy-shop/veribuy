@@ -29,8 +29,8 @@ COPY packages ./packages
 COPY services/transaction-service/package.json ./services/transaction-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/transaction-service...
 COPY --from=build /app/services/transaction-service/dist ./services/transaction-service/dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/services/transaction-service/node_modules/.prisma ./services/transaction-service/node_modules/.prisma
+COPY --from=build /app/services/transaction-service/node_modules/@prisma ./services/transaction-service/node_modules/@prisma
 COPY services/transaction-service/prisma ./services/transaction-service/prisma
 WORKDIR /app/services/transaction-service
 EXPOSE 3007
