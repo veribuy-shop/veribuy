@@ -1,0 +1,82 @@
+export enum UserRole {
+  BUYER = 'BUYER',
+  SELLER = 'SELLER',
+  ADMIN = 'ADMIN',
+}
+
+export enum VerificationStatus {
+  UNVERIFIED = 'UNVERIFIED',
+  PENDING = 'PENDING',
+  VERIFIED = 'VERIFIED',
+  REJECTED = 'REJECTED',
+  SUSPENDED = 'SUSPENDED',
+}
+
+export enum ConditionGrade {
+  A = 'A',
+  B = 'B',
+  C = 'C',
+}
+
+export enum ListingStatus {
+  DRAFT = 'DRAFT',
+  SUBMITTED = 'SUBMITTED',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  ACTIVE = 'ACTIVE',
+  SOLD = 'SOLD',
+  DELISTED = 'DELISTED',
+}
+
+export enum TrustLensStatus {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  PASSED = 'PASSED',
+  FAILED = 'FAILED',
+  REQUIRES_REVIEW = 'REQUIRES_REVIEW',
+}
+
+export enum DeviceType {
+  SMARTPHONE = 'SMARTPHONE',
+  TABLET = 'TABLET',
+  LAPTOP = 'LAPTOP',
+  SMARTWATCH = 'SMARTWATCH',
+  DESKTOP = 'DESKTOP',
+  GAMING_CONSOLE = 'GAMING_CONSOLE',
+  OTHER = 'OTHER',
+}
+
+export enum OrderStatus {
+  PENDING = 'PENDING',
+  PAYMENT_RECEIVED = 'PAYMENT_RECEIVED',
+  ESCROW_HELD = 'ESCROW_HELD',
+  SHIPPED = 'SHIPPED',
+  DELIVERED = 'DELIVERED',
+  COMPLETED = 'COMPLETED',
+  DISPUTED = 'DISPUTED',
+  REFUNDED = 'REFUNDED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum EvidenceType {
+  IMAGE = 'IMAGE',
+  VIDEO = 'VIDEO',
+  SCREENSHOT = 'SCREENSHOT',
+  DOCUMENT = 'DOCUMENT',
+}
+
+export enum NotificationChannel {
+  EMAIL = 'EMAIL',
+  PUSH = 'PUSH',
+  SMS = 'SMS',
+}
+
+export enum IntegrityFlag {
+  CLEAN = 'CLEAN',
+  IMEI_MISMATCH = 'IMEI_MISMATCH',
+  ICLOUD_LOCKED = 'ICLOUD_LOCKED',
+  REPORTED_STOLEN = 'REPORTED_STOLEN',
+  BLACKLISTED = 'BLACKLISTED',
+  SERIAL_MISMATCH = 'SERIAL_MISMATCH',
+}

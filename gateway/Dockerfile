@@ -1,0 +1,53 @@
+# Multi-stage build for API Gateway (monorepo)
+FROM node:22-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+# Dependencies stage - install all monorepo dependencies
+FROM base AS deps
+# Copy workspace configuration from parent directory
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy all packages and gateway (needed for workspace resolution)
+COPY packages ./packages
+COPY gateway ./gateway
+# Install all dependencies for the workspace
+RUN pnpm install --frozen-lockfile
+
+# Build stage
+FROM base AS build
+# Copy installed node_modules
+COPY --from=deps /app .
+# Copy source code
+COPY packages ./packages
+COPY gateway ./gateway
+# Change to gateway directory
+WORKDIR /app/gateway
+# Build the gateway
+RUN pnpm build
+
+# Production stage
+FROM base AS production
+ENV NODE_ENV=production
+WORKDIR /app
+# Copy workspace files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy all packages and gateway package.json files for workspace resolution
+COPY packages ./packages
+COPY gateway ./gateway
+# Install production dependencies only
+RUN pnpm install --prod --frozen-lockfile
+# Copy built application from build stage
+COPY --from=build /app/gateway/dist ./gateway/dist
+# Set working directory to the gateway
+WORKDIR /app/gateway
+EXPOSE 3000
+CMD ["node", "dist/main"]
+
+# Development stage (default)
+FROM base AS development
+COPY --from=deps /app .
+COPY packages ./packages
+COPY gateway ./gateway
+WORKDIR /app/gateway
+EXPOSE 3000
+CMD ["pnpm", "run", "dev"]

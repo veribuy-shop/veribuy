@@ -1,0 +1,44 @@
+# Development overrides — hot-reload via volume mounts
+
+services:
+  gateway:
+    volumes:
+      - ./gateway/src:/app/src
+
+  auth-service:
+    volumes:
+      - ./services/auth-service/src:/app/src
+
+  user-service:
+    volumes:
+      - ./services/user-service/src:/app/src
+
+  listing-service:
+    volumes:
+      - ./services/listing-service/src:/app/src
+
+  trust-lens-service:
+    volumes:
+      - ./services/trust-lens-service/src:/app/src
+
+  device-verification-service:
+    volumes:
+      - ./services/device-verification-service/app:/app/app
+
+  evidence-service:
+    volumes:
+      - ./services/evidence-service/src:/app/src
+
+  transaction-service:
+    volumes:
+      - ./services/transaction-service/src:/app/src
+
+  notification-service:
+    volumes:
+      - ./services/notification-service/src:/app/src
+
+  web:
+    volumes:
+      - ./web/app:/app/app
+      - ./web/components:/app/components
+      - ./web/lib:/app/lib

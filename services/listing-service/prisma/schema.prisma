@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/listing-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["listings"]
+}
+
+model Listing {
+  id              String          @id @default(uuid())
+  sellerId        String          @map("seller_id")
+  title           String
+  description     String
+  deviceType      DeviceType      @map("device_type")
+  brand           String
+  model           String
+  price           Decimal         @db.Decimal(10, 2)
+  currency        String          @default("GBP")
+  conditionGrade  ConditionGrade? @map("condition_grade")
+  status          ListingStatus   @default(DRAFT)
+  imei            String?
+  serialNumber    String?         @map("serial_number")
+  integrityFlags  IntegrityFlag[] @map("integrity_flags")
+  trustLensStatus TrustLensStatus @default(PENDING) @map("trust_lens_status")
+  viewCount       Int             @default(0) @map("view_count")
+  publishedAt     DateTime?       @map("published_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([deviceType])
+  @@index([trustLensStatus])
+  @@index([publishedAt])
+  @@index([createdAt])
+  @@index([sellerId, status])
+  @@index([deviceType, status])
+  @@map("listings")
+  @@schema("listings")
+}
+
+enum ConditionGrade {
+  A
+  B
+  C
+
+  @@schema("listings")
+}
+
+enum DeviceType {
+  SMARTPHONE
+  TABLET
+  LAPTOP
+  SMARTWATCH
+  DESKTOP
+  GAMING_CONSOLE
+  OTHER
+
+  @@schema("listings")
+}
+
+enum IntegrityFlag {
+  CLEAN
+  IMEI_MISMATCH
+  ICLOUD_LOCKED
+  REPORTED_STOLEN
+  BLACKLISTED
+  SERIAL_MISMATCH
+
+  @@schema("listings")
+}
+
+enum ListingStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  ACTIVE
+  SOLD
+  DELISTED
+
+  @@schema("listings")
+}
+
+enum TrustLensStatus {
+  PENDING
+  IN_PROGRESS
+  PASSED
+  FAILED
+  REQUIRES_REVIEW
+
+  @@schema("listings")
+}

@@ -1,0 +1,32 @@
+node_modules
+dist
+.next
+.turbo
+*.log
+.env.local
+.env.*.local
+coverage
+.git
+.github
+.vscode
+*.md
+!README.md
+.DS_Store
+tmp
+*.tmp
+.cache
+# Observability stack not used in production (replaced by console-only logging)
+observability/
+infra/
+# Dev-only compose overrides
+docker-compose.dev.yml
+docker-compose.override.yml
+# Scripts not needed in images
+scripts/
+seed-listings.sh
+dev.sh
+dev-local.sh
+test-features.sh
+test-payment-flow.sh
+# Dead device-verification service (not deployed)
+services/device-verification-service/

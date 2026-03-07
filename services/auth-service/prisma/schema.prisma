@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/auth-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["auth"]
+}
+
+model User {
+  id              String         @id @default(uuid())
+  name            String
+  email           String         @unique
+  passwordHash    String         @map("password_hash")
+  role            Role           @default(USER)
+  isEmailVerified Boolean        @default(false) @map("is_email_verified")
+  isActive        Boolean        @default(true) @map("is_active")
+  lastLoginAt     DateTime?      @map("last_login_at")
+  refreshTokens   RefreshToken[]
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@schema("auth")
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@schema("auth")
+  @@map("refresh_tokens")
+}
+
+enum Role {
+  USER
+  ADMIN
+
+  @@schema("auth")
+}
