@@ -11,11 +11,9 @@ COPY packages ./packages
 COPY services/notification-service/package.json ./services/notification-service/
 RUN pnpm install --frozen-lockfile --filter @veribuy/notification-service...
 
-# Build stage - everything runs from /app (workspace root)
+# Build stage - copy full installed workspace from deps, then overlay source
 FROM base AS build
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --from=deps /app/node_modules ./node_modules
-COPY packages ./packages
+COPY --from=deps /app ./
 COPY services/notification-service ./services/notification-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
