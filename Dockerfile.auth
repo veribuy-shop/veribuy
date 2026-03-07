@@ -28,6 +28,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages ./packages
 COPY services/auth-service/package.json ./services/auth-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/auth-service...
+# Overwrite raw package sources with compiled dist from build stage
+COPY --from=build /app/packages/common/dist ./packages/common/dist
 COPY --from=build /app/services/auth-service/dist ./services/auth-service/dist
 COPY --from=build /app/services/auth-service/node_modules/.prisma ./services/auth-service/node_modules/.prisma
 COPY --from=build /app/services/auth-service/node_modules/@prisma ./services/auth-service/node_modules/@prisma
