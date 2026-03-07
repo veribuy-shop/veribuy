@@ -3,12 +3,12 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "services/user-service/Dockerfile",
-    "buildContext": "."
+    "watchPatterns": ["services/user-service/**", "packages/**", "pnpm-lock.yaml"]
   },
   "deploy": {
     "startCommand": "node dist/main",
     "healthcheckPath": "/health",
-    "healthcheckTimeout": 30,
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }

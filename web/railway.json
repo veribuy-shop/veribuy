@@ -3,11 +3,11 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "web/Dockerfile",
-    "buildContext": "."
+    "watchPatterns": ["web/**", "packages/**", "pnpm-lock.yaml"]
   },
   "deploy": {
     "healthcheckPath": "/",
-    "healthcheckTimeout": 60,
+    "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
