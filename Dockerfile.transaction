@@ -33,7 +33,8 @@ COPY --from=build /app/packages/common/dist ./packages/common/dist
 COPY --from=build /app/services/transaction-service/dist ./services/transaction-service/dist
 COPY --from=build /app/services/transaction-service/node_modules/.prisma ./services/transaction-service/node_modules/.prisma
 COPY --from=build /app/services/transaction-service/node_modules/@prisma ./services/transaction-service/node_modules/@prisma
+COPY --from=build /app/services/transaction-service/node_modules/.bin/prisma ./services/transaction-service/node_modules/.bin/prisma
 COPY services/transaction-service/prisma ./services/transaction-service/prisma
 WORKDIR /app/services/transaction-service
 EXPOSE 3007
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]

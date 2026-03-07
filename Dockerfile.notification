@@ -34,7 +34,8 @@ COPY --from=build /app/packages/redis-cache/dist ./packages/redis-cache/dist
 COPY --from=build /app/services/notification-service/dist ./services/notification-service/dist
 COPY --from=build /app/services/notification-service/node_modules/.prisma ./services/notification-service/node_modules/.prisma
 COPY --from=build /app/services/notification-service/node_modules/@prisma ./services/notification-service/node_modules/@prisma
+COPY --from=build /app/services/notification-service/node_modules/.bin/prisma ./services/notification-service/node_modules/.bin/prisma
 COPY services/notification-service/prisma ./services/notification-service/prisma
 WORKDIR /app/services/notification-service
 EXPOSE 3008
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]
