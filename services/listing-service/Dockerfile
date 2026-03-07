@@ -19,8 +19,7 @@ COPY packages ./packages
 COPY services/listing-service ./services/listing-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
-RUN cp services/listing-service/prisma/prisma.config.ts services/listing-service/prisma.config.ts
-RUN pnpm --filter @veribuy/listing-service exec prisma generate
+RUN cd services/listing-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/listing-service run build
 
 # Production stage
