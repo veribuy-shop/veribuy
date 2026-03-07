@@ -14,7 +14,6 @@ RUN pnpm install --frozen-lockfile --filter @veribuy/evidence-service...
 # Build stage
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/services/evidence-service/node_modules ./services/evidence-service/node_modules 2>/dev/null || true
 COPY packages ./packages
 COPY services/evidence-service ./services/evidence-service
 # Build shared packages first

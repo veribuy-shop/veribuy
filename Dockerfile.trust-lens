@@ -14,7 +14,6 @@ RUN pnpm install --frozen-lockfile --filter @veribuy/trust-lens-service...
 # Build stage
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/services/trust-lens-service/node_modules ./services/trust-lens-service/node_modules 2>/dev/null || true
 COPY packages ./packages
 COPY services/trust-lens-service ./services/trust-lens-service
 # Build shared packages first
