@@ -19,8 +19,7 @@ COPY packages ./packages
 COPY services/transaction-service ./services/transaction-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
-RUN cp services/transaction-service/prisma/prisma.config.ts services/transaction-service/prisma.config.ts
-RUN pnpm --filter @veribuy/transaction-service exec prisma generate
+RUN cd services/transaction-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/transaction-service run build
 
 # Production stage

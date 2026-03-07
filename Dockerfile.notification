@@ -19,8 +19,7 @@ COPY packages ./packages
 COPY services/notification-service ./services/notification-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
-RUN cp services/notification-service/prisma/prisma.config.ts services/notification-service/prisma.config.ts
-RUN pnpm --filter @veribuy/notification-service exec prisma generate
+RUN cd services/notification-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/notification-service run build
 
 # Production stage

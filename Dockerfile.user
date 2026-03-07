@@ -19,8 +19,7 @@ COPY packages ./packages
 COPY services/user-service ./services/user-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
-RUN cp services/user-service/prisma/prisma.config.ts services/user-service/prisma.config.ts
-RUN pnpm --filter @veribuy/user-service exec prisma generate
+RUN cd services/user-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/user-service run build
 
 # Production stage

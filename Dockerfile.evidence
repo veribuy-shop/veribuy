@@ -19,8 +19,7 @@ COPY packages ./packages
 COPY services/evidence-service ./services/evidence-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
-RUN cp services/evidence-service/prisma/prisma.config.ts services/evidence-service/prisma.config.ts
-RUN pnpm --filter @veribuy/evidence-service exec prisma generate
+RUN cd services/evidence-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/evidence-service run build
 
 # Production stage

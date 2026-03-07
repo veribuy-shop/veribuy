@@ -20,8 +20,7 @@ COPY packages ./packages
 COPY services/auth-service ./services/auth-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
-RUN cp services/auth-service/prisma/prisma.config.ts services/auth-service/prisma.config.ts
-RUN pnpm --filter @veribuy/auth-service exec prisma generate
+RUN cd services/auth-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/auth-service run build
 
 # Production stage
