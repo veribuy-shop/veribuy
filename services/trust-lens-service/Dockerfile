@@ -20,7 +20,8 @@ COPY services/trust-lens-service ./services/trust-lens-service
 RUN pnpm --filter @veribuy/common build || true
 RUN pnpm --filter @veribuy/redis-cache build || true
 WORKDIR /app/services/trust-lens-service
-RUN npx prisma generate
+RUN cp prisma/prisma.config.ts prisma.config.ts
+RUN pnpm exec prisma generate
 RUN pnpm build
 
 # Production stage
