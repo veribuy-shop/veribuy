@@ -11,18 +11,17 @@ COPY packages ./packages
 COPY services/listing-service/package.json ./services/listing-service/
 RUN pnpm install --frozen-lockfile --filter @veribuy/listing-service...
 
-# Build stage
+# Build stage - everything runs from /app (workspace root)
 FROM base AS build
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY packages ./packages
 COPY services/listing-service ./services/listing-service
-# Build shared packages first
-RUN pnpm --filter @veribuy/common build || true
-RUN pnpm --filter @veribuy/redis-cache build || true
-WORKDIR /app/services/listing-service
-RUN cp prisma/prisma.config.ts prisma.config.ts
-RUN pnpm exec prisma generate
-RUN pnpm build
+RUN pnpm --filter @veribuy/common run build || true
+RUN pnpm --filter @veribuy/redis-cache run build || true
+RUN cp services/listing-service/prisma/prisma.config.ts services/listing-service/prisma.config.ts
+RUN pnpm --filter @veribuy/listing-service exec prisma generate
+RUN pnpm --filter @veribuy/listing-service run build
 
 # Production stage
 FROM base AS production
