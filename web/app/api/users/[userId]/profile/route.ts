@@ -24,11 +24,11 @@ export async function GET(
     }
 
     // Ownership check: only the account owner (or admin) may read their own profile
-    const tokenUserId = getTokenUserId(authResult.token);
+    const tokenUserId = await getTokenUserId(authResult.token);
     if (tokenUserId !== userId) {
       // Decode role to allow admins through
       const { requireRole } = await import('@/lib/api-auth');
-      const adminCheck = requireRole(request, 'ADMIN');
+      const adminCheck = await requireRole(request, 'ADMIN');
       if ('error' in adminCheck) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
@@ -78,10 +78,10 @@ export async function PUT(
     }
 
     // Ownership check: only the account owner (or admin) may update their profile
-    const tokenUserId = getTokenUserId(authResult.token);
+    const tokenUserId = await getTokenUserId(authResult.token);
     if (tokenUserId !== userId) {
       const { requireRole } = await import('@/lib/api-auth');
-      const adminCheck = requireRole(request, 'ADMIN');
+      const adminCheck = await requireRole(request, 'ADMIN');
       if ('error' in adminCheck) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }

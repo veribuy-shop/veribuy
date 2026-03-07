@@ -14,10 +14,11 @@ model User {
   name            String
   email           String         @unique
   passwordHash    String         @map("password_hash")
-  role            Role           @default(USER)
+  role            Role           @default(BUYER)
   isEmailVerified Boolean        @default(false) @map("is_email_verified")
   isActive        Boolean        @default(true) @map("is_active")
   lastLoginAt     DateTime?      @map("last_login_at")
+  deletedAt       DateTime?      @map("deleted_at")
   refreshTokens   RefreshToken[]
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
@@ -25,6 +26,7 @@ model User {
   @@index([role])
   @@index([isActive])
   @@index([createdAt])
+  @@index([deletedAt])
   @@schema("auth")
   @@map("users")
 }
@@ -46,7 +48,8 @@ model RefreshToken {
 }
 
 enum Role {
-  USER
+  BUYER
+  SELLER
   ADMIN
 
   @@schema("auth")

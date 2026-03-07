@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { EvidenceType } from '.prisma/evidence-client';
 
 export class UploadEvidenceDto {
@@ -6,8 +6,7 @@ export class UploadEvidenceDto {
   @IsNotEmpty()
   listingId: string;
 
-  @IsUUID()
-  @IsNotEmpty()
+  // sellerId is injected from JWT in the controller — not accepted from client input
   sellerId: string;
 
   @IsEnum(EvidenceType)
@@ -16,9 +15,11 @@ export class UploadEvidenceDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(512)
   description?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(1024)
   metadata?: string; // JSON string for additional metadata
 }

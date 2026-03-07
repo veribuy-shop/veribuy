@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     // Require ADMIN role — only admins can update verification status
-    const authResult = requireRole(request, 'ADMIN');
+    const authResult = await requireRole(request, 'ADMIN');
     if ('error' in authResult) {
       return authResult.error;
     }

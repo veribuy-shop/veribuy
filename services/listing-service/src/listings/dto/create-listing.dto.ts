@@ -7,15 +7,13 @@ import {
   Min,
   MaxLength,
   MinLength,
-  IsUUID,
   Matches,
 } from 'class-validator';
 import { DeviceType, ConditionGrade } from '.prisma/listing-client';
 
 export class CreateListingDto {
-  @IsUUID()
-  @IsNotEmpty()
-  sellerId: string;
+  // sellerId is NOT accepted from the request body — it is injected from the JWT in the controller
+  sellerId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -35,30 +33,34 @@ export class CreateListingDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   brand: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   model: string;
 
   @IsNumber()
   @Min(0.01)
   price: number;
 
-  @IsString()
   @IsOptional()
+  @IsString()
+  @MaxLength(3)
   currency?: string;
 
   @IsEnum(ConditionGrade)
   @IsOptional()
   conditionGrade?: ConditionGrade;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   @Matches(/^\d{15}$/, { message: 'IMEI must be exactly 15 digits' })
   imei?: string;
 
-  @IsString()
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
   serialNumber?: string;
 }

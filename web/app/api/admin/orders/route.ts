@@ -33,7 +33,7 @@ interface RawOrder {
 export async function GET(request: NextRequest) {
   try {
     // Require ADMIN role
-    const authResult = requireRole(request, 'ADMIN');
+    const authResult = await requireRole(request, 'ADMIN'); // PERF-01: requireRole is async — must be awaited
     if ('error' in authResult) {
       return authResult.error;
     }
@@ -45,79 +45,49 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const enrich = searchParams.get('enrich') !== 'false'; // Default to true for backward compatibility
 
-    // Fetch ALL orders from transaction service by walking every page.
-    // The backend caps limit at 100 (PaginationDto @Max(100)), so we request
-    // 100 per page and collect until we have every record.
-    const PAGE_SIZE = 100;
-    let currentPage = 1;
-    let totalPages = 1;
-    const allRawOrders: RawOrder[] = [];
+    // PERF-01: Delegate filtering, sorting, and pagination to the backend instead of
+    // fetching ALL orders and doing it in-process. This avoids O(n) memory allocation
+    // and eliminates the do/while multi-page fetch loop.
+    const backendParams = new URLSearchParams({
+      page: String(page),
+      limit: String(Math.min(limit, 100)), // Backend caps at 100
+    });
+    if (status && status !== 'ALL') backendParams.set('status', status);
+    if (search && search.trim()) backendParams.set('search', search.trim());
 
-    do {
-      const pageResponse = await fetch(
-        `${TRANSACTION_SERVICE_URL}/transactions/orders?page=${currentPage}&limit=${PAGE_SIZE}`,
-        { method: 'GET', headers: createAuthHeaders(authResult.token) }
-      );
+    const pageResponse = await fetch(
+      `${TRANSACTION_SERVICE_URL}/transactions/orders?${backendParams.toString()}`,
+      { method: 'GET', headers: createAuthHeaders(authResult.token) }
+    );
 
-      if (!pageResponse.ok) {
-        return NextResponse.json(
-          { error: 'Failed to fetch orders' },
-          { status: pageResponse.status }
-        );
-      }
-
-      const pageData = await pageResponse.json();
-      const pageOrders: RawOrder[] = Array.isArray(pageData)
-        ? pageData
-        : (pageData.data || []);
-
-      allRawOrders.push(...pageOrders);
-
-      const pagination = pageData.pagination;
-      if (pagination?.totalPages) {
-        totalPages = pagination.totalPages;
-      } else {
-        // No pagination metadata — treat as single page
-        break;
-      }
-      currentPage++;
-    } while (currentPage <= totalPages);
-
-    let orders: RawOrder[] = allRawOrders;
-
-    // Filter by status if provided
-    if (status && status !== 'ALL') {
-      orders = orders.filter(order => order.status === status);
-    }
-
-    // Search filter (by order ID)
-    if (search && search.trim() !== '') {
-      const searchLower = search.toLowerCase();
-      orders = orders.filter(order =>
-        order.id.toLowerCase().includes(searchLower)
+    if (!pageResponse.ok) {
+      return NextResponse.json(
+        { error: 'Failed to fetch orders' },
+        { status: pageResponse.status }
       );
     }
 
-    // Sort by creation date (newest first)
-    orders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const pageData = await pageResponse.json();
+    const paginatedOrders: RawOrder[] = Array.isArray(pageData)
+      ? pageData
+      : (pageData.data || []);
 
-    // Calculate statistics
+    const pagination = pageData.pagination;
+    const total: number = pagination?.total ?? paginatedOrders.length;
+    const pages: number = pagination?.totalPages ?? Math.ceil(total / limit);
+
+    // Calculate lightweight statistics from the current page only.
+    // Full analytics (all-orders stats) should be a dedicated analytics endpoint.
     const stats = {
-      totalOrders: orders.length,
-      totalRevenue: orders
-        .filter(o => ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED'].includes(o.status))
-        .reduce((sum, o) => sum + (Number(o.amount) * 0.05), 0), // 5% commission
-      byStatus: orders.reduce((acc, order) => {
+      totalOrders: total,
+      totalRevenue: paginatedOrders
+        .filter((o: RawOrder) => ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED'].includes(o.status))
+        .reduce((sum: number, o: RawOrder) => sum + (Number(o.amount) * 0.05), 0), // 5% commission estimate
+      byStatus: paginatedOrders.reduce((acc: Record<string, number>, order: RawOrder) => {
         acc[order.status] = (acc[order.status] || 0) + 1;
         return acc;
       }, {} as Record<string, number>),
     };
-
-    // Calculate pagination
-    const total = orders.length;
-    const pages = Math.ceil(total / limit);
-    const offset = (page - 1) * limit;
-    const paginatedOrders = orders.slice(offset, offset + limit);
 
     // If enrich=false (for analytics), return lightweight sanitized data with sellerId/buyerId
     if (!enrich) {

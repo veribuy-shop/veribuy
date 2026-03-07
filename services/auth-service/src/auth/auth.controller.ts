@@ -1,9 +1,31 @@
-import { Controller, Post, Get, Patch, Delete, Body, Query, Param, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Patch,
+  Delete,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { LogoutDto } from './dto/logout.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto } from '@veribuy/common';
+
+interface AuthenticatedUser {
+  userId: string;
+  email: string;
+  role: string;
+}
 
 @Controller('auth')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -27,29 +49,28 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  // 10 refresh attempts per minute per IP
   @Post('refresh')
   @Public()
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body('refreshToken') refreshToken: string) {
-    return this.authService.refreshToken(refreshToken);
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async refresh(@Body() dto: RefreshTokenDto) {
+    return this.authService.refreshToken(dto.refreshToken);
   }
 
+  // 30 verify calls per minute per IP (used by middleware)
   @Post('verify')
   @HttpCode(HttpStatus.OK)
-  async verify(@CurrentUser() user: any) {
-    // The JwtAuthGuard already verified the token
-    // Just return the user info
-    return {
-      userId: user.userId,
-      email: user.email,
-      role: user.role,
-    };
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async verify(@CurrentUser() user: AuthenticatedUser) {
+    // JwtAuthGuard already verified the token; hydrate name+email from DB
+    return this.authService.verifyAndHydrate(user.userId);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@CurrentUser() user: any, @Body('refreshToken') refreshToken: string) {
-    await this.authService.logout(refreshToken);
+  async logout(@CurrentUser() user: AuthenticatedUser, @Body() dto: LogoutDto) {
+    await this.authService.logout(dto.refreshToken);
     return { message: 'Logged out successfully' };
   }
 
@@ -63,15 +84,18 @@ export class AuthController {
   @Patch('admin/users/:userId')
   @Roles('ADMIN')
   async updateUser(
-    @Param('userId') userId: string,
-    @Body() updateData: { name?: string; role?: 'USER' | 'ADMIN' },
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: UpdateUserDto,
   ) {
-    return this.authService.updateUser(userId, updateData);
+    return this.authService.updateUser(userId, dto);
   }
 
   @Delete('admin/users/:userId')
   @Roles('ADMIN')
-  async deleteUser(@Param('userId') userId: string, @CurrentUser() user: any) {
+  async deleteUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     return this.authService.deleteUser(userId, user.userId);
   }
 }

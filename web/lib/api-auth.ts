@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { jwtVerify } from 'jose';
 
 /**
  * Helper function to extract access token from request cookies
@@ -20,18 +21,19 @@ export function getAccessToken(request: NextRequest): { token: string } | { erro
 }
 
 /**
- * Decode the JWT payload without verifying the signature.
- * Verification happens at the backend; here we only need the role claim
- * to gate admin routes at the BFF layer without an extra network call.
+ * Verify the JWT and return its payload using the server-side JWT_SECRET.
+ * Throws if the secret is missing, the token is malformed, or the signature
+ * is invalid — so callers can rely on the returned payload being authentic.
  */
-function decodeJwtPayload(token: string): Record<string, any> | null {
+async function verifyJwtPayload(token: string): Promise<Record<string, any> | null> {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    console.error('[api-auth] JWT_SECRET environment variable is not set');
+    return null;
+  }
   try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    // Base64url → Base64 → JSON
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const json = Buffer.from(base64, 'base64').toString('utf8');
-    return JSON.parse(json);
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+    return payload as Record<string, any>;
   } catch {
     return null;
   }
@@ -39,20 +41,21 @@ function decodeJwtPayload(token: string): Record<string, any> | null {
 
 /**
  * Require a specific role from the access token cookie.
+ * Performs full JWT signature verification — not just a base64 decode.
  * Returns { token, role } on success, or { error: NextResponse } on failure.
  *
  * Usage:
- *   const authResult = requireRole(request, 'ADMIN');
+ *   const authResult = await requireRole(request, 'ADMIN');
  *   if ('error' in authResult) return authResult.error;
  */
-export function requireRole(
+export async function requireRole(
   request: NextRequest,
   requiredRole: string,
-): { token: string; role: string } | { error: NextResponse } {
+): Promise<{ token: string; role: string } | { error: NextResponse }> {
   const tokenResult = getAccessToken(request);
   if ('error' in tokenResult) return tokenResult;
 
-  const payload = decodeJwtPayload(tokenResult.token);
+  const payload = await verifyJwtPayload(tokenResult.token);
   const role: string = payload?.role ?? '';
 
   if (role !== requiredRole) {
@@ -68,11 +71,11 @@ export function requireRole(
 }
 
 /**
- * Extract the authenticated user's ID from the JWT payload.
- * Returns null if the token is missing or malformed.
+ * Extract the authenticated user's ID from a verified JWT payload.
+ * Returns null if the token is missing, malformed, or has an invalid signature.
  */
-export function getTokenUserId(token: string): string | null {
-  const payload = decodeJwtPayload(token);
+export async function getTokenUserId(token: string): Promise<string | null> {
+  const payload = await verifyJwtPayload(token);
   return payload?.sub ?? payload?.userId ?? null;
 }
 

@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, HttpException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  HttpException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -26,17 +33,30 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 };
 
 @Injectable()
-export class TransactionsService {
+export class TransactionsService implements OnModuleInit {
+  private readonly logger = new Logger(TransactionsService.name);
   private stripe: Stripe;
 
-  constructor(private prisma: PrismaService) {
-    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder', {
+  constructor(private prisma: PrismaService) {}
+
+  /**
+   * Fail fast if required secrets are missing — prevents silent failures in production.
+   */
+  onModuleInit() {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      throw new Error('STRIPE_SECRET_KEY environment variable is required');
+    }
+    if (!process.env.INTERNAL_SERVICE_TOKEN) {
+      throw new Error('INTERNAL_SERVICE_TOKEN environment variable is required');
+    }
+    this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
       apiVersion: '2026-01-28.clover',
     });
   }
 
   async createOrder(createOrderDto: CreateOrderDto) {
-    const { buyerId, sellerId, listingId, amount, currency = 'GBP', shippingAddress } = createOrderDto;
+    const { buyerId, sellerId, listingId, amount, currency = 'GBP', shippingAddress } =
+      createOrderDto;
 
     // Create Stripe Payment Intent
     const paymentIntent = await this.stripe.paymentIntents.create({
@@ -76,79 +96,90 @@ export class TransactionsService {
     }
 
     // Idempotency guard: if the order is already in ESCROW_HELD or PAYMENT_RECEIVED
-    // (e.g. the webhook fired before the frontend confirm call, or vice-versa),
-    // return the existing order + escrow without creating duplicates.
+    // return the existing state without creating duplicates.
     const existingOrder = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!existingOrder) {
       throw new NotFoundException('Order not found');
     }
 
-    if (existingOrder.status === 'ESCROW_HELD' || existingOrder.status === 'PAYMENT_RECEIVED') {
+    // Verify the paymentIntentId matches what was stored at order creation
+    if (existingOrder.paymentIntentId && existingOrder.paymentIntentId !== paymentIntentId) {
+      throw new BadRequestException('Payment intent ID does not match this order');
+    }
+
+    if (
+      existingOrder.status === 'ESCROW_HELD' ||
+      existingOrder.status === 'PAYMENT_RECEIVED'
+    ) {
       const existingEscrow = existingOrder.escrowId
         ? await this.prisma.escrowRecord.findUnique({ where: { id: existingOrder.escrowId } })
         : await this.prisma.escrowRecord.findFirst({ where: { orderId } });
       return { order: existingOrder, escrow: existingEscrow };
     }
 
-    // Update order to PAYMENT_RECEIVED with paidAt timestamp
-    const order = await this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: 'PAYMENT_RECEIVED',
-        paidAt: new Date(),
-        paymentIntentId,
-      },
-    });
-
-    // Create escrow record (currency comes from order — already GBP by default)
-    const escrow = await this.prisma.escrowRecord.create({
-      data: {
-        orderId: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        status: 'HELD',
-        providerRef: paymentIntentId,
-        heldAt: new Date(),
-      },
-    });
-
-    // Update order with escrow ID and advance to ESCROW_HELD
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: orderId },
-      data: {
-        escrowId: escrow.id,
-        status: 'ESCROW_HELD',
-      },
-    });
-
-    // Mark listing as SOLD
-    try {
-      await this.updateListingStatus(order.listingId, 'SOLD');
-    } catch (error) {
-      console.error('Failed to update listing status:', error);
-    }
-
-    // Notify buyer and seller that payment is in escrow
-    try {
-      await this.sendOrderNotification({
-        orderId: updatedOrder.id,
-        buyerId: updatedOrder.buyerId,
-        sellerId: updatedOrder.sellerId,
-        recipientId: updatedOrder.buyerId,
-        subject: 'Payment secured in escrow',
-        content: `Your payment of ${updatedOrder.currency} ${updatedOrder.amount} has been secured in escrow for order #${updatedOrder.id.substring(0, 8)}. The seller will now prepare your item for shipment.`,
+    // Wrap the 3-step write in a transaction
+    const { updatedOrder, escrow } = await this.prisma.$transaction(async (tx) => {
+      // Update order to PAYMENT_RECEIVED with paidAt timestamp
+      const order = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'PAYMENT_RECEIVED',
+          paidAt: new Date(),
+          paymentIntentId,
+        },
       });
-      await this.sendOrderNotification({
-        orderId: updatedOrder.id,
-        buyerId: updatedOrder.buyerId,
-        sellerId: updatedOrder.sellerId,
-        recipientId: updatedOrder.sellerId,
-        subject: 'New order — payment received',
-        content: `You have a new order (#${updatedOrder.id.substring(0, 8)}) with payment of ${updatedOrder.currency} ${updatedOrder.amount} secured in escrow. Please prepare the item and mark it as shipped once dispatched.`,
+
+      // Create escrow record
+      const escrow = await tx.escrowRecord.create({
+        data: {
+          orderId: order.id,
+          amount: order.amount,
+          currency: order.currency,
+          status: 'HELD',
+          providerRef: paymentIntentId,
+          heldAt: new Date(),
+        },
       });
-    } catch (notifError) {
-      console.error('Failed to send order notifications:', notifError);
-    }
+
+      // Advance to ESCROW_HELD and link escrow
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          escrowId: escrow.id,
+          status: 'ESCROW_HELD',
+        },
+      });
+
+      return { updatedOrder, escrow };
+    });
+
+    // Mark listing as SOLD — fire-and-forget, must not block order flow
+    this.updateListingStatus(updatedOrder.listingId, 'SOLD').catch((error) => {
+      this.logger.error('Failed to update listing status to SOLD', error?.stack ?? error);
+    });
+
+    // Send notifications — fire-and-forget, must not block order flow
+    this.sendOrderNotification({
+      orderId: updatedOrder.id,
+      buyerId: updatedOrder.buyerId,
+      sellerId: updatedOrder.sellerId,
+      recipientId: updatedOrder.buyerId,
+      subject: 'Payment secured in escrow',
+      content: `Your payment of ${updatedOrder.currency} ${updatedOrder.amount} has been secured in escrow for order #${updatedOrder.id.substring(0, 8)}. The seller will now prepare your item for shipment.`,
+    }).catch((err) => {
+      this.logger.error('Failed to send buyer escrow notification', err?.stack ?? err);
+    });
+
+    this.sendOrderNotification({
+      orderId: updatedOrder.id,
+      buyerId: updatedOrder.buyerId,
+      sellerId: updatedOrder.sellerId,
+      recipientId: updatedOrder.sellerId,
+      subject: 'New order — payment received',
+      content: `You have a new order (#${updatedOrder.id.substring(0, 8)}) with payment of ${updatedOrder.currency} ${updatedOrder.amount} secured in escrow. Please prepare the item and mark it as shipped once dispatched.`,
+    }).catch((err) => {
+      this.logger.error('Failed to send seller escrow notification', err?.stack ?? err);
+    });
 
     return { order: updatedOrder, escrow };
   }
@@ -156,7 +187,7 @@ export class TransactionsService {
   async updateOrderStatus(
     orderId: string,
     updateOrderStatusDto: UpdateOrderStatusDto,
-    actorRole: string = 'USER',
+    actorRole: string = 'BUYER',
   ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -223,12 +254,10 @@ export class TransactionsService {
       data: updateData,
     });
 
-    // Send notifications for relevant status changes
-    try {
-      await this.sendStatusChangeNotification(updatedOrder, order.status);
-    } catch (notifError) {
-      console.error('Failed to send status notification:', notifError);
-    }
+    // Send notifications — fire-and-forget
+    this.sendStatusChangeNotification(updatedOrder, order.status).catch((err) => {
+      this.logger.error('Failed to send status change notification', err?.stack ?? err);
+    });
 
     return updatedOrder;
   }
@@ -272,12 +301,20 @@ export class TransactionsService {
     };
   }
 
-  async getOrdersByBuyer(buyerId: string, pagination: PaginationDto): Promise<PaginatedResponse<any>> {
+  async getOrdersByBuyer(
+    buyerId: string,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
-      this.prisma.order.findMany({ where: { buyerId }, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+      this.prisma.order.findMany({
+        where: { buyerId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.order.count({ where: { buyerId } }),
     ]);
 
@@ -287,12 +324,20 @@ export class TransactionsService {
     };
   }
 
-  async getOrdersBySeller(sellerId: string, pagination: PaginationDto): Promise<PaginatedResponse<any>> {
+  async getOrdersBySeller(
+    sellerId: string,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
-      this.prisma.order.findMany({ where: { sellerId }, skip, take: limit, orderBy: { createdAt: 'desc' } }),
+      this.prisma.order.findMany({
+        where: { sellerId },
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
       this.prisma.order.count({ where: { sellerId } }),
     ]);
 
@@ -309,6 +354,11 @@ export class TransactionsService {
       throw new NotFoundException('Order not found');
     }
 
+    // Double-refund guard
+    if (order.status === 'REFUNDED') {
+      throw new BadRequestException('Order has already been refunded');
+    }
+
     if (!order.escrowId) {
       throw new BadRequestException('No escrow record found for this order');
     }
@@ -322,45 +372,42 @@ export class TransactionsService {
     // Refund via Stripe
     const refund = await this.stripe.refunds.create({ payment_intent: escrow.providerRef });
 
-    // Update escrow status
-    await this.prisma.escrowRecord.update({
-      where: { id: order.escrowId },
-      data: { status: 'REFUNDED', refundedAt: new Date() },
-    });
-
-    // Update order status to REFUNDED
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: orderId },
-      data: { status: 'REFUNDED' },
-    });
-
-    // Restore listing to ACTIVE status
-    try {
-      await this.updateListingStatus(order.listingId, 'ACTIVE');
-    } catch (error) {
-      console.error('Failed to restore listing status:', error);
-    }
-
-    // Notify buyer of refund
-    try {
-      await this.sendOrderNotification({
-        orderId: order.id,
-        buyerId: order.buyerId,
-        sellerId: order.sellerId,
-        recipientId: order.buyerId,
-        subject: 'Refund processed for your order',
-        content: `Your refund of ${order.currency} ${order.amount} for order #${order.id.substring(0, 8)} has been processed. The amount will be returned to your original payment method within 5-10 business days.`,
+    // Wrap the DB writes in a transaction
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      await tx.escrowRecord.update({
+        where: { id: order.escrowId! },
+        data: { status: 'REFUNDED', refundedAt: new Date() },
       });
-    } catch (notifError) {
-      console.error('Failed to send refund notification:', notifError);
-    }
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: { status: 'REFUNDED', refundedAt: new Date() },
+      });
+    });
+
+    // Restore listing to ACTIVE — fire-and-forget
+    this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
+      this.logger.error('Failed to restore listing status to ACTIVE', error?.stack ?? error);
+    });
+
+    // Notify buyer of refund — fire-and-forget
+    this.sendOrderNotification({
+      orderId: order.id,
+      buyerId: order.buyerId,
+      sellerId: order.sellerId,
+      recipientId: order.buyerId,
+      subject: 'Refund processed for your order',
+      content: `Your refund of ${order.currency} ${order.amount} for order #${order.id.substring(0, 8)} has been processed. The amount will be returned to your original payment method within 5-10 business days.`,
+    }).catch((err) => {
+      this.logger.error('Failed to send refund notification', err?.stack ?? err);
+    });
 
     return { order: updatedOrder, refund };
   }
 
   /**
    * Send an order-related notification via the notification service.
-   * Fires-and-forgets — caller should catch errors independently.
+   * Always call as fire-and-forget (.catch(...)) — must not block order flow.
    */
   private async sendOrderNotification(params: {
     orderId: string;
@@ -373,25 +420,25 @@ export class TransactionsService {
     const NOTIFICATION_SERVICE_URL =
       process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008';
 
-    // System messages are sent from the seller to the buyer (or vice-versa).
-    // For system notifications we always use a fixed SYSTEM sender ID so they
-    // appear as system messages in the conversation thread.
     const systemSenderId =
       params.recipientId === params.buyerId ? params.sellerId : params.buyerId;
 
-    const response = await fetch(`${NOTIFICATION_SERVICE_URL}/notifications/messages/internal`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN || 'transaction-service',
+    const response = await fetch(
+      `${NOTIFICATION_SERVICE_URL}/notifications/messages/internal`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN!,
+        },
+        body: JSON.stringify({
+          senderId: systemSenderId,
+          recipientId: params.recipientId,
+          subject: params.subject,
+          content: params.content,
+        }),
       },
-      body: JSON.stringify({
-        senderId: systemSenderId,
-        recipientId: params.recipientId,
-        subject: params.subject,
-        content: params.content,
-      }),
-    });
+    );
 
     if (!response.ok) {
       const err = await response.text();
@@ -401,8 +448,12 @@ export class TransactionsService {
 
   /**
    * Send status-change notifications for key order transitions.
+   * Always call as fire-and-forget (.catch(...)) — must not block order flow.
    */
-  private async sendStatusChangeNotification(order: any, previousStatus: string): Promise<void> {
+  private async sendStatusChangeNotification(
+    order: any,
+    previousStatus: string,
+  ): Promise<void> {
     const shortId = order.id.substring(0, 8);
 
     switch (order.status) {
@@ -460,7 +511,7 @@ export class TransactionsService {
 
   /**
    * Update listing status in listing service (internal service-to-service call).
-   * The PATCH /:id/status endpoint in listing-service is @Public() for this purpose.
+   * Always call as fire-and-forget (.catch(...)) — must not block order flow.
    */
   private async updateListingStatus(listingId: string, status: string): Promise<void> {
     const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
@@ -469,7 +520,7 @@ export class TransactionsService {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN || 'transaction-service',
+        'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN!,
       },
       body: JSON.stringify({ status }),
     });

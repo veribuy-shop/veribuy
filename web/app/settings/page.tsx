@@ -41,11 +41,13 @@ function SettingsContent() {
     }
   }, [user?.id]);
 
-  const fetchProfile = async () => {
+  const fetchProfile = async (allowCreate = true) => {
     if (!user?.id) return;
 
     try {
-      const response = await fetch(`/api/users/${user.id}/profile`);
+      const response = await fetch(`/api/users/${user.id}/profile`, {
+        credentials: 'include', // SEC-12: send auth cookie so the API route can forward the token
+      });
       
       if (response.ok) {
         const profile = await response.json();
@@ -55,8 +57,12 @@ function SettingsContent() {
         setPhone(profile.phone || '');
         setBio(profile.bio || '');
       } else if (response.status === 404) {
-        // Profile doesn't exist yet, create it with name from auth
-        await createInitialProfile();
+        // Profile doesn't exist yet — only create it if allowCreate=true.
+        // DATA-01: passing allowCreate=false prevents infinite recursion
+        // (createInitialProfile → fetchProfile → createInitialProfile → …).
+        if (allowCreate) {
+          await createInitialProfile();
+        }
       }
     } catch (err) {
       console.error('Failed to fetch profile:', err);
@@ -72,6 +78,7 @@ function SettingsContent() {
       const response = await fetch(`/api/users/${user.id}/profile`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // SEC-13: send auth cookie so the API route can forward the token
         body: JSON.stringify({
           displayName: user.name,
           firstName: user.name.split(' ')[0],
@@ -80,7 +87,9 @@ function SettingsContent() {
       });
 
       if (response.ok) {
-        await fetchProfile();
+        // DATA-01: Pass allowCreate=false to prevent infinite recursion:
+        // createInitialProfile → fetchProfile(false) — no further create attempt.
+        await fetchProfile(false);
       }
     } catch (err) {
       console.error('Failed to create initial profile:', err);
@@ -600,20 +609,18 @@ function SettingsContent() {
                 </div>
 
                 {/* Save Button */}
+                {/* DATA-06: Save Preferences is disabled until notification settings API is implemented.
+                    The button is visually present but non-functional to avoid a misleading success toast. */}
                 <div className="border-t pt-6 flex items-center gap-4">
                   <button
                     type="button"
-                    onClick={() => {
-                      setNotifSuccess('Preferences saved.');
-                      setTimeout(() => setNotifSuccess(''), 3000);
-                    }}
-                    className="px-6 py-3 bg-[var(--color-primary)] text-white rounded-lg font-semibold hover:opacity-90"
+                    disabled
+                    aria-describedby="notif-coming-soon"
+                    className="px-6 py-3 bg-[var(--color-primary)] text-white rounded-lg font-semibold opacity-50 cursor-not-allowed"
                   >
                     Save Preferences
                   </button>
-                  {notifSuccess && (
-                    <p role="status" aria-live="polite" className="text-sm text-green-700">{notifSuccess}</p>
-                  )}
+                  <p id="notif-coming-soon" className="text-sm text-gray-500">Coming soon</p>
                 </div>
               </div>
             </div>

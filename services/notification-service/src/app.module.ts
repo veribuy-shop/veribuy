@@ -7,7 +7,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { RedisModule } from '@veribuy/redis-cache';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
-import { UnotificationsModule } from './notifications/notifications.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { AuthModule } from './auth/auth.module';
 
 @Module({
@@ -32,7 +32,7 @@ import { AuthModule } from './auth/auth.module';
     PrismaModule,
     AuthModule,
     HealthModule,
-    UnotificationsModule,
+    NotificationsModule,
   ],
   providers: [
     {

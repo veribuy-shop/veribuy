@@ -34,6 +34,25 @@ export const createLogger = (serviceName: string) => {
           consoleFormat
         ),
       }),
+      // JSON file transport (for Loki/Promtail aggregation)
+      new winston.transports.File({
+        filename: `/tmp/veribuy-${serviceName}.json`,
+        format: combine(
+          errors({ stack: true }),
+          timestamp(),
+          winston.format.json(),
+        ),
+      }),
+      // Error-only file transport
+      new winston.transports.File({
+        filename: `/tmp/veribuy-${serviceName}-error.json`,
+        level: 'error',
+        format: combine(
+          errors({ stack: true }),
+          timestamp(),
+          winston.format.json(),
+        ),
+      }),
     ],
     defaultMeta: {
       service: serviceName,

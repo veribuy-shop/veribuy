@@ -8,7 +8,19 @@ import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
+// SEC-15: Fail loudly if the Stripe publishable key is absent rather than
+// silently passing an empty string, which would produce confusing Stripe errors.
+const STRIPE_KEY = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+if (!STRIPE_KEY) {
+  // This runs at module evaluation time (client bundle). In development the
+  // console error is immediately visible; in production a mis-configured deploy
+  // will break checkout loudly rather than silently.
+  console.error(
+    '[VeriBuy] NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is not set. ' +
+    'Stripe Elements will not initialise. Check your environment variables.'
+  );
+}
+const stripePromise = STRIPE_KEY ? loadStripe(STRIPE_KEY) : null;
 
 interface Listing {
   id: string;
@@ -466,7 +478,7 @@ function CheckoutPageContent() {
     }
 
     initCheckout();
-  }, [listingId, user]);
+  }, [listingId, user?.id]); // PERF-07: depend on user?.id (primitive) not user object to avoid stale-closure re-runs
 
   const initCheckout = async () => {
     try {
@@ -483,8 +495,9 @@ function CheckoutPageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        // SEC-05: buyerId is intentionally omitted — the BFF API route derives it
+        // from the verified JWT token. Never trust client-supplied identity fields.
         body: JSON.stringify({
-          buyerId: user!.id,
           sellerId: listingData.sellerId,
           listingId: listingData.id,
           amount:

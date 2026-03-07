@@ -4,7 +4,15 @@ import Stripe from 'stripe';
 const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007';
 
 // Internal service header value — must match what transaction-service and notification-service check
-const INTERNAL_SERVICE_HEADER = process.env.INTERNAL_SERVICE_TOKEN || 'veribuy-bff';
+// SECURITY: No fallback — if INTERNAL_SERVICE_TOKEN is not set, fail loudly at startup.
+if (!process.env.INTERNAL_SERVICE_TOKEN) {
+  throw new Error(
+    '[Stripe Webhook] INTERNAL_SERVICE_TOKEN environment variable is not set. ' +
+    'This is required for internal service-to-service authentication. ' +
+    'Set it in your environment before starting the server.',
+  );
+}
+const INTERNAL_SERVICE_HEADER = process.env.INTERNAL_SERVICE_TOKEN;
 
 // Initialize Stripe lazily to avoid build-time errors
 function getStripe() {

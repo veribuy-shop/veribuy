@@ -51,7 +51,7 @@ export async function GET(
     const order = await response.json();
 
     // Compute role flags server-side before sanitization strips buyerId/sellerId
-    const currentUserId = getTokenUserId(authResult.token);
+    const currentUserId = await getTokenUserId(authResult.token);
     const isSeller = currentUserId !== null && order.sellerId === currentUserId;
     const isBuyer = currentUserId !== null && order.buyerId === currentUserId;
 

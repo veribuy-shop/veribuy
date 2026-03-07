@@ -1,4 +1,6 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+// SEC-11: Use a server-only env var — NEVER prefix with NEXT_PUBLIC_ or the base URL
+// will be embedded in the client bundle and exposed to the browser.
+const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000';
 
 interface RequestOptions extends RequestInit {
   token?: string;

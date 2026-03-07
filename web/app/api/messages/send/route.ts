@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Derive senderId from the verified JWT — never trust the client-supplied value
-    const senderId = getTokenUserId(authResult.token);
+    const senderId = await getTokenUserId(authResult.token);
     if (!senderId) {
       return NextResponse.json(
         { error: 'Could not identify sender from token' },

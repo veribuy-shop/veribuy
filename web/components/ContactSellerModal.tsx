@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface ContactSellerModalProps {
   isOpen: boolean;
@@ -25,6 +25,57 @@ export default function ContactSellerModal({
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
+  // DATA-07: Keep a ref to the modal panel so we can return focus to the
+  // trigger element when the modal closes and implement a focus trap.
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Save the element that opened the modal so we can restore focus on close.
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      // Move focus into the modal on open
+      const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    } else {
+      // Restore focus when modal closes
+      previousFocusRef.current?.focus();
+    }
+  }, [isOpen]);
+
+  // Escape key closes the modal; Tab key is trapped inside.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusableEls = modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const first = focusableEls[0];
+        const last  = focusableEls[focusableEls.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -41,8 +92,9 @@ export default function ContactSellerModal({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        // SEC-07: senderId is intentionally omitted — the BFF API route derives it
+        // from the verified JWT token. Never trust client-supplied identity fields.
         body: JSON.stringify({
-          senderId: buyerId,
           recipientId: sellerId,
           listingId,
           subject,
@@ -77,17 +129,29 @@ export default function ContactSellerModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* DATA-07: role=dialog + aria-modal confine the AT reading order inside
+           the modal. aria-labelledby points to the visible heading. */}
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contact-seller-title"
+        className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+      >
         {/* Header */}
         <div className="flex justify-between items-center p-6 border-b">
-          <h2 className="text-2xl font-bold text-[var(--color-text)]">Contact Seller</h2>
+          <h2 id="contact-seller-title" className="text-2xl font-bold text-[var(--color-text)]">Contact Seller</h2>
           <button
             onClick={onClose}
+            aria-label="Close contact seller dialog"
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
             disabled={sending}
           >
-            ×
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 

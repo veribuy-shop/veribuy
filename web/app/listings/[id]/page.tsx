@@ -77,69 +77,60 @@ export default function ListingDetailPage({ params }: { params: Promise<{ id: st
   const [error, setError] = useState('');
   const [showContactModal, setShowContactModal] = useState(false);
 
+  // PERF-04: Consolidate three independent fetches into a single useEffect using
+  // Promise.all so they run in parallel. An AbortController ensures in-flight
+  // requests are cancelled if `id` changes before they complete (e.g. fast
+  // navigation), preventing stale state updates.
   useEffect(() => {
-    fetchListing();
-    fetchEvidence();
-    fetchVerificationSummary();
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    const loadAll = async () => {
+      setLoading(true);
+      setError('');
+
+      try {
+        const [listingRes, evidenceRes, verificationRes] = await Promise.all([
+          fetch(`/api/listings/${id}`, { signal }),
+          fetch(`/api/evidence?listingId=${id}`, { credentials: 'include', signal }),
+          fetch(`/api/listings/${id}/verification`, { signal }),
+        ]);
+
+        // Listing is required — throw on failure
+        if (!listingRes.ok) {
+          throw new Error(listingRes.status === 404 ? 'Listing not found' : 'Failed to fetch listing');
+        }
+        const listingData = await listingRes.json();
+        setListing(listingData);
+
+        // Evidence is optional — ignore errors
+        if (evidenceRes.ok) {
+          const evidenceData: EvidenceResponse = await evidenceRes.json();
+          const items = evidenceData.items ?? [];
+          setEvidenceItems(items);
+          const deviceImages = items.filter((item: EvidenceItem) => item.type === 'DEVICE_IMAGE');
+          if (deviceImages.length > 0) {
+            setSelectedImage(deviceImages[0].fileUrl);
+          }
+        }
+
+        // Verification summary is optional — ignore errors
+        if (verificationRes.ok) {
+          const verificationData = await verificationRes.json();
+          setVerificationSummary(verificationData);
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') return; // Cancelled — do nothing
+        setError(err.message || 'Failed to load listing');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAll();
+
+    return () => controller.abort();
   }, [id]);
-
-  const fetchListing = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const response = await fetch(`/api/listings/${id}`);
-      
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Listing not found');
-        }
-        throw new Error('Failed to fetch listing');
-      }
-
-      const data = await response.json();
-      setListing(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load listing');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchEvidence = async () => {
-    try {
-      const response = await fetch(`/api/evidence?listingId=${id}`, {
-        credentials: 'include',
-      });
-      
-      if (response.ok) {
-        const data: EvidenceResponse = await response.json();
-        const items = data.items ?? [];
-        setEvidenceItems(items);
-        
-        // Set first device image as selected by default
-        const deviceImages = items.filter((item: EvidenceItem) => item.type === 'DEVICE_IMAGE');
-        if (deviceImages.length > 0) {
-          setSelectedImage(deviceImages[0].fileUrl);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching evidence:', err);
-      // Don't set error here - evidence is optional
-    }
-  };
-
-  const fetchVerificationSummary = async () => {
-    try {
-      const response = await fetch(`/api/listings/${id}/verification`);
-      if (response.ok) {
-        const data = await response.json();
-        setVerificationSummary(data);
-      }
-    } catch (err) {
-      console.error('Error fetching verification summary:', err);
-    }
-  };
 
   const getTrustBadge = (status: TrustLensStatus) => {
     const badges = {

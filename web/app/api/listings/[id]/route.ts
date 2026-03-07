@@ -35,7 +35,7 @@ export async function GET(
 
     // Determine if the requester is the seller — if so, include IMEI/serial
     const tokenCookie = request.cookies.get('accessToken')?.value;
-    const requesterId = tokenCookie ? getTokenUserId(tokenCookie) : null;
+    const requesterId = tokenCookie ? await getTokenUserId(tokenCookie) : null;
     const isOwner = requesterId && requesterId === data.sellerId;
 
     return NextResponse.json(isOwner ? sanitizeListing(data) : sanitizePublicListing(data));
