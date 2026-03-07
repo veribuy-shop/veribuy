@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "services/listing-service/Dockerfile",
+    "dockerfilePath": "Dockerfile.listing",
     "watchPatterns": ["services/listing-service/**", "packages/**", "pnpm-lock.yaml"]
   },
   "deploy": {
