@@ -1,0 +1,8 @@
+-- Initialize database schemas for each microservice
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA IF NOT EXISTS users;
+CREATE SCHEMA IF NOT EXISTS listings;
+CREATE SCHEMA IF NOT EXISTS trust_lens;
+CREATE SCHEMA IF NOT EXISTS evidence;
+CREATE SCHEMA IF NOT EXISTS transactions;
+CREATE SCHEMA IF NOT EXISTS notifications;

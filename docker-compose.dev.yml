@@ -1,0 +1,377 @@
+# VeriBuy Development Docker Compose
+# This file enables HOT-RELOAD - changes reflect instantly without rebuilds!
+
+services:
+  # ─── Infrastructure ─────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    container_name: veribuy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-veribuy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-veribuy_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-veribuy}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veribuy}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.4-alpine
+    container_name: veribuy-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-veribuy_redis_dev}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-veribuy_redis_dev}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: veribuy-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-veribuy}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-veribuy_rabbit_dev}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: veribuy-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-veribuy_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-veribuy_minio_secret}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.67.0
+    container_name: veribuy-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: :9411
+      COLLECTOR_OTLP_ENABLED: true
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── API Gateway (DEV MODE with HOT RELOAD) ────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: gateway
+    container_name: veribuy-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      CI: true
+      PORT: 3000
+    volumes:
+      - ./gateway:/app/gateway:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+      - /app/gateway/node_modules
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: sh -c "cd /app && pnpm install --filter @veribuy/gateway... && cd /app/gateway && pnpm dev"
+
+  # ─── Auth Service (DEV MODE with HOT RELOAD) ───────────────
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: auth-service
+    container_name: veribuy-auth
+    restart: unless-stopped
+    ports:
+      - "${AUTH_SERVICE_PORT:-3001}:3001"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://veribuy:veribuy_dev_password@postgres:5432/veribuy?schema=auth
+      PORT: 3001
+      JAEGER_ENDPOINT: http://jaeger:4318
+      RABBITMQ_URL: amqp://veribuy:veribuy_rabbit_dev@rabbitmq:5672
+      REDIS_HOST: redis
+    volumes:
+      - ./services/auth-service:/app/services/auth-service:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    command: sh -c "cd /app/services/auth-service && npx prisma generate && pnpm dev"
+
+  # ─── User Service (DEV MODE with HOT RELOAD) ───────────────
+  user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: user-service
+    container_name: veribuy-user
+    restart: unless-stopped
+    ports:
+      - "${USER_SERVICE_PORT:-3002}:3002"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      CI: true
+      DATABASE_URL: postgresql://veribuy:veribuy_dev_password@postgres:5432/veribuy?schema=users
+      PORT: 3002
+      JAEGER_ENDPOINT: http://jaeger:4318
+      RABBITMQ_URL: amqp://veribuy:veribuy_rabbit_dev@rabbitmq:5672
+      REDIS_HOST: redis
+    volumes:
+      - ./services/user-service:/app/services/user-service:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+      - /app/services/user-service/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    command: sh -c "cd /app && pnpm install --filter @veribuy/user-service... && cd /app/services/user-service && npx prisma generate && pnpm dev"
+
+  # ─── Listing Service (DEV MODE with HOT RELOAD) ────────────
+  listing-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: listing-service
+    container_name: veribuy-listing
+    restart: unless-stopped
+    ports:
+      - "${LISTING_SERVICE_PORT:-3003}:3003"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      CI: true
+      DATABASE_URL: postgresql://veribuy:veribuy_dev_password@postgres:5432/veribuy?schema=listings
+      PORT: 3003
+      JAEGER_ENDPOINT: http://jaeger:4318
+      RABBITMQ_URL: amqp://veribuy:veribuy_rabbit_dev@rabbitmq:5672
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio
+    volumes:
+      - ./services/listing-service:/app/services/listing-service:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+      - /app/services/listing-service/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    command: sh -c "cd /app && pnpm install --filter @veribuy/listing-service... && cd /app/services/listing-service && npx prisma generate && pnpm dev"
+
+  # ─── Trust Lens Service (DEV MODE with HOT RELOAD) ─────────
+  trust-lens-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: trust-lens-service
+    container_name: veribuy-trust-lens
+    restart: unless-stopped
+    ports:
+      - "${TRUST_LENS_SERVICE_PORT:-3004}:3004"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: ${TRUST_LENS_DATABASE_URL}
+      PORT: 3004
+      JAEGER_ENDPOINT: http://jaeger:4318
+    volumes:
+      - ./services/trust-lens-service:/app/services/trust-lens-service:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    command: sh -c "cd /app/services/trust-lens-service && npx prisma generate && pnpm dev"
+
+  # ─── Evidence Service (DEV MODE with HOT RELOAD) ───────────
+  evidence-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: evidence-service
+    container_name: veribuy-evidence
+    restart: unless-stopped
+    ports:
+      - "${EVIDENCE_SERVICE_PORT:-3006}:3006"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://veribuy:veribuy_dev_password@postgres:5432/veribuy?schema=evidence
+      PORT: 3006
+      JAEGER_ENDPOINT: http://jaeger:4318
+      RABBITMQ_URL: amqp://veribuy:veribuy_rabbit_dev@rabbitmq:5672
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio
+    volumes:
+      - ./services/evidence-service:/app/services/evidence-service:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    command: sh -c "cd /app/services/evidence-service && npx prisma generate && pnpm dev"
+
+  # ─── Transaction Service (DEV MODE with HOT RELOAD) ────────
+  transaction-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: transaction-service
+    container_name: veribuy-transaction
+    restart: unless-stopped
+    ports:
+      - "${TRANSACTION_SERVICE_PORT:-3007}:3007"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      CI: true
+      DATABASE_URL: postgresql://veribuy:veribuy_dev_password@postgres:5432/veribuy?schema=transactions
+      PORT: 3007
+      JAEGER_ENDPOINT: http://jaeger:4318
+      RABBITMQ_URL: amqp://veribuy:veribuy_rabbit_dev@rabbitmq:5672
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio
+    volumes:
+      - ./services/transaction-service:/app/services/transaction-service:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+      - /app/services/transaction-service/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    command: sh -c "cd /app && pnpm install --filter @veribuy/transaction-service... && cd /app/services/transaction-service && npx prisma generate && pnpm dev"
+
+  # ─── Notification Service (DEV MODE with HOT RELOAD) ───────
+  notification-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.nestjs
+      args:
+        SERVICE_NAME: notification-service
+    container_name: veribuy-notification
+    restart: unless-stopped
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-3008}:3008"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://veribuy:veribuy_dev_password@postgres:5432/veribuy?schema=notifications
+      PORT: 3008
+      JAEGER_ENDPOINT: http://jaeger:4318
+      RABBITMQ_URL: amqp://veribuy:veribuy_rabbit_dev@rabbitmq:5672
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio
+    volumes:
+      - ./services/notification-service:/app/services/notification-service:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    command: sh -c "cd /app/services/notification-service && npx prisma generate && pnpm dev"
+
+  # ─── Frontend (DEV MODE with HOT RELOAD) ───────────────────
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev.next
+    container_name: veribuy-web
+    restart: unless-stopped
+    ports:
+      - "3010:3000"
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+    volumes:
+      - ./web:/app/web:delegated
+      - ./packages:/app/packages:delegated
+      - /app/node_modules
+      - /app/web/.next
+    command: sh -c "cd /app/web && pnpm dev"
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  minio_data:

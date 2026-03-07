@@ -1,0 +1,58 @@
+# Multi-stage build for NestJS microservices in pnpm monorepo
+ARG SERVICE_NAME
+
+# Base stage
+FROM node:22-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+# Dependencies stage - install all monorepo dependencies
+FROM base AS deps
+ARG SERVICE_NAME
+# Copy workspace configuration
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy all packages and services (needed for workspace resolution)
+COPY packages ./packages
+COPY services ./services
+# Install all dependencies for the workspace
+RUN pnpm install --frozen-lockfile
+
+# Build stage
+FROM base AS build
+ARG SERVICE_NAME
+# Copy installed node_modules
+COPY --from=deps /app .
+# Copy source code
+COPY packages ./packages
+COPY services/${SERVICE_NAME} ./services/${SERVICE_NAME}
+# Build workspace packages first (@veribuy/common, @veribuy/redis-cache)
+WORKDIR /app
+RUN pnpm --filter @veribuy/common build || true
+RUN pnpm --filter @veribuy/redis-cache build || true
+# Change to service directory
+WORKDIR /app/services/${SERVICE_NAME}
+# Generate Prisma client if schema exists
+RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; fi
+# Build the service
+RUN pnpm build
+
+# Production stage
+FROM base AS production
+ARG SERVICE_NAME
+ENV NODE_ENV=production
+WORKDIR /app
+# Copy workspace files
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+# Copy all packages and services package.json files for workspace resolution
+COPY packages ./packages
+COPY services ./services
+# Install production dependencies only
+RUN pnpm install --prod --frozen-lockfile
+# Copy built application from build stage
+COPY --from=build /app/services/${SERVICE_NAME}/dist ./services/${SERVICE_NAME}/dist
+# Set working directory to the service
+WORKDIR /app/services/${SERVICE_NAME}
+# Generate Prisma client in production (creates correct symlinks for pnpm structure)
+RUN if [ -f prisma/schema.prisma ]; then npx prisma generate; fi
+EXPOSE 3000
+CMD ["node", "dist/main"]

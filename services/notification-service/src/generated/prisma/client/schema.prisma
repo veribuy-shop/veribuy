@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["notifications"]
+}
+
+model NotificationLog {
+  id        String              @id @default(uuid())
+  userId    String              @map("user_id")
+  channel   NotificationChannel
+  template  String
+  payload   Json
+  status    NotificationStatus  @default(PENDING)
+  sentAt    DateTime?           @map("sent_at")
+  failedAt  DateTime?           @map("failed_at")
+  error     String?
+  createdAt DateTime            @default(now()) @map("created_at")
+
+  @@map("notification_logs")
+  @@schema("notifications")
+}
+
+model Message {
+  id          String    @id @default(uuid())
+  senderId    String    @map("sender_id")
+  recipientId String    @map("recipient_id")
+  listingId   String?   @map("listing_id")
+  subject     String?
+  content     String    @db.Text
+  isRead      Boolean   @default(false) @map("is_read")
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([recipientId])
+  @@index([senderId])
+  @@index([listingId])
+  @@map("messages")
+  @@schema("notifications")
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  SMS
+
+  @@schema("notifications")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@schema("notifications")
+}

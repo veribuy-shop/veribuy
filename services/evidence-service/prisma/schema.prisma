@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/evidence-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["evidence"]
+}
+
+model EvidencePack {
+  id        String         @id @default(uuid())
+  listingId String         @unique @map("listing_id")
+  sellerId  String         @map("seller_id")
+  items     EvidenceItem[]
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@index([sellerId])
+  @@index([createdAt])
+  @@schema("evidence")
+  @@map("evidence_packs")
+}
+
+model EvidenceItem {
+  id         String       @id @default(uuid())
+  packId     String       @map("pack_id")
+  pack       EvidencePack @relation(fields: [packId], references: [id], onDelete: Cascade)
+  type       EvidenceType
+  url        String
+  filename   String
+  mimeType   String       @map("mime_type")
+  sizeBytes  Int          @map("size_bytes")
+  timestamp  DateTime     @default(now())
+  metadata   Json?
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  @@index([packId])
+  @@index([type])
+  @@index([createdAt])
+  @@schema("evidence")
+  @@map("evidence_items")
+}
+
+enum EvidenceType {
+  DEVICE_IMAGE
+  SCREEN_IMAGE
+  BODY_IMAGE
+  SETTINGS_SCREENSHOT
+  IMEI_SCREENSHOT
+  PACKAGING_IMAGE
+  ACCESSORIES_IMAGE
+  OTHER
+
+  @@schema("evidence")
+}

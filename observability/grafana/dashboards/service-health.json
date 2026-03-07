@@ -1,0 +1,149 @@
+{
+  "dashboard": {
+    "title": "VeriBuy - Service Health & Performance",
+    "uid": "veribuy-service-health",
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "30s",
+    "tags": ["veribuy", "health", "performance"],
+    "panels": [
+      {
+        "id": 1,
+        "title": "Service Overview",
+        "type": "text",
+        "gridPos": {"x": 0, "y": 0, "w": 24, "h": 2},
+        "options": {
+          "mode": "markdown",
+          "content": "# VeriBuy Service Health Dashboard\n\nReal-time monitoring of all microservices. **Refresh**: 30s | **Services**: 8 microservices + 1 web app"
+        }
+      },
+      {
+        "id": 2,
+        "title": "Service Status",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 2, "w": 4, "h": 4},
+        "options": {
+          "graphMode": "none",
+          "colorMode": "background",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"type": "value", "value": "1", "text": "Healthy", "color": "green"},
+              {"type": "value", "value": "0", "text": "Down", "color": "red"}
+            ],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 1, "color": "green"}
+              ]
+            }
+          }
+        },
+        "targets": [
+          {
+            "expr": "up{job=\"auth-service\"}",
+            "legendFormat": "Auth Service"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Recent Trace Activity",
+        "type": "text",
+        "gridPos": {"x": 4, "y": 2, "w": 20, "h": 4},
+        "options": {
+          "mode": "markdown",
+          "content": "## Active Services in Jaeger\n\nView traces for:\n- **auth-service** - Authentication & authorization\n- **user-service** - User profile management  \n- **listing-service** - Device listings\n- **trust-lens-service** - Verification requests\n- **transaction-service** - Orders & payments\n- **notification-service** - Messaging\n- **evidence-service** - Evidence management\n- **device-verification-service** - IMEI/iCloud checks\n\n[Open Jaeger UI →](http://localhost:16686)"
+        }
+      },
+      {
+        "id": 4,
+        "title": "Key Operations - Trace Statistics",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 6, "w": 24, "h": 8},
+        "options": {
+          "showHeader": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left"
+            }
+          }
+        },
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "Operation": "Operation Name",
+                "Count": "Total Calls",
+                "AvgDuration": "Avg Duration (ms)",
+                "P95Duration": "P95 Duration (ms)"
+              }
+            }
+          }
+        ],
+        "targets": [
+          {
+            "queryType": "traceql",
+            "query": "{}",
+            "datasource": {
+              "type": "jaeger",
+              "uid": "jaeger"
+            }
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Custom Business Spans",
+        "type": "text",
+        "gridPos": {"x": 0, "y": 14, "w": 12, "h": 10},
+        "options": {
+          "mode": "markdown",
+          "content": "## Auth Service Operations\n\n| Span | Description | Key Attributes |\n|------|-------------|----------------|\n| `auth.login` | User login | email, user.id, user.role |\n| `auth.register` | User registration | email, name |\n| `auth.generateTokens` | JWT generation | user.id, user.email |\n| `auth.refreshToken` | Token refresh | user.id |\n\n## Listing Service Operations\n\n| Span | Description | Key Attributes |\n|------|-------------|----------------|\n| `listing.create` | New listing | device.type, brand, model, price |\n| `listing.findAll` | Search listings | query params, result.count |\n| `listing.updateStatus` | Status change | status.old, status.new |\n| `listing.updateTrustLensStatus` | Verification | trustLens.status, integrityFlags |\n\n## Transaction Service Operations\n\n| Span | Description | Key Attributes |\n|------|-------------|----------------|\n| `transaction.createOrder` | Create order | buyer.id, seller.id, amount |\n| `transaction.confirmPayment` | Confirm payment | stripe.paymentIntent.id |\n| `transaction.refundOrder` | Process refund | stripe.refund.id, amount |"
+        }
+      },
+      {
+        "id": 6,
+        "title": "More Custom Spans",
+        "type": "text",
+        "gridPos": {"x": 12, "y": 14, "w": 12, "h": 10},
+        "options": {
+          "mode": "markdown",
+          "content": "## Trust Lens Service Operations\n\n| Span | Description | Key Attributes |\n|------|-------------|----------------|\n| `trustLens.createVerificationRequest` | New verification | listing.id, seller.id |\n| `trustLens.updateVerificationStatus` | Update status | verification.status |\n\n## User Service Operations\n\n| Span | Description | Key Attributes |\n|------|-------------|----------------|\n| `user.findByUserId` | Get profile | user.id, profile.displayName |\n| `user.createProfile` | Create profile | user.id, displayName |\n| `user.updateProfile` | Update profile | fieldsUpdated, fieldCount |\n\n## Notification Service Operations\n\n| Span | Description | Key Attributes |\n|------|-------------|----------------|\n| `notification.createMessage` | Send message | sender.id, recipient.id |\n| `notification.markAsRead` | Mark read | message.id, user.id |\n| `notification.getUnreadCount` | Get unread | user.id, unreadCount |\n\n## Device Verification Service (Python)\n\n| Span | Description | Key Attributes |\n|------|-------------|----------------|\n| `deviceVerification.verify` | Verify device | listing.id, verification.flags |\n| `deviceVerification.checkIMEI` | IMEI check | imei.valid, blacklisted |\n| `deviceVerification.checkiCloud` | iCloud check | icloud.locked |"
+        }
+      },
+      {
+        "id": 7,
+        "title": "How to Monitor",
+        "type": "text",
+        "gridPos": {"x": 0, "y": 24, "w": 24, "h": 6},
+        "options": {
+          "mode": "markdown",
+          "content": "## Monitoring Guide\n\n### View Traces (Jaeger)\n1. Open [Jaeger UI](http://localhost:16686)\n2. Select a service from dropdown\n3. Click \"Find Traces\"\n4. Click any trace to see detailed timeline\n\n### Monitor Metrics (When Prometheus is Running)\n1. Metrics endpoint: `http://localhost:3001/metrics` (per service)\n2. Prometheus UI: `http://localhost:9090`\n3. Query examples:\n   - `rate(http_requests_total[5m])` - Request rate\n   - `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))` - P95 latency\n\n### Generate Test Traffic\n```bash\n# Auth login\ncurl -X POST http://localhost:3001/auth/login \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"email\":\"frontend-test@veribuy.com\",\"password\":\"Test123!\"}'\n```\n\n### Service Ports\n- Web: 3000\n- Auth: 3001\n- User: 3002\n- Listing: 3003\n- Trust Lens: 3004\n- Device Verification: 3005\n- Evidence: 3006\n- Transaction: 3007\n- Notification: 3008\n\n### Observability Stack\n- Jaeger UI: 16686\n- Jaeger OTLP: 4318\n- Grafana: 3011 (admin/admin)\n- Prometheus: 9090 (when started)"
+        }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["10s", "30s", "1m", "5m", "15m"]
+    },
+    "editable": true
+  },
+  "overwrite": true
+}

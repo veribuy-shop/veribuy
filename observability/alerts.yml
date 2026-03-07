@@ -1,0 +1,175 @@
+# Prometheus Alert Rules for VeriBuy Microservices
+
+groups:
+  - name: veribuy_service_health
+    interval: 30s
+    rules:
+      # Service Down Alert
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.job }} has been down for more than 1 minute."
+
+      # High Error Rate Alert
+      - alert: HighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{status=~"5.."}[5m])
+            /
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} has an error rate of {{ $value | humanizePercentage }} over the last 5 minutes."
+
+      # Very High Error Rate Alert
+      - alert: VeryHighErrorRate
+        expr: |
+          (
+            rate(http_requests_total{status=~"5.."}[5m])
+            /
+            rate(http_requests_total[5m])
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "CRITICAL: Very high error rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} has an error rate of {{ $value | humanizePercentage }} over the last 5 minutes."
+
+  - name: veribuy_performance
+    interval: 30s
+    rules:
+      # High Latency Alert (P95)
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High latency on {{ $labels.job }}"
+          description: "{{ $labels.job }} P95 latency is {{ $value }}s over the last 5 minutes."
+
+      # Very High Latency Alert (P95)
+      - alert: VeryHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 3.0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "CRITICAL: Very high latency on {{ $labels.job }}"
+          description: "{{ $labels.job }} P95 latency is {{ $value }}s over the last 5 minutes."
+
+      # High Request Rate
+      - alert: HighRequestRate
+        expr: rate(http_requests_total[5m]) > 1000
+        for: 5m
+        labels:
+          severity: info
+          team: platform
+        annotations:
+          summary: "High request rate on {{ $labels.job }}"
+          description: "{{ $labels.job }} is receiving {{ $value }} requests/second."
+
+  - name: veribuy_resources
+    interval: 30s
+    rules:
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: (process_resident_memory_bytes / 1024 / 1024 / 1024) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High memory usage on {{ $labels.job }}"
+          description: "{{ $labels.job }} is using {{ $value }}GB of memory."
+
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High CPU usage on {{ $labels.job }}"
+          description: "{{ $labels.job }} CPU usage is {{ $value | humanizePercentage }}."
+
+  - name: veribuy_database
+    interval: 30s
+    rules:
+      # Slow Database Queries
+      - alert: SlowDatabaseQueries
+        expr: |
+          histogram_quantile(0.95,
+            rate(pg_query_duration_seconds_bucket[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Slow database queries on {{ $labels.job }}"
+          description: "{{ $labels.job }} P95 database query time is {{ $value }}s."
+
+  - name: veribuy_business_metrics
+    interval: 30s
+    rules:
+      # Auth Service - High Login Failures
+      - alert: HighLoginFailures
+        expr: |
+          (
+            rate(auth_login_failures_total[5m])
+            /
+            rate(auth_login_attempts_total[5m])
+          ) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High login failure rate"
+          description: "Auth service login failure rate is {{ $value | humanizePercentage }}."
+
+      # Transaction Service - High Payment Failures
+      - alert: HighPaymentFailures
+        expr: |
+          rate(transaction_payment_failures_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: critical
+          team: payments
+        annotations:
+          summary: "High payment failure rate"
+          description: "Transaction service has {{ $value }} payment failures/second."
+
+      # Verification Service - High Verification Failures  
+      - alert: HighVerificationFailures
+        expr: |
+          rate(verification_failures_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: verification
+        annotations:
+          summary: "High verification failure rate"
+          description: "Device verification service has {{ $value }} failures/second."

@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/user-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["users"]
+}
+
+model Profile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique @map("user_id")
+  displayName        String             @map("display_name")
+  firstName          String?            @map("first_name")
+  lastName           String?            @map("last_name")
+  avatarUrl          String?            @map("avatar_url")
+  bio                String?
+  phone              String?
+  sellerRating       Float?             @map("seller_rating")
+  totalSales         Int                @default(0) @map("total_sales")
+  totalPurchases     Int                @default(0) @map("total_purchases")
+  verificationStatus VerificationStatus @default(UNVERIFIED) @map("verification_status")
+  kycVerifiedAt      DateTime?          @map("kyc_verified_at")
+  address            Address?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  @@index([verificationStatus])
+  @@index([sellerRating])
+  @@index([createdAt])
+  @@schema("users")
+  @@map("profiles")
+}
+
+model Address {
+  id         String  @id @default(uuid())
+  profileId  String  @unique @map("profile_id")
+  profile    Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  postalCode String  @map("postal_code")
+  country    String
+
+  @@schema("users")
+  @@map("addresses")
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+
+  @@schema("users")
+}

@@ -1,0 +1,99 @@
+# Prometheus Configuration for VeriBuy Microservices
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'veribuy-monitor'
+    environment: 'development'
+
+# Alert rule files
+rule_files:
+  - '/etc/prometheus/alerts.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Auth Service (localhost for local development)
+  - job_name: 'auth-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3001']
+        labels:
+          service: 'auth'
+          team: 'platform'
+
+  # User Service
+  - job_name: 'user-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3002']
+        labels:
+          service: 'user'
+          team: 'platform'
+
+  # Listing Service
+  - job_name: 'listing-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3003']
+        labels:
+          service: 'listing'
+          team: 'marketplace'
+
+  # Trust Lens Service
+  - job_name: 'trust-lens-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3004']
+        labels:
+          service: 'trust-lens'
+          team: 'verification'
+
+  # Device Verification Service
+  - job_name: 'device-verification-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3005']
+        labels:
+          service: 'device-verification'
+          team: 'verification'
+
+  # Evidence Service
+  - job_name: 'evidence-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3006']
+        labels:
+          service: 'evidence'
+          team: 'verification'
+
+  # Transaction Service
+  - job_name: 'transaction-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3007']
+        labels:
+          service: 'transaction'
+          team: 'payments'
+
+  # Notification Service
+  - job_name: 'notification-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:3008']
+        labels:
+          service: 'notification'
+          team: 'communications'
+
+  # RabbitMQ (has built-in prometheus support)
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['veribuy-rabbitmq:15692']
+        labels:
+          service: 'rabbitmq'
+          team: 'infrastructure'
+

@@ -1,0 +1,108 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/trust-lens-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["trust_lens"]
+}
+
+model VerificationRequest {
+  id                   String              @id @default(uuid())
+  listingId            String              @unique @map("listing_id")
+  sellerId             String              @map("seller_id")
+  status               ReviewStatus        @default(PENDING)
+  conditionGrade       ConditionGrade?     @map("condition_grade")
+  integrityFlags       IntegrityFlag[]     @map("integrity_flags")
+  reviewNotes          String?             @map("review_notes")
+  evidenceChecklist    EvidenceChecklist[]
+  identifierValidation IdentifierValidation?
+  completedAt          DateTime?           @map("completed_at")
+  createdAt            DateTime            @default(now()) @map("created_at")
+  updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  @@index([sellerId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@schema("trust_lens")
+  @@map("verification_requests")
+}
+
+model EvidenceChecklist {
+  id                    String              @id @default(uuid())
+  verificationRequestId String              @map("verification_request_id")
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+  type                  EvidenceType
+  description           String
+  required              Boolean             @default(true)
+  fulfilled             Boolean             @default(false)
+  fulfilledAt           DateTime?           @map("fulfilled_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  @@index([verificationRequestId])
+  @@index([fulfilled])
+  @@schema("trust_lens")
+  @@map("evidence_checklists")
+}
+
+model IdentifierValidation {
+  id                    String              @id @default(uuid())
+  verificationRequestId String              @unique @map("verification_request_id")
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+  imei                  String?
+  serialNumber          String?             @map("serial_number")
+  imeiProvided          Boolean             @default(false) @map("imei_provided")
+  imeiValid             Boolean?            @map("imei_valid")
+  serialProvided        Boolean             @default(false) @map("serial_provided")
+  serialValid           Boolean?            @map("serial_valid")
+  icloudLocked          Boolean?            @map("icloud_locked")
+  reportedStolen        Boolean?            @map("reported_stolen")
+  blacklisted           Boolean?
+  rawApiResponse        Json?               @map("raw_api_response")
+  verifiedAt            DateTime?           @map("verified_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+
+  @@schema("trust_lens")
+  @@map("identifier_validations")
+}
+
+enum ReviewStatus {
+  PENDING
+  IN_PROGRESS
+  PASSED
+  FAILED
+  REQUIRES_REVIEW
+
+  @@schema("trust_lens")
+}
+
+enum ConditionGrade {
+  A
+  B
+  C
+
+  @@schema("trust_lens")
+}
+
+enum IntegrityFlag {
+  CLEAN
+  IMEI_MISMATCH
+  ICLOUD_LOCKED
+  REPORTED_STOLEN
+  BLACKLISTED
+  SERIAL_MISMATCH
+
+  @@schema("trust_lens")
+}
+
+enum EvidenceType {
+  IMAGE
+  VIDEO
+  SCREENSHOT
+  DOCUMENT
+
+  @@schema("trust_lens")
+}
