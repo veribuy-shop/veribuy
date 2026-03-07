@@ -33,7 +33,8 @@ COPY --from=build /app/packages/common/dist ./packages/common/dist
 COPY --from=build /app/services/evidence-service/dist ./services/evidence-service/dist
 COPY --from=build /app/services/evidence-service/node_modules/.prisma ./services/evidence-service/node_modules/.prisma
 COPY --from=build /app/services/evidence-service/node_modules/@prisma ./services/evidence-service/node_modules/@prisma
+COPY --from=build /app/services/evidence-service/node_modules/.bin/prisma ./services/evidence-service/node_modules/.bin/prisma
 COPY services/evidence-service/prisma ./services/evidence-service/prisma
 WORKDIR /app/services/evidence-service
 EXPOSE 3006
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]

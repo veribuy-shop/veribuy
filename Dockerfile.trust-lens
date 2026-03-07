@@ -33,7 +33,8 @@ COPY --from=build /app/packages/common/dist ./packages/common/dist
 COPY --from=build /app/services/trust-lens-service/dist ./services/trust-lens-service/dist
 COPY --from=build /app/services/trust-lens-service/node_modules/.prisma ./services/trust-lens-service/node_modules/.prisma
 COPY --from=build /app/services/trust-lens-service/node_modules/@prisma ./services/trust-lens-service/node_modules/@prisma
+COPY --from=build /app/services/trust-lens-service/node_modules/.bin/prisma ./services/trust-lens-service/node_modules/.bin/prisma
 COPY services/trust-lens-service/prisma ./services/trust-lens-service/prisma
 WORKDIR /app/services/trust-lens-service
 EXPOSE 3004
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]
