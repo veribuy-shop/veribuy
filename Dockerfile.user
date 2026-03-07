@@ -28,6 +28,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages ./packages
 COPY services/user-service/package.json ./services/user-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/user-service...
+# Overwrite raw package sources with compiled dist from build stage
+COPY --from=build /app/packages/common/dist ./packages/common/dist
+COPY --from=build /app/packages/redis-cache/dist ./packages/redis-cache/dist
 COPY --from=build /app/services/user-service/dist ./services/user-service/dist
 COPY --from=build /app/services/user-service/node_modules/.prisma ./services/user-service/node_modules/.prisma
 COPY --from=build /app/services/user-service/node_modules/@prisma ./services/user-service/node_modules/@prisma
