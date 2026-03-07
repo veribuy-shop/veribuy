@@ -11,11 +11,9 @@ COPY packages ./packages
 COPY services/listing-service/package.json ./services/listing-service/
 RUN pnpm install --frozen-lockfile --filter @veribuy/listing-service...
 
-# Build stage - everything runs from /app (workspace root)
+# Build stage - copy full installed workspace from deps, then overlay source
 FROM base AS build
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY --from=deps /app/node_modules ./node_modules
-COPY packages ./packages
+COPY --from=deps /app ./
 COPY services/listing-service ./services/listing-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
