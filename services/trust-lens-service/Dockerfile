@@ -29,8 +29,8 @@ COPY packages ./packages
 COPY services/trust-lens-service/package.json ./services/trust-lens-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/trust-lens-service...
 COPY --from=build /app/services/trust-lens-service/dist ./services/trust-lens-service/dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --from=build /app/services/trust-lens-service/node_modules/.prisma ./services/trust-lens-service/node_modules/.prisma
+COPY --from=build /app/services/trust-lens-service/node_modules/@prisma ./services/trust-lens-service/node_modules/@prisma
 COPY services/trust-lens-service/prisma ./services/trust-lens-service/prisma
 WORKDIR /app/services/trust-lens-service
 EXPOSE 3004
