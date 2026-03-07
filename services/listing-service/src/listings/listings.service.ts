@@ -1,23 +1,53 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';
+import { UpdateListingDto } from './dto/update-listing.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
+import { ALLOWED_TRANSITIONS } from './dto/update-status.dto';
 import { Listing, ListingStatus, TrustLensStatus, IntegrityFlag } from '.prisma/listing-client';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
 
+// Fields safe to return to public callers — strips IMEI and serial number
+const PUBLIC_SELECT = {
+  id: true,
+  sellerId: true,
+  title: true,
+  description: true,
+  deviceType: true,
+  brand: true,
+  model: true,
+  price: true,
+  currency: true,
+  conditionGrade: true,
+  status: true,
+  trustLensStatus: true,
+  integrityFlags: true,
+  viewCount: true,
+  publishedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  // imei and serialNumber intentionally excluded from public shape
+} as const;
+
 @Injectable()
 export class UlistingsService {
+  private readonly logger = new Logger(UlistingsService.name);
+
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
   ) {}
 
   async create(dto: CreateListingDto): Promise<Listing> {
-    // Create listing with default status DRAFT and trustLensStatus PENDING
     const listing = await this.prisma.listing.create({
       data: {
-        sellerId: dto.sellerId,
+        sellerId: dto.sellerId!,
         title: dto.title,
         description: dto.description,
         deviceType: dto.deviceType,
@@ -30,14 +60,14 @@ export class UlistingsService {
         serialNumber: dto.serialNumber,
         status: ListingStatus.DRAFT,
         trustLensStatus: TrustLensStatus.PENDING,
-        integrityFlags: [IntegrityFlag.CLEAN], // Default to clean, will be updated by Trust Lens
+        integrityFlags: [IntegrityFlag.CLEAN],
       },
     });
 
     return listing;
   }
 
-  async findAll(query: GetListingsQueryDto & PaginationDto): Promise<PaginatedResponse<Listing>> {
+  async findAll(query: GetListingsQueryDto & PaginationDto): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
 
@@ -54,8 +84,8 @@ export class UlistingsService {
     if (query.status) {
       where.status = query.status;
     } else {
-      // By default, exclude SOLD and DELISTED listings from browse
-      where.status = { notIn: ['SOLD', 'DELISTED'] };
+      // Public browse: only show ACTIVE listings
+      where.status = ListingStatus.ACTIVE;
     }
 
     if (query.trustLensStatus) {
@@ -78,6 +108,7 @@ export class UlistingsService {
     const [data, total] = await Promise.all([
       this.prisma.listing.findMany({
         where,
+        select: PUBLIC_SELECT,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -96,23 +127,40 @@ export class UlistingsService {
     };
   }
 
-  async findOne(id: string): Promise<Listing> {
+  /** Returns raw listing WITH imei/serial — for owner or internal use only */
+  async findOneRaw(id: string): Promise<Listing> {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    return listing;
+  }
+
+  /** Returns listing WITHOUT imei/serial (safe for public) + increments view count */
+  async findOne(id: string): Promise<any> {
     const cacheKey = `listing:${id}`;
 
-    // Try to get from cache first
-    const cached = await this.redis.get<Listing>(cacheKey);
-    if (cached) {
-      // Still increment view count in background
-      this.prisma.listing.update({
-        where: { id },
-        data: { viewCount: { increment: 1 } },
-      }).catch(err => console.error('Failed to update view count:', err));
-
-      return cached;
+    // Try cache first — fail open
+    try {
+      const cached = await this.redis.get<any>(cacheKey);
+      if (cached) {
+        // Increment view count in background, don't block response
+        this.prisma.listing
+          .update({ where: { id }, data: { viewCount: { increment: 1 } } })
+          .catch((err: Error) => this.logger.warn(`View count update failed: ${err.message}`));
+        return cached;
+      }
+    } catch (err) {
+      this.logger.warn(`Redis GET failed for listing:${id}: ${(err as Error).message}`);
     }
 
     const listing = await this.prisma.listing.findUnique({
       where: { id },
+      select: PUBLIC_SELECT,
     });
 
     if (!listing) {
@@ -125,8 +173,12 @@ export class UlistingsService {
       data: { viewCount: { increment: 1 } },
     });
 
-    // Cache the listing for 5 minutes (300 seconds)
-    await this.redis.set(cacheKey, listing, 300);
+    // Cache for 5 minutes — fail open
+    try {
+      await this.redis.set(cacheKey, listing, 300);
+    } catch (err) {
+      this.logger.warn(`Redis SET failed for listing:${id}: ${(err as Error).message}`);
+    }
 
     return listing;
   }
@@ -156,44 +208,71 @@ export class UlistingsService {
     };
   }
 
-  async updateStatus(id: string, status: ListingStatus): Promise<Listing> {
-    const listing = await this.prisma.listing.update({
-      where: { id },
+  /** User-facing status update with state machine validation */
+  async updateStatus(id: string, status: ListingStatus, currentStatus: ListingStatus): Promise<Listing> {
+    // Atomic update: only update if current status hasn't changed concurrently
+    const listing = await this.prisma.listing.updateMany({
+      where: { id, status: currentStatus },
       data: {
         status,
         publishedAt: status === ListingStatus.ACTIVE ? new Date() : undefined,
       },
     });
 
-    // Invalidate cache
-    await this.redis.del(`listing:${id}`);
-
-    return listing;
-  }
-
-  async update(id: string, updateData: { title?: string; price?: number; status?: string }): Promise<Listing> {
-    const listing = await this.prisma.listing.findUnique({
-      where: { id },
-    });
-
-    if (!listing) {
-      throw new NotFoundException('Listing not found');
+    if (listing.count === 0) {
+      throw new BadRequestException(
+        'Status update failed — listing status may have changed concurrently',
+      );
     }
 
-    const data: any = {};
-    if (updateData.title) data.title = updateData.title;
-    if (updateData.price) data.price = updateData.price;
-    if (updateData.status) data.status = updateData.status;
+    await this.redis.del(`listing:${id}`).catch(() => {});
+    return this.findOneRaw(id);
+  }
 
-    const updated = await this.prisma.listing.update({
-      where: { id },
-      data,
-    });
+  /** Internal service-to-service status update — bypasses state machine */
+  async updateStatusInternal(id: string, status: ListingStatus): Promise<Listing> {
+    let updateData: any = { status };
 
-    // Invalidate cache
-    await this.redis.del(`listing:${id}`);
+    if (status === ListingStatus.ACTIVE) {
+      updateData.publishedAt = new Date();
+    }
 
-    return updated;
+    try {
+      const listing = await this.prisma.listing.update({
+        where: { id },
+        data: updateData,
+      });
+
+      await this.redis.del(`listing:${id}`).catch(() => {});
+      return listing;
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        throw new NotFoundException('Listing not found');
+      }
+      throw err;
+    }
+  }
+
+  async update(id: string, dto: UpdateListingDto): Promise<Listing> {
+    try {
+      const listing = await this.prisma.listing.update({
+        where: { id },
+        data: {
+          ...(dto.title !== undefined && { title: dto.title }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.price !== undefined && { price: dto.price }),
+          ...(dto.currency !== undefined && { currency: dto.currency }),
+        },
+      });
+
+      await this.redis.del(`listing:${id}`).catch(() => {});
+      return listing;
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        throw new NotFoundException('Listing not found');
+      }
+      throw err;
+    }
   }
 
   async updateTrustLensStatus(
@@ -202,27 +281,36 @@ export class UlistingsService {
     conditionGrade?: string,
     integrityFlags?: IntegrityFlag[],
   ): Promise<Listing> {
-    const listing = await this.prisma.listing.update({
-      where: { id },
-      data: {
-        trustLensStatus,
-        conditionGrade: conditionGrade as any,
-        integrityFlags: integrityFlags || undefined,
-      },
-    });
+    try {
+      const listing = await this.prisma.listing.update({
+        where: { id },
+        data: {
+          trustLensStatus,
+          conditionGrade: conditionGrade as any,
+          // Use Prisma's set syntax to properly clear/replace array
+          ...(integrityFlags !== undefined && { integrityFlags: { set: integrityFlags } }),
+        },
+      });
 
-    // Invalidate cache
-    await this.redis.del(`listing:${id}`);
-
-    return listing;
+      await this.redis.del(`listing:${id}`).catch(() => {});
+      return listing;
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        throw new NotFoundException('Listing not found');
+      }
+      throw err;
+    }
   }
 
   async delete(id: string): Promise<void> {
-    await this.prisma.listing.delete({
-      where: { id },
-    });
-
-    // Invalidate cache
-    await this.redis.del(`listing:${id}`);
+    try {
+      await this.prisma.listing.delete({ where: { id } });
+      await this.redis.del(`listing:${id}`).catch(() => {});
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        throw new NotFoundException('Listing not found');
+      }
+      throw err;
+    }
   }
 }

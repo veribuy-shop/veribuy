@@ -5,7 +5,6 @@ export class CreateEvidencePackDto {
   @IsNotEmpty()
   listingId: string;
 
-  @IsUUID()
-  @IsNotEmpty()
+  // sellerId is injected from JWT in the controller — not accepted from client input
   sellerId: string;
 }

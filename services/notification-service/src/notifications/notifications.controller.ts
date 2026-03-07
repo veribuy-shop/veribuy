@@ -1,11 +1,30 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, ForbiddenException, Headers, UnauthorizedException } from '@nestjs/common';
-import { UnotificationsService } from './notifications.service';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  ForbiddenException,
+  NotFoundException,
+  Headers,
+  UnauthorizedException,
+  ParseUUIDPipe,
+  Logger,
+} from '@nestjs/common';
+import * as crypto from 'crypto';
+import { NotificationsService } from './notifications.service';
+import { CreateMessageDto } from './dto/create-message.dto';
 import { JwtAuthGuard, RolesGuard, Public, CurrentUser, PaginationDto } from '@veribuy/common';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard, RolesGuard)
-export class UnotificationsController {
-  constructor(private readonly notificationsService: UnotificationsService) {}
+export class NotificationsController {
+  private readonly logger = new Logger(NotificationsController.name);
+
+  constructor(private readonly notificationsService: NotificationsService) {}
 
   @Get()
   @Public()
@@ -16,13 +35,13 @@ export class UnotificationsController {
   /**
    * Internal endpoint for service-to-service system notifications.
    * Called by transaction-service (and other services) without a user JWT.
-   * Uses a custom header `x-internal-service` to identify the caller.
-   * No JWT is required — this route is @Public() but validates the caller header.
+   * Uses `x-internal-service` header to identify the caller.
+   * No JWT is required — this route is @Public() but validates the token with timingSafeEqual.
    */
   @Post('messages/internal')
   @Public()
   async createSystemMessage(
-    @Headers('x-internal-service') internalService: string,
+    @Headers('x-internal-service') internalToken: string,
     @Body() body: {
       senderId: string;
       recipientId: string;
@@ -30,35 +49,50 @@ export class UnotificationsController {
       content: string;
     },
   ) {
-    if (!internalService || internalService !== process.env.INTERNAL_SERVICE_TOKEN) {
+    const expected = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!expected) {
+      this.logger.error('INTERNAL_SERVICE_TOKEN is not configured');
+      throw new UnauthorizedException('Internal service token not configured');
+    }
+
+    let valid = false;
+    try {
+      const a = Buffer.from(internalToken ?? '');
+      const b = Buffer.from(expected);
+      valid = a.length === b.length && crypto.timingSafeEqual(a, b);
+    } catch {
+      valid = false;
+    }
+
+    if (!valid) {
       throw new UnauthorizedException('Invalid x-internal-service token');
     }
+
     return this.notificationsService.createMessage(body);
   }
 
-  // Create a new message
+  // Create a new message — senderId always comes from JWT
   @Post('messages')
   async createMessage(
-    @Body() body: {
-      senderId: string;
-      recipientId: string;
-      listingId?: string;
-      subject?: string;
-      content: string;
-    },
-    @CurrentUser() user: any,
+    @Body() dto: CreateMessageDto,
+    @CurrentUser() user: { userId: string; role: string },
   ) {
-    // Ensure the sender ID in the body matches the authenticated user
-    if (body.senderId !== user.userId) {
-      throw new ForbiddenException('You can only send messages as yourself');
-    }
-    return this.notificationsService.createMessage(body);
+    return this.notificationsService.createMessage({
+      senderId: user.userId,
+      recipientId: dto.recipientId,
+      listingId: dto.listingId,
+      subject: dto.subject,
+      content: dto.content,
+    });
   }
 
   // Get all messages for a user
   @Get('messages/user/:userId')
-  async getUserMessages(@Param('userId') userId: string, @Query() pagination: PaginationDto, @CurrentUser() user: any) {
-    // Users can only view their own messages
+  async getUserMessages(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query() pagination: PaginationDto,
+    @CurrentUser() user: { userId: string; role: string },
+  ) {
     if (userId !== user.userId) {
       throw new ForbiddenException('You can only view your own messages');
     }
@@ -71,47 +105,40 @@ export class UnotificationsController {
     @Query('userId') userId: string,
     @Query('otherUserId') otherUserId: string,
     @Query('listingId') listingId: string | undefined,
-    @CurrentUser() user: any,
+    @Query() pagination: PaginationDto,
+    @CurrentUser() user: { userId: string; role: string },
   ) {
-    // Users can only view conversations they are part of
     if (userId !== user.userId) {
       throw new ForbiddenException('You can only view your own conversations');
     }
-    return this.notificationsService.getConversation(userId, otherUserId, listingId);
+    return this.notificationsService.getConversation(userId, otherUserId, listingId, pagination);
   }
 
   // Get messages by listing
   @Get('messages/listing/:listingId')
   async getMessagesByListing(
-    @Param('listingId') listingId: string,
-    @Query('userId') userId: string,
-    @CurrentUser() user: any,
+    @Param('listingId', ParseUUIDPipe) listingId: string,
+    @Query() pagination: PaginationDto,
+    @CurrentUser() user: { userId: string; role: string },
   ) {
-    // Users can only view messages for listings they are involved in
-    if (userId !== user.userId) {
-      throw new ForbiddenException('You can only view your own messages');
-    }
-    return this.notificationsService.getMessagesByListing(listingId, userId);
+    return this.notificationsService.getMessagesByListing(listingId, user.userId, pagination);
   }
 
-  // Mark message as read
+  // Mark message as read — userId always comes from JWT
   @Patch('messages/:messageId/read')
   async markAsRead(
-    @Param('messageId') messageId: string,
-    @Body('userId') userId: string,
-    @CurrentUser() user: any,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+    @CurrentUser() user: { userId: string; role: string },
   ) {
-    // Users can only mark their own messages as read
-    if (userId !== user.userId) {
-      throw new ForbiddenException('You can only mark your own messages as read');
-    }
-    return this.notificationsService.markAsRead(messageId, userId);
+    return this.notificationsService.markAsRead(messageId, user.userId);
   }
 
   // Get unread count
   @Get('messages/unread-count/:userId')
-  async getUnreadCount(@Param('userId') userId: string, @CurrentUser() user: any) {
-    // Users can only view their own unread count
+  async getUnreadCount(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: { userId: string; role: string },
+  ) {
     if (userId !== user.userId) {
       throw new ForbiddenException('You can only view your own unread count');
     }

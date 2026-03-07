@@ -5,7 +5,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
-import { UtrustUlensModule } from './trust-lens/trust-lens.module';
+import { TrustLensModule } from './trust-lens/trust-lens.module';
 import { AuthModule } from './auth/auth.module';
 import { ImeiCheckModule } from './imei-check/imei-check.module';
 
@@ -26,7 +26,7 @@ import { ImeiCheckModule } from './imei-check/imei-check.module';
     PrismaModule,
     AuthModule,
     HealthModule,
-    UtrustUlensModule,
+    TrustLensModule,
     ImeiCheckModule,
   ],
   providers: [

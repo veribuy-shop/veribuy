@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
 
 @Injectable()
-export class UnotificationsService {
+export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
+
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
@@ -51,9 +53,7 @@ export class UnotificationsService {
         where,
         skip,
         take: limit,
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy: { createdAt: 'desc' },
       }),
       this.prisma.message.count({ where }),
     ]);
@@ -69,8 +69,16 @@ export class UnotificationsService {
     };
   }
 
-  // Get conversation between two users about a specific listing
-  async getConversation(userId: string, otherUserId: string, listingId?: string) {
+  // Get conversation between two users about a specific listing (paginated)
+  async getConversation(
+    userId: string,
+    otherUserId: string,
+    listingId: string | undefined,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponse<any>> {
+    const { page = 1, limit = 20 } = pagination;
+    const skip = (page - 1) * limit;
+
     const where: any = {
       OR: [
         { senderId: userId, recipientId: otherUserId },
@@ -82,23 +90,77 @@ export class UnotificationsService {
       where.listingId = listingId;
     }
 
-    return this.prisma.message.findMany({
-      where,
-      orderBy: {
-        createdAt: 'asc',
+    const [data, total] = await Promise.all([
+      this.prisma.message.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.message.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
       },
-    });
+    };
   }
 
-  // Mark message as read
+  // Get messages by listing (paginated)
+  async getMessagesByListing(
+    listingId: string,
+    userId: string,
+    pagination: PaginationDto,
+  ): Promise<PaginatedResponse<any>> {
+    const { page = 1, limit = 20 } = pagination;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      listingId,
+      OR: [
+        { senderId: userId },
+        { recipientId: userId },
+      ],
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.message.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.message.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Mark message as read — only recipient can mark as read
   async markAsRead(messageId: string, userId: string) {
-    // Only allow recipient to mark as read
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
     });
 
-    if (!message || message.recipientId !== userId) {
-      throw new Error('Message not found or unauthorized');
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    if (message.recipientId !== userId) {
+      throw new ForbiddenException('You can only mark your own messages as read');
     }
 
     const updatedMessage = await this.prisma.message.update({
@@ -119,7 +181,6 @@ export class UnotificationsService {
   async getUnreadCount(userId: string) {
     const cacheKey = `unread:${userId}`;
 
-    // Try to get from cache first
     const cached = await this.redis.get<number>(cacheKey);
     if (cached !== null) {
       return cached;
@@ -132,25 +193,9 @@ export class UnotificationsService {
       },
     });
 
-    // Cache the count for 1 minute (60 seconds)
+    // Cache for 1 minute
     await this.redis.set(cacheKey, count, 60);
 
     return count;
-  }
-
-  // Get messages by listing
-  async getMessagesByListing(listingId: string, userId: string) {
-    return this.prisma.message.findMany({
-      where: {
-        listingId,
-        OR: [
-          { senderId: userId },
-          { recipientId: userId },
-        ],
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
   }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
 
@@ -55,6 +55,14 @@ export default function BrowsePage() {
     maxPrice: '',
   });
   const [sortBy, setSortBy] = useState('newest');
+  // PERF-10: Server-side pagination. page resets to 1 whenever filters/sort change.
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+
+  // PERF-02: Debounce search input — only trigger a new fetch after 300ms of inactivity
+  // to avoid firing a network request on every keypress.
+  const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const filterPanelId = 'browse-filter-panel';
   const searchId = useId();
@@ -62,9 +70,28 @@ export default function BrowsePage() {
   const maxPriceId = useId();
   const sortId = useId();
 
+  // Debounce the search field: update debouncedSearch 300ms after the user stops typing
+  useEffect(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+    }, 300);
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, [filters.search]);
+
+  // Re-fetch when any filter (except raw search — use debouncedSearch) or sortBy changes
   useEffect(() => {
     fetchListings();
-  }, [filters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.deviceType, filters.conditionGrades, filters.verifiedOnly, filters.minPrice, filters.maxPrice, debouncedSearch, sortBy, page]);
+
+  // Reset to page 1 whenever filters or sort order change (but not when page itself changes).
+  useEffect(() => {
+    setPage(1);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.deviceType, filters.conditionGrades, filters.verifiedOnly, filters.minPrice, filters.maxPrice, debouncedSearch, sortBy]);
 
   const fetchListings = async () => {
     setLoading(true);
@@ -72,24 +99,57 @@ export default function BrowsePage() {
 
     try {
       const params = new URLSearchParams();
-      
+
       if (filters.deviceType) {
         params.append('deviceType', filters.deviceType);
       }
-      
+
       if (filters.verifiedOnly) {
         params.append('trustLensStatus', 'PASSED');
       }
 
-      if (filters.search) {
-        params.append('search', filters.search);
+      // PERF-02: Use debouncedSearch (updated with 300ms delay) so we don't fire
+      // a fetch on every keypress.
+      if (debouncedSearch) {
+        params.append('search', debouncedSearch);
+      }
+
+      // PERF-03: Push conditionGrades and price filtering to the API instead of
+      // filtering client-side after receiving all listings.
+      if (filters.conditionGrades.length > 0) {
+        // Send as repeated params: conditionGrade=A&conditionGrade=B
+        filters.conditionGrades.forEach(g => params.append('conditionGrade', g));
+      }
+
+      if (filters.minPrice) {
+        params.append('minPrice', filters.minPrice);
+      }
+
+      if (filters.maxPrice) {
+        params.append('maxPrice', filters.maxPrice);
+      }
+
+      // Pass sort order to API so results arrive pre-sorted
+      if (sortBy === 'price-asc') {
+        params.append('sortBy', 'price');
+        params.append('sortOrder', 'asc');
+      } else if (sortBy === 'price-desc') {
+        params.append('sortBy', 'price');
+        params.append('sortOrder', 'desc');
+      } else {
+        params.append('sortBy', 'createdAt');
+        params.append('sortOrder', 'desc');
       }
 
       // Only fetch ACTIVE listings for browse page
       params.append('status', 'ACTIVE');
 
+      // PERF-10: Pass current page to the API (default page size = 12)
+      params.append('page', String(page));
+      params.append('limit', '12');
+
       const response = await fetch(`/api/listings?${params.toString()}`);
-      
+
       if (!response.ok) {
         if (response.status >= 500) {
           throw new Error('The listings service is temporarily unavailable. Please try again in a moment.');
@@ -102,29 +162,17 @@ export default function BrowsePage() {
       // Handle paginated response: { data: [...], pagination: {...} }
       const rawListings: Listing[] = Array.isArray(data) ? data : (data.data || []);
 
-      // Fetch first evidence image for each listing in parallel (best-effort — never fails the page)
-      const withImages = await Promise.all(
-        rawListings.map(async (listing) => {
-          try {
-            const evRes = await fetch(`/api/evidence?listingId=${listing.id}`);
-            if (evRes.ok) {
-              const evData = await evRes.json();
-              const firstImage = (evData.items ?? []).find(
-                (item: { type: string; fileUrl?: string }) =>
-                  item.type === 'DEVICE_IMAGE' && item.fileUrl,
-              );
-              if (firstImage?.fileUrl) {
-                return { ...listing, imageUrl: firstImage.fileUrl };
-              }
-            }
-          } catch {
-            // Ignore — fall back to emoji icon
-          }
-          return listing;
-        }),
-      );
+      // SEC-14 / PERF-03: The N+1 per-listing evidence fetch has been removed.
+      // The listing API should include imageUrl directly on the listing object.
+      // If imageUrl is missing, the card gracefully falls back to a device-type emoji.
+      setListings(rawListings);
 
-      setListings(withImages);
+      // PERF-10: Extract totalPages from the pagination envelope when present
+      if (!Array.isArray(data) && data.pagination?.totalPages) {
+        setTotalPages(data.pagination.totalPages);
+      } else {
+        setTotalPages(1);
+      }
     } catch (err: any) {
       // Network-level failure (service unreachable) vs HTTP error
       const isNetworkError = err instanceof TypeError && err.message.includes('fetch');
@@ -146,40 +194,9 @@ export default function BrowsePage() {
     }));
   };
 
-  const filteredListings = listings.filter(listing => {
-    // Filter by condition grade
-    if (filters.conditionGrades.length > 0) {
-      if (!listing.conditionGrade || !filters.conditionGrades.includes(listing.conditionGrade)) {
-        return false;
-      }
-    }
-
-    // Filter by price range
-    const priceValue = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
-    if (filters.minPrice && priceValue < parseFloat(filters.minPrice)) {
-      return false;
-    }
-    if (filters.maxPrice && priceValue > parseFloat(filters.maxPrice)) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const sortedListings = [...filteredListings].sort((a, b) => {
-    const priceA = typeof a.price === 'string' ? parseFloat(a.price) : a.price;
-    const priceB = typeof b.price === 'string' ? parseFloat(b.price) : b.price;
-    
-    switch (sortBy) {
-      case 'price-asc':
-        return priceA - priceB;
-      case 'price-desc':
-        return priceB - priceA;
-      case 'newest':
-      default:
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }
-  });
+  // PERF-03: Filtering and sorting are now handled server-side (passed as API query params).
+  // listings already arrives filtered, sorted, and paginated from the backend.
+  const sortedListings = listings;
 
   const getTrustBadge = (status: TrustLensStatus) => {
     if (status === 'PASSED') {
@@ -484,6 +501,36 @@ export default function BrowsePage() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {/* PERF-10: Previous / Next pagination controls */}
+          {!loading && !error && totalPages > 1 && (
+            <nav
+              aria-label="Listings pagination"
+              className="flex items-center justify-center gap-4 mt-8"
+            >
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                aria-label="Previous page"
+                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <span aria-hidden="true">←</span> Previous
+              </button>
+
+              <span className="text-sm text-gray-600">
+                Page {page} of {totalPages}
+              </span>
+
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                aria-label="Next page"
+                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next <span aria-hidden="true">→</span>
+              </button>
+            </nav>
           )}
         </div>
       </div>

@@ -45,17 +45,16 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
+    // SECURITY: All evidence GET requests require authentication.
+    // Evidence data is seller-sensitive — never expose it to unauthenticated callers.
+    const authResult = getAccessToken(req);
+    if ('error' in authResult) {
+      return authResult.error;
+    }
+
     const { searchParams } = new URL(req.url);
     const listingId = searchParams.get('listingId');
     const sellerId = searchParams.get('sellerId');
-
-    // Evidence by sellerId is sensitive — require auth
-    if (sellerId) {
-      const authResult = getAccessToken(req);
-      if ('error' in authResult) {
-        return authResult.error;
-      }
-    }
 
     let url = `${EVIDENCE_SERVICE_URL}/evidence`;
 
@@ -70,12 +69,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Build headers — include auth token when querying by sellerId, or when logged in
-    const headers: HeadersInit = {};
-    const authResult = getAccessToken(req);
-    if (!('error' in authResult)) {
-      headers['Authorization'] = `Bearer ${authResult.token}`;
-    }
+    // Always forward the verified auth token to the evidence service
+    const headers: HeadersInit = {
+      'Authorization': `Bearer ${authResult.token}`,
+    };
 
     const response = await fetch(url, { headers });
 

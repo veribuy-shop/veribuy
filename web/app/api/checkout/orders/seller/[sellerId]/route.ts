@@ -24,7 +24,7 @@ export async function GET(
     }
 
     // Ownership check — only the seller themselves may fetch their orders
-    const tokenUserId = getTokenUserId(authResult.token);
+    const tokenUserId = await getTokenUserId(authResult.token);
     if (tokenUserId !== sellerId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

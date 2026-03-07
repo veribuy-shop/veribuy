@@ -12,7 +12,7 @@ export async function PATCH(
 ) {
   try {
     // Require ADMIN role
-    const authResult = requireRole(request, 'ADMIN');
+    const authResult = await requireRole(request, 'ADMIN');
     if ('error' in authResult) {
       return authResult.error;
     }
@@ -86,7 +86,7 @@ export async function DELETE(
 ) {
   try {
     // Require ADMIN role
-    const authResult = requireRole(request, 'ADMIN');
+    const authResult = await requireRole(request, 'ADMIN');
     if ('error' in authResult) {
       return authResult.error;
     }

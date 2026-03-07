@@ -1,13 +1,35 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImeiCheckService } from '../imei-check/imei-check.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { CreateVerificationRequestDto } from './dto/create-verification-request.dto';
 
+/** Fields safe to return to sellers (strips rawApiResponse, imei, serialNumber). */
+const SELLER_ID_VALIDATION_SELECT = {
+  id: true,
+  imeiProvided: true,
+  imeiValid: true,
+  serialProvided: true,
+  serialValid: true,
+  icloudLocked: true,
+  reportedStolen: true,
+  blacklisted: true,
+  verifiedAt: true,
+  createdAt: true,
+  // rawApiResponse intentionally excluded — may contain 3rd-party PII / pricing
+  // imei / serialNumber excluded from default seller view
+} as const;
+
+/** Mask IMEI for logging — show only last 4 digits. */
+function maskImei(imei?: string): string {
+  if (!imei) return '[not provided]';
+  return `****${imei.slice(-4)}`;
+}
+
 @Injectable()
-export class UtrustUlensService {
-  private readonly logger = new Logger(UtrustUlensService.name);
+export class TrustLensService {
+  private readonly logger = new Logger(TrustLensService.name);
 
   constructor(
     private prisma: PrismaService,
@@ -22,6 +44,9 @@ export class UtrustUlensService {
    *   - All clean  → PASSED  (listing can go ACTIVE)
    *   - Any flag   → REQUIRES_REVIEW (queued for admin)
    * Never throws — on error it logs and leaves the fields null.
+   *
+   * Guard: if the request is already in a terminal/manually-reviewed state
+   * (PASSED, FAILED) we skip overwriting it to avoid clobbering admin decisions.
    */
   private async triggerIdentifierVerification(
     verificationRequestId: string,
@@ -38,9 +63,34 @@ export class UtrustUlensService {
         return;
       }
 
-      this.logger.log(`Running IMEI checks for listing ${listingId}, IMEI ${imei}, brand=${brand ?? 'unknown'}`);
+      // Guard: skip if already in a terminal state set by admin
+      const current = await this.prisma.verificationRequest.findUnique({
+        where: { id: verificationRequestId },
+        select: { status: true, completedAt: true },
+      });
+      if (current?.status === 'PASSED' || current?.status === 'FAILED') {
+        this.logger.warn(
+          `triggerIdentifierVerification: request ${verificationRequestId} is already ${current.status} — skipping`,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `Running IMEI checks for listing ${listingId}, IMEI ${maskImei(imei)}, brand=${brand ?? 'unknown'}`,
+      );
 
       const result = await this.imeiCheckService.checkImei(imei, brand);
+
+      // Strip `price` field from rawApiResponse before persisting
+      const sanitizedRaw = Object.fromEntries(
+        Object.entries(result.rawApiResponse).map(([key, val]) => {
+          if (val && typeof val === 'object' && 'price' in (val as object)) {
+            const { price: _price, ...rest } = val as Record<string, unknown>;
+            return [key, rest];
+          }
+          return [key, val];
+        }),
+      );
 
       // Write results back to IdentifierValidation
       await this.prisma.identifierValidation.update({
@@ -53,7 +103,7 @@ export class UtrustUlensService {
           icloudLocked: result.icloudLocked,
           reportedStolen: result.reportedStolen,
           blacklisted: result.blacklisted,
-          rawApiResponse: { ...result.rawApiResponse, checksRun: result.checksRun } as any,
+          rawApiResponse: { ...sanitizedRaw, checksRun: result.checksRun } as any,
           verifiedAt: new Date(),
         },
       });
@@ -69,17 +119,18 @@ export class UtrustUlensService {
       // Build integrity flags (exclude synthetic sentinel values from the stored array)
       const integrityFlags = result.flags.filter((f) => f !== 'CLEAN' && f !== 'NOT_RUN');
 
-      // Update VerificationRequest with flags + new status
+      // Update VerificationRequest with flags + new status.
+      // Never overwrite completedAt if it was already set (admin may have set it).
       await this.prisma.verificationRequest.update({
         where: { id: verificationRequestId },
         data: {
           status: newStatus,
-          integrityFlags: integrityFlags as any,
-          completedAt: isClean ? new Date() : null,
+          integrityFlags: { set: integrityFlags as any },
+          ...(isClean && !current?.completedAt ? { completedAt: new Date() } : {}),
         },
       });
 
-      // Auto-fulfill the IMEI checklist item if check passed
+      // Auto-fulfill the IMEI checklist item (settings screenshot) only when check passed
       if (result.imeiValid) {
         await this.prisma.evidenceChecklist.updateMany({
           where: {
@@ -94,7 +145,7 @@ export class UtrustUlensService {
       }
 
       this.logger.log(
-        `IMEI check complete for listing ${listingId}: status=${newStatus}, flags=[${result.flags.join(', ')}]`,
+        `IMEI check complete for listing ${listingId} (IMEI ${maskImei(imei)}): status=${newStatus}, flags=[${result.flags.join(', ')}]`,
       );
     } catch (error) {
       this.logger.error(
@@ -106,32 +157,56 @@ export class UtrustUlensService {
   }
 
   async createVerificationRequest(dto: CreateVerificationRequestDto) {
-    // Create verification request
-    const verificationRequest = await this.prisma.verificationRequest.create({
-      data: {
-        listingId: dto.listingId,
-        sellerId: dto.sellerId,
-        conditionGrade: dto.conditionGrade || null,
-        status: 'PENDING',
-        integrityFlags: [],
-      },
-    });
-
-    // Create identifier validation if IMEI or serial was provided
-    if (dto.imeiProvided || dto.serialProvided) {
-      await this.prisma.identifierValidation.create({
+    // Wrap the 4-step creation in a transaction so a partial failure is rolled back
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Create verification request
+      const verificationRequest = await tx.verificationRequest.create({
         data: {
-          verificationRequestId: verificationRequest.id,
-          imei: dto.imei ?? null,
-          serialNumber: dto.serialNumber ?? null,
-          imeiProvided: dto.imeiProvided || false,
-          serialProvided: dto.serialProvided || false,
+          listingId: dto.listingId,
+          sellerId: dto.sellerId,
+          conditionGrade: dto.conditionGrade || null,
+          status: 'PENDING',
+          integrityFlags: [],
         },
       });
 
-      // Fire-and-forget: trigger real IMEI verification in background
+      // Create identifier validation if IMEI or serial was provided
+      if (dto.imeiProvided || dto.serialProvided) {
+        await tx.identifierValidation.create({
+          data: {
+            verificationRequestId: verificationRequest.id,
+            imei: dto.imei ?? null,
+            serialNumber: dto.serialNumber ?? null,
+            imeiProvided: dto.imeiProvided || false,
+            serialProvided: dto.serialProvided || false,
+          },
+        });
+      }
+
+      // Create evidence checklist items (required evidence)
+      const checklistItems = [
+        { type: 'IMAGE', description: 'Device images (front, back, sides)', required: true },
+        { type: 'IMAGE', description: 'Screen images (on, display condition)', required: true },
+        { type: 'SCREENSHOT', description: 'Settings screenshot (model, storage)', required: true },
+      ];
+
+      await tx.evidenceChecklist.createMany({
+        data: checklistItems.map((item) => ({
+          verificationRequestId: verificationRequest.id,
+          type: item.type as any,
+          description: item.description,
+          required: item.required,
+          fulfilled: false,
+        })),
+      });
+
+      return verificationRequest;
+    });
+
+    // Fire-and-forget IMEI check outside the transaction (network call)
+    if (dto.imeiProvided || dto.serialProvided) {
       this.triggerIdentifierVerification(
-        verificationRequest.id,
+        result.id,
         dto.listingId,
         dto.imei,
         dto.serialNumber,
@@ -141,26 +216,9 @@ export class UtrustUlensService {
       });
     }
 
-    // Create evidence checklist items (required evidence)
-    const checklistItems = [
-      { type: 'IMAGE', description: 'Device images (front, back, sides)', required: true },
-      { type: 'IMAGE', description: 'Screen images (on, display condition)', required: true },
-      { type: 'SCREENSHOT', description: 'Settings screenshot (model, storage)', required: true },
-    ];
-
-    await this.prisma.evidenceChecklist.createMany({
-      data: checklistItems.map((item) => ({
-        verificationRequestId: verificationRequest.id,
-        type: item.type as any,
-        description: item.description,
-        required: item.required,
-        fulfilled: false,
-      })),
-    });
-
-    // Fetch and return the complete verification request
-    const result = await this.prisma.verificationRequest.findUnique({
-      where: { id: verificationRequest.id },
+    // Fetch and return the complete verification request (seller-safe shape)
+    return this.prisma.verificationRequest.findUnique({
+      where: { id: result.id },
       include: {
         evidenceChecklist: {
           select: {
@@ -174,25 +232,10 @@ export class UtrustUlensService {
           },
         },
         identifierValidation: {
-          select: {
-            id: true,
-            imei: true,
-            serialNumber: true,
-            imeiProvided: true,
-            imeiValid: true,
-            serialProvided: true,
-            serialValid: true,
-            icloudLocked: true,
-            reportedStolen: true,
-            blacklisted: true,
-            verifiedAt: true,
-            createdAt: true,
-          },
+          select: SELLER_ID_VALIDATION_SELECT,
         },
       },
     });
-
-    return result;
   }
 
   async getVerificationRequest(listingId: string) {
@@ -211,21 +254,7 @@ export class UtrustUlensService {
           },
         },
         identifierValidation: {
-          select: {
-            id: true,
-            imei: true,
-            serialNumber: true,
-            imeiProvided: true,
-            imeiValid: true,
-            serialProvided: true,
-            serialValid: true,
-            icloudLocked: true,
-            reportedStolen: true,
-            blacklisted: true,
-            rawApiResponse: true,
-            verifiedAt: true,
-            createdAt: true,
-          },
+          select: SELLER_ID_VALIDATION_SELECT,
         },
       },
     });
@@ -253,18 +282,9 @@ export class UtrustUlensService {
           },
           identifierValidation: {
             select: {
-              id: true,
-              imei: true,
-              serialNumber: true,
-              imeiProvided: true,
-              imeiValid: true,
-              serialProvided: true,
-              serialValid: true,
-              icloudLocked: true,
-              reportedStolen: true,
-              blacklisted: true,
-              verifiedAt: true,
-              createdAt: true,
+              ...SELLER_ID_VALIDATION_SELECT,
+              // Admins get full rawApiResponse for debugging
+              rawApiResponse: true,
             },
           },
         },
@@ -292,16 +312,27 @@ export class UtrustUlensService {
     reviewNotes?: string,
     integrityFlags?: string[],
   ) {
-    const result = await this.prisma.verificationRequest.update({
+    const existing = await this.prisma.verificationRequest.findUnique({
+      where: { listingId },
+      select: { completedAt: true },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Verification request not found for listing ${listingId}`);
+    }
+
+    const isTerminal = status === 'PASSED' || status === 'FAILED';
+
+    return this.prisma.verificationRequest.update({
       where: { listingId },
       data: {
         status,
         reviewNotes,
-        integrityFlags: integrityFlags as any,
-        completedAt: status === 'PASSED' || status === 'FAILED' ? new Date() : null,
+        ...(integrityFlags !== undefined
+          ? { integrityFlags: { set: integrityFlags as any } }
+          : {}),
+        // Set completedAt when reaching a terminal state, but never overwrite once set
+        ...(isTerminal && !existing.completedAt ? { completedAt: new Date() } : {}),
       },
     });
-
-    return result;
   }
 }

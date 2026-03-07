@@ -106,7 +106,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     if (!user) return;
     fetchListing();
     fetchEvidence();
-  }, [id, user]);
+  }, [id, user?.id]); // PERF-08: depend on user?.id (primitive) not user object to avoid unnecessary re-runs
 
   const fetchListing = async () => {
     setLoading(true);
@@ -124,6 +124,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
       const data = await response.json();
 
+      // SEC-08: This check is UX-only — it gives non-owners an early redirect rather
+      // than rendering a broken form. The actual ownership enforcement MUST happen
+      // server-side: the PATCH /api/listings/:id handler must verify that the
+      // authenticated user's JWT sub matches the listing's sellerId before allowing
+      // any update. Do NOT rely on this client check as a security boundary.
       if (data.sellerId !== user?.id) {
         router.replace('/dashboard');
         return;

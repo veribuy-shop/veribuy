@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
@@ -64,6 +64,26 @@ const ACCESSORIES_OPTIONS = [
   'Manual/Documentation',
 ];
 
+
+/**
+ * PERF-06: Generates stable blob URLs for an array of File objects and revokes
+ * them on cleanup to prevent memory leaks from URL.createObjectURL.
+ */
+function useObjectURLs(files: File[]): string[] {
+  const urlsRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    // Revoke previous URLs before creating new ones
+    urlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    urlsRef.current = files.map(file => URL.createObjectURL(file));
+    return () => {
+      urlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [files]);
+
+  return urlsRef.current;
+}
+
 export default function CreateListingPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -93,13 +113,45 @@ export default function CreateListingPage() {
     settingsScreenshot: [],
   });
 
+  // PERF-06: useObjectURLs must be called after formData is declared so the
+  // initial empty arrays are accessible on first render.
+  const deviceImageURLs    = useObjectURLs(formData.deviceImages);
+  const screenImageURLs    = useObjectURLs(formData.screenImages);
+  const bodyImageURLs      = useObjectURLs(formData.bodyImages);
+  const settingsImageURLs  = useObjectURLs(formData.settingsScreenshot);
+
   const updateFormData = (field: keyof ListingFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
+  // DATA-04: Validate file type (images only) and size (max 10 MB) before
+  // storing files in state. Invalid files are rejected with a visible error.
+  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
   const handleFileChange = (field: keyof ListingFormData, files: FileList | null) => {
-    if (files) {
-      updateFormData(field, Array.from(files));
+    if (!files) return;
+
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) {
+        errors.push(`"${file.name}" is not an image file and was skipped.`);
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        errors.push(`"${file.name}" exceeds the 10 MB size limit and was skipped.`);
+        return;
+      }
+      validFiles.push(file);
+    });
+
+    if (errors.length > 0) {
+      setError(errors.join(' '));
+    }
+
+    if (validFiles.length > 0) {
+      updateFormData(field, validFiles);
     }
   };
 
@@ -185,8 +237,9 @@ export default function CreateListingPage() {
 
     try {
       // Step 1: Create the listing first
+      // SEC-06: sellerId is intentionally omitted — the BFF API route derives it
+      // from the verified JWT token. Never trust client-supplied identity fields.
       const listingData = {
-        sellerId: user?.id,
         deviceType: formData.deviceType,
         brand: formData.brand,
         model: formData.model,
@@ -223,31 +276,40 @@ export default function CreateListingPage() {
 
       if (allFiles.length > 0) {
         setUploadingFiles(true);
-        
-        for (let i = 0; i < allFiles.length; i++) {
-          const { file, type } = allFiles[i];
-          const uploadFormData = new FormData();
-          uploadFormData.append('file', file);
-          uploadFormData.append('listingId', listing.id);
-          uploadFormData.append('sellerId', user?.id || '');
-          uploadFormData.append('type', type);
 
-          const uploadResponse = await fetch('/api/evidence', {
-            method: 'POST',
-            credentials: 'include',
-            body: uploadFormData,
-          });
+        // PERF-05: Upload all evidence files in parallel with Promise.allSettled so
+        // a single failed upload does not block the rest. Individual failures are
+        // logged but don't abort the listing creation flow.
+        const uploadResults = await Promise.allSettled(
+          allFiles.map(({ file, type }) => {
+            const uploadFormData = new FormData();
+            uploadFormData.append('file', file);
+            uploadFormData.append('listingId', listing.id);
+            // SEC-06: sellerId intentionally not appended — evidence service derives it
+            // from the JWT token forwarded by the BFF API route.
+            uploadFormData.append('type', type);
+            return fetch('/api/evidence', {
+              method: 'POST',
+              credentials: 'include',
+              body: uploadFormData,
+            }).then(res => {
+              if (!res.ok) throw new Error(`Upload failed for ${file.name}`);
+              return res;
+            });
+          })
+        );
 
-          if (!uploadResponse.ok) {
-            console.error(`Failed to upload ${file.name}`);
+        // Log any individual upload failures without failing the whole submission
+        uploadResults.forEach((result, i) => {
+          if (result.status === 'rejected') {
+            console.error(`Evidence upload error (${allFiles[i].file.name}):`, result.reason);
           }
-          
-          // Update progress
-          setUploadProgress(prev => ({
-            ...prev,
-            [file.name]: ((i + 1) / allFiles.length) * 100
-          }));
-        }
+        });
+
+        // Mark all files as 100% in the progress tracker
+        setUploadProgress(
+          Object.fromEntries(allFiles.map(({ file }) => [file.name, 100]))
+        );
       }
       
       // Step 3: Create verification request in Trust Lens
@@ -709,7 +771,7 @@ export default function CreateListingPage() {
                     {formData.deviceImages.map((file, idx) => (
                       <div key={idx} className="relative">
                         <img
-                          src={URL.createObjectURL(file)}
+                          src={deviceImageURLs[idx]}
                           alt={`Device image ${idx + 1}: ${file.name}`}
                           className="w-full h-24 object-cover rounded border border-gray-200"
                         />
@@ -745,7 +807,7 @@ export default function CreateListingPage() {
                     {formData.screenImages.map((file, idx) => (
                       <div key={idx} className="relative">
                         <img
-                          src={URL.createObjectURL(file)}
+                          src={screenImageURLs[idx]}
                           alt={`Screen image ${idx + 1}: ${file.name}`}
                           className="w-full h-24 object-cover rounded border border-gray-200"
                         />
@@ -780,7 +842,7 @@ export default function CreateListingPage() {
                     {formData.bodyImages.map((file, idx) => (
                       <div key={idx} className="relative">
                         <img
-                          src={URL.createObjectURL(file)}
+                          src={bodyImageURLs[idx]}
                           alt={`Body image ${idx + 1}: ${file.name}`}
                           className="w-full h-24 object-cover rounded border border-gray-200"
                         />
@@ -815,7 +877,7 @@ export default function CreateListingPage() {
                     {formData.settingsScreenshot.map((file, idx) => (
                       <div key={idx} className="relative">
                         <img
-                          src={URL.createObjectURL(file)}
+                          src={settingsImageURLs[idx]}
                           alt={`Settings screenshot ${idx + 1}: ${file.name}`}
                           className="w-full h-24 object-cover rounded border border-gray-200"
                         />

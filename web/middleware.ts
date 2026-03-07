@@ -1,28 +1,31 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
 
 /**
- * Verifies JWT token by making a request to the auth service
- * In production, consider caching validation results or using JWT verification library
+ * Verifies JWT token locally using jose — no network round-trip to the auth service.
+ * SEC-09: Replaced live HTTP verification with local jose.jwtVerify() for lower latency
+ * and elimination of auth-service dependency in the middleware hot path.
  */
 async function verifyToken(token: string): Promise<{ valid: boolean; user?: any }> {
   try {
-    const response = await fetch(`${process.env.AUTH_SERVICE_URL || 'http://localhost:3001'}/auth/verify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-
-    if (response.ok) {
-      const user = await response.json();
-      return { valid: true, user };
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      console.error('[Middleware] JWT_SECRET is not set — cannot verify tokens');
+      return { valid: false };
     }
 
-    return { valid: false };
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+
+    return {
+      valid: true,
+      user: {
+        userId: (payload['sub'] ?? payload['userId']) as string,
+        role: payload['role'] as string,
+      },
+    };
   } catch (error) {
-    console.error('Token verification failed:', error);
+    // Token is expired, tampered, or otherwise invalid
     return { valid: false };
   }
 }
@@ -72,11 +75,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/unauthorized', request.url));
     }
 
-    // Token is valid, add user info to request headers for API routes to use
+    // SEC-04: These headers are set for server-rendered page components only (e.g. RSC layout data).
+    // IMPORTANT: API routes MUST NOT trust these headers for authorization decisions — they perform
+    // their own token verification via getAccessToken() / requireRole() from lib/api-auth.ts.
+    // These headers are intentionally absent from the matcher for /api/:path* routes.
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set('x-user-id', user.userId);
     requestHeaders.set('x-user-role', user.role);
-    requestHeaders.set('x-user-email', user.email);
 
     return NextResponse.next({
       request: {

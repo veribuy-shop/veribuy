@@ -7,7 +7,7 @@ const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001'
 export async function GET(request: NextRequest) {
   try {
     // Require ADMIN role
-    const authResult = requireRole(request, 'ADMIN');
+    const authResult = await requireRole(request, 'ADMIN');
     if ('error' in authResult) {
       return authResult.error;
     }

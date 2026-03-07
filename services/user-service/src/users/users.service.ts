@@ -1,9 +1,43 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '@veribuy/redis-cache';
+import { CreateProfileDto } from './dto/create-profile.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+
+// Safe profile shape — excludes kycVerifiedAt and other internal fields
+const PROFILE_SELECT = {
+  id: true,
+  userId: true,
+  displayName: true,
+  firstName: true,
+  lastName: true,
+  bio: true,
+  avatarUrl: true,
+  phone: true,
+  createdAt: true,
+  updatedAt: true,
+  address: {
+    select: {
+      id: true,
+      line1: true,
+      line2: true,
+      city: true,
+      state: true,
+      postalCode: true,
+      country: true,
+    },
+  },
+} as const;
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
@@ -12,70 +46,93 @@ export class UsersService {
   async findByUserId(userId: string) {
     const cacheKey = `profile:${userId}`;
 
-    // Try to get from cache first
-    const cached = await this.redis.get<any>(cacheKey);
-    if (cached) {
-      return cached;
+    // Try cache first — fail open (Redis outage must not break profile reads)
+    try {
+      const cached = await this.redis.get<any>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    } catch (err) {
+      this.logger.warn(`Redis GET failed for key ${cacheKey}: ${(err as Error).message}`);
     }
 
     const profile = await this.prisma.profile.findUnique({
       where: { userId },
-      include: {
-        address: {
-          select: {
-            id: true,
-            line1: true,
-            line2: true,
-            city: true,
-            state: true,
-            postalCode: true,
-            country: true,
-          },
-        },
-      },
+      select: PROFILE_SELECT,
     });
 
     if (!profile) {
       throw new NotFoundException('Profile not found');
     }
 
-    // Cache the profile for 10 minutes (600 seconds)
-    await this.redis.set(cacheKey, profile, 600);
+    // Write to cache — fail open
+    try {
+      await this.redis.set(cacheKey, profile, 600);
+    } catch (err) {
+      this.logger.warn(`Redis SET failed for key ${cacheKey}: ${(err as Error).message}`);
+    }
 
     return profile;
   }
 
-  async createProfile(userId: string, data: { displayName: string; firstName?: string; lastName?: string }) {
-    const profile = await this.prisma.profile.create({
-      data: {
-        userId,
-        displayName: data.displayName,
-        firstName: data.firstName,
-        lastName: data.lastName,
-      },
-    });
+  async createProfile(userId: string, dto: CreateProfileDto) {
+    try {
+      const profile = await this.prisma.profile.create({
+        data: {
+          userId,
+          displayName: dto.displayName,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+        },
+        select: PROFILE_SELECT,
+      });
 
-    return profile;
+      // Write-through cache
+      try {
+        await this.redis.set(`profile:${userId}`, profile, 600);
+      } catch (err) {
+        this.logger.warn(`Redis SET failed after createProfile: ${(err as Error).message}`);
+      }
+
+      return profile;
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        throw new ConflictException('Profile already exists for this user');
+      }
+      throw err;
+    }
   }
 
-  async updateProfile(userId: string, data: Partial<{ displayName: string; firstName: string; lastName: string; bio: string; phone: string; avatarUrl: string }>) {
-    // Use upsert to create the profile if it doesn't exist
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
     const profile = await this.prisma.profile.upsert({
       where: { userId },
-      update: data,
+      update: {
+        ...(dto.displayName !== undefined && { displayName: dto.displayName }),
+        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+        ...(dto.bio !== undefined && { bio: dto.bio }),
+        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+      },
       create: {
         userId,
-        displayName: data.displayName || 'User',
-        firstName: data.firstName,
-        lastName: data.lastName,
-        bio: data.bio,
-        phone: data.phone,
-        avatarUrl: data.avatarUrl,
+        displayName: dto.displayName || 'User',
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        bio: dto.bio,
+        phone: dto.phone,
+        avatarUrl: dto.avatarUrl,
       },
+      select: PROFILE_SELECT,
     });
 
-    // Invalidate cache
-    await this.redis.del(`profile:${userId}`);
+    // Invalidate then write-through
+    try {
+      await this.redis.del(`profile:${userId}`);
+      await this.redis.set(`profile:${userId}`, profile, 600);
+    } catch (err) {
+      this.logger.warn(`Redis update failed for profile:${userId}: ${(err as Error).message}`);
+    }
 
     return profile;
   }

@@ -7,17 +7,15 @@ const { combine, timestamp, printf, colorize, errors } = format;
 // Custom format for console output (human-readable)
 const consoleFormat = printf(({ level, message, timestamp, context, trace, ...metadata }) => {
   let msg = `${timestamp} [${level}] [${context || 'Application'}] ${message}`;
-  
-  // Add metadata if present
+
   if (Object.keys(metadata).length > 0) {
     msg += ` ${JSON.stringify(metadata)}`;
   }
-  
-  // Add stack trace if present
+
   if (trace) {
     msg += `\n${trace}`;
   }
-  
+
   return msg;
 });
 
@@ -31,7 +29,26 @@ export const createLogger = (serviceName: string) => {
           errors({ stack: true }),
           timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
           colorize(),
-          consoleFormat
+          consoleFormat,
+        ),
+      }),
+      // JSON file transport (for Loki aggregation)
+      new winston.transports.File({
+        filename: `/tmp/veribuy-${serviceName}.json`,
+        format: combine(
+          errors({ stack: true }),
+          timestamp(),
+          winston.format.json(),
+        ),
+      }),
+      // Separate error log file
+      new winston.transports.File({
+        filename: `/tmp/veribuy-${serviceName}-error.json`,
+        level: 'error',
+        format: combine(
+          errors({ stack: true }),
+          timestamp(),
+          winston.format.json(),
         ),
       }),
     ],

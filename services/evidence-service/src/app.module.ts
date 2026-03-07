@@ -7,7 +7,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { HealthModule } from './health/health.module';
-import { UevidenceModule } from './evidence/evidence.module';
+import { EvidenceModule } from './evidence/evidence.module';
 import { AuthModule } from './auth/auth.module';
 
 @Module({
@@ -32,7 +32,7 @@ import { AuthModule } from './auth/auth.module';
     CloudinaryModule,
     AuthModule,
     HealthModule,
-    UevidenceModule,
+    EvidenceModule,
   ],
   providers: [
     {

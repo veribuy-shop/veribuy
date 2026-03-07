@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { DeviceType, ListingStatus, TrustLensStatus } from '.prisma/listing-client';
 import { PaginationDto } from '@veribuy/common';
 
@@ -9,6 +9,7 @@ export class GetListingsQueryDto extends PaginationDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(100)
   brand?: string;
 
   @IsEnum(ListingStatus)
@@ -21,9 +22,11 @@ export class GetListingsQueryDto extends PaginationDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(200)
   search?: string;
 
   @IsString()
   @IsOptional()
+  @MaxLength(36)
   sellerId?: string;
 }

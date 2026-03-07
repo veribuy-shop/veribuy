@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
-import { UtrustUlensController } from './trust-lens.controller';
-import { UtrustUlensService } from './trust-lens.service';
+import { TrustLensController } from './trust-lens.controller';
+import { TrustLensService } from './trust-lens.service';
 import { ImeiCheckModule } from '../imei-check/imei-check.module';
 
 @Module({
   imports: [ImeiCheckModule],
-  controllers: [UtrustUlensController],
-  providers: [UtrustUlensService],
-  exports: [UtrustUlensService],
+  controllers: [TrustLensController],
+  providers: [TrustLensService],
+  exports: [TrustLensService],
 })
-export class UtrustUlensModule {}
+export class TrustLensModule {}

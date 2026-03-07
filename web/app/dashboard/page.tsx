@@ -118,24 +118,25 @@ function DashboardContent() {
   const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Fetch profile on mount (for displayName)
-  useEffect(() => {
-    if (user?.id) {
-      fetchProfile();
-    }
-  }, [user?.id]);
-
-  // Fetch data on tab change
+  // DATA-05: Consolidated mount effect — run fetchProfile and fetchOverviewData
+  // in parallel on first load so a single network round-trip latency doesn't
+  // serialise the two independent requests.
   useEffect(() => {
     if (!user?.id) return;
-    
-    if (activeTab === 'overview') {
-      fetchOverviewData();
-    } else if (activeTab === 'listings') {
+    Promise.all([fetchProfile(), fetchOverviewData()]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  // Fetch data on tab change (skip overview — already fetched on mount)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    if (activeTab === 'listings') {
       fetchListings();
     } else if (activeTab === 'orders') {
       fetchOrders();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, user?.id]);
 
   const fetchOverviewData = async () => {

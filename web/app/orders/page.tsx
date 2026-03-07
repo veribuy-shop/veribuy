@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
@@ -26,22 +26,32 @@ export default function OrdersPage() {
   const [sellingOrders, setSellingOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // PERF-09: Track whether selling orders have been fetched yet so we only
+  // hit the API when the user first switches to the 'Selling' tab.
+  const sellingOrdersFetched = useRef(false);
 
+  // On mount: redirect if unauthenticated, otherwise fetch buying orders only.
   useEffect(() => {
     if (!user) {
       router.push('/login?redirect=/orders');
       return;
     }
-
-    fetchOrders();
+    fetchBuyingOrders();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  const fetchOrders = async () => {
-    if (!user) return;
+  // PERF-09: Lazy-fetch selling orders the first time the 'Selling' tab is clicked.
+  useEffect(() => {
+    if (activeTab === 'selling' && !sellingOrdersFetched.current && user) {
+      fetchSellingOrders();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
+  const fetchBuyingOrders = async () => {
+    if (!user) return;
     setLoading(true);
     setError('');
-
     try {
       // Fetch buying orders — BFF returns { data: Order[], pagination: {} }
       const buyingResponse = await fetch(`/api/checkout/orders/buyer/${user.id}`, { credentials: 'include' });
@@ -49,7 +59,20 @@ export default function OrdersPage() {
         const buyingData = await buyingResponse.json();
         setBuyingOrders(Array.isArray(buyingData) ? buyingData : (buyingData.data ?? []));
       }
+    } catch (err: any) {
+      console.error('Error fetching buying orders:', err);
+      setError('Failed to load orders');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  const fetchSellingOrders = async () => {
+    if (!user) return;
+    sellingOrdersFetched.current = true;
+    setLoading(true);
+    setError('');
+    try {
       // Fetch selling orders — BFF returns { data: Order[], pagination: {} }
       const sellingResponse = await fetch(`/api/checkout/orders/seller/${user.id}`, { credentials: 'include' });
       if (sellingResponse.ok) {
@@ -57,7 +80,7 @@ export default function OrdersPage() {
         setSellingOrders(Array.isArray(sellingData) ? sellingData : (sellingData.data ?? []));
       }
     } catch (err: any) {
-      console.error('Error fetching orders:', err);
+      console.error('Error fetching selling orders:', err);
       setError('Failed to load orders');
     } finally {
       setLoading(false);

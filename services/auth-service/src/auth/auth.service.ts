@@ -1,14 +1,30 @@
-import { Injectable, UnauthorizedException, ConflictException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
+
+// Typed interface for the authenticated user (from JWT)
+interface AuthenticatedUser {
+  userId: string;
+  role: string;
+}
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
@@ -16,25 +32,32 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-
-    if (existing) {
-      throw new ConflictException('Email already registered');
-    }
-
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.prisma.user.create({
-      data: {
-        name: dto.name,
-        email: dto.email,
-        passwordHash,
-      },
-    });
+    let user: { id: string; name: string; email: string; role: string };
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          name: dto.name,
+          email: dto.email,
+          passwordHash,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      });
+    } catch (err: any) {
+      // P2002 = unique constraint violation (email already exists)
+      if (err?.code === 'P2002') {
+        throw new ConflictException('Email already registered');
+      }
+      throw err;
+    }
 
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    const tokens = await this.generateTokens(user.id, user.role);
 
     return {
       user: {
@@ -56,6 +79,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is disabled');
+    }
+
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
 
     if (!isPasswordValid) {
@@ -67,7 +94,7 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    const tokens = await this.generateTokens(user.id, user.role);
 
     return {
       user: {
@@ -90,16 +117,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
+    if (!stored.user.isActive) {
+      throw new UnauthorizedException('Account is disabled');
+    }
+
     await this.prisma.refreshToken.update({
       where: { id: stored.id },
       data: { revokedAt: new Date() },
     });
 
-    return this.generateTokens(
-      stored.user.id,
-      stored.user.email,
-      stored.user.role,
-    );
+    return this.generateTokens(stored.user.id, stored.user.role);
   }
 
   async logout(refreshToken: string) {
@@ -107,6 +134,30 @@ export class AuthService {
       where: { token: refreshToken, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  async verifyAndHydrate(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Account not found or disabled');
+    }
+
+    return {
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    };
   }
 
   async getAllUsers(pagination: PaginationDto): Promise<PaginatedResponse<any>> {
@@ -122,6 +173,7 @@ export class AuthService {
           name: true,
           email: true,
           role: true,
+          isActive: true,
           isEmailVerified: true,
           lastLoginAt: true,
           createdAt: true,
@@ -145,38 +197,8 @@ export class AuthService {
     };
   }
 
-  private async generateTokens(userId: string, email: string, role: string) {
-    const payload = { sub: userId, email, role };
-
-    const accessToken = this.jwtService.sign(payload);
-
-    const refreshExpiration = this.configService.get('JWT_REFRESH_EXPIRATION') || '7d';
-    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
-    if (!refreshSecret) {
-      throw new Error('JWT_REFRESH_SECRET is not defined in environment variables');
-    }
-
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: refreshSecret,
-      expiresIn: refreshExpiration,
-    });
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-
-    await this.prisma.refreshToken.create({
-      data: {
-        token: refreshToken,
-        userId,
-        expiresAt,
-      },
-    });
-
-    return { accessToken, refreshToken };
-  }
-
   // Admin methods
-  async updateUser(userId: string, updateData: { name?: string; role?: 'USER' | 'ADMIN' }) {
+  async updateUser(userId: string, dto: UpdateUserDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -187,12 +209,16 @@ export class AuthService {
 
     return this.prisma.user.update({
       where: { id: userId },
-      data: updateData,
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.role !== undefined && { role: dto.role as any }),
+      },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
+        isActive: true,
         isEmailVerified: true,
         lastLoginAt: true,
         createdAt: true,
@@ -215,16 +241,68 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    // Delete user's refresh tokens first
-    await this.prisma.refreshToken.deleteMany({
-      where: { userId },
+    // Revoke all refresh tokens before deleting the user
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
 
-    // Delete user
+    // Hard delete (cascade deletes refresh tokens via FK)
     await this.prisma.user.delete({
       where: { id: userId },
     });
 
     return { message: 'User deleted successfully' };
+  }
+
+  private async generateTokens(userId: string, role: string) {
+    // JWT payload contains only sub + role — no PII (email intentionally omitted)
+    const payload = { sub: userId, role };
+
+    const accessToken = this.jwtService.sign(payload as object);
+
+    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+    if (!refreshSecret) {
+      throw new Error('JWT_REFRESH_SECRET is not defined in environment variables');
+    }
+
+    const refreshExpiration = this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '7d';
+
+    const refreshToken = this.jwtService.sign(payload as object, {
+      secret: refreshSecret,
+      expiresIn: refreshExpiration as any,
+    });
+
+    // Derive expiry from config string instead of hardcoding 7 days
+    const expiresAt = this.parseExpiration(refreshExpiration);
+
+    await this.prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId,
+        expiresAt,
+      },
+    });
+
+    return { accessToken, refreshToken };
+  }
+
+  private parseExpiration(exp: string): Date {
+    const now = new Date();
+    const match = /^(\d+)([smhd])$/.exec(exp);
+    if (!match) {
+      // Default to 7 days if format unrecognised
+      now.setDate(now.getDate() + 7);
+      return now;
+    }
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+    switch (unit) {
+      case 's': now.setSeconds(now.getSeconds() + value); break;
+      case 'm': now.setMinutes(now.getMinutes() + value); break;
+      case 'h': now.setHours(now.getHours() + value); break;
+      case 'd': now.setDate(now.getDate() + value); break;
+    }
+    return now;
   }
 }
