@@ -35,7 +35,7 @@ export interface SafeUser {
   name: string;
   email: string;
   role: string;
-  emailVerifiedAt: string | null;
+  isEmailVerified: boolean;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -206,7 +206,7 @@ export function sanitizeUser(raw: Record<string, any>): SafeUser {
     name: raw.name ?? '',
     email: raw.email ?? '',
     role: raw.role ?? '',
-    emailVerifiedAt: raw.emailVerifiedAt ?? null,
+    isEmailVerified: raw.isEmailVerified ?? false,
     lastLoginAt: raw.lastLoginAt ?? null,
     createdAt: raw.createdAt ?? '',
   };

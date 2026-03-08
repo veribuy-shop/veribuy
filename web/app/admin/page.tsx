@@ -31,7 +31,7 @@ interface User {
   name: string;
   email: string;
   role: string;
-  emailVerifiedAt: string | null;
+  isEmailVerified: boolean;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -947,10 +947,10 @@ function UsersTab({ users }: { users: User[] }) {
                   <td className="px-6 py-4 text-sm text-gray-500">{u.email}</td>
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 text-xs rounded-full ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
-                      {u.role}
+                      {u.role === 'ADMIN' ? 'ADMIN' : 'USER'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm">{u.emailVerifiedAt ? '✅' : '❌'}</td>
+                  <td className="px-6 py-4 text-sm">{u.isEmailVerified ? '✅' : '❌'}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">
                     {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : 'Never'}
                   </td>
