@@ -20,6 +20,7 @@ export default function LoginPage() {
       await login(email, password);
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
+    } finally {
       setLoading(false);
     }
   };
