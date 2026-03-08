@@ -3,16 +3,18 @@ import Stripe from 'stripe';
 
 const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007';
 
-// Internal service header value — must match what transaction-service and notification-service check
-// SECURITY: No fallback — if INTERNAL_SERVICE_TOKEN is not set, fail loudly at startup.
-if (!process.env.INTERNAL_SERVICE_TOKEN) {
-  throw new Error(
-    '[Stripe Webhook] INTERNAL_SERVICE_TOKEN environment variable is not set. ' +
-    'This is required for internal service-to-service authentication. ' +
-    'Set it in your environment before starting the server.',
-  );
+// Read at request time — throwing at module scope breaks Next.js build-time
+// static analysis (page-data collection runs without env vars).
+function getInternalServiceToken(): string {
+  const token = process.env.INTERNAL_SERVICE_TOKEN;
+  if (!token) {
+    throw new Error(
+      '[Stripe Webhook] INTERNAL_SERVICE_TOKEN environment variable is not set. ' +
+      'This is required for internal service-to-service authentication.',
+    );
+  }
+  return token;
 }
-const INTERNAL_SERVICE_HEADER = process.env.INTERNAL_SERVICE_TOKEN;
 
 // Initialize Stripe lazily to avoid build-time errors
 function getStripe() {
@@ -94,7 +96,7 @@ async function fetchOrderByPaymentIntentId(paymentIntentId: string): Promise<Rec
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-service': INTERNAL_SERVICE_HEADER,
+          'x-internal-service': getInternalServiceToken(),
         },
       }
     );
@@ -128,7 +130,7 @@ async function confirmOrderPayment(orderId: string, paymentIntentId: string): Pr
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-service': INTERNAL_SERVICE_HEADER,
+          'x-internal-service': getInternalServiceToken(),
         },
         body: JSON.stringify({ paymentIntentId }),
       }
@@ -160,7 +162,7 @@ async function cancelOrder(orderId: string): Promise<boolean> {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-service': INTERNAL_SERVICE_HEADER,
+          'x-internal-service': getInternalServiceToken(),
         },
         body: JSON.stringify({ status: 'CANCELLED' }),
       }
@@ -245,7 +247,7 @@ async function refundOrder(orderId: string): Promise<boolean> {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'x-internal-service': INTERNAL_SERVICE_HEADER,
+          'x-internal-service': getInternalServiceToken(),
         },
         body: JSON.stringify({ status: 'REFUNDED' }),
       }
