@@ -1,6 +1,5 @@
 'use client';
 
-import { ProtectedRoute } from '@/components/protected-route';
 import { useAuth } from '@/lib/auth-context';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -314,9 +313,8 @@ function ProfileContent() {
 }
 
 export default function ProfilePage() {
-  return (
-    <ProtectedRoute>
-      <ProfileContent />
-    </ProtectedRoute>
-  );
+  // Route protection is handled server-side by middleware (jose.jwtVerify).
+  // The ProtectedRoute wrapper was removed to prevent a redirect loop when
+  // auth-service is slow or temporarily unavailable.
+  return <ProfileContent />;
 }

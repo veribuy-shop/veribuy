@@ -48,7 +48,7 @@ export interface SafeProfile {
   lastName: string | null;
   bio: string | null;
   avatarUrl: string | null;
-  phoneNumber: string | null;
+  phone: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -222,7 +222,7 @@ export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
     lastName: raw.lastName ?? null,
     bio: raw.bio ?? null,
     avatarUrl: raw.avatarUrl ?? null,
-    phoneNumber: raw.phoneNumber ?? null,
+    phone: raw.phone ?? null,
     createdAt: raw.createdAt ?? '',
     updatedAt: raw.updatedAt ?? '',
   };

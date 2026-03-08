@@ -1,4 +1,4 @@
-import { IsString, IsOptional, MaxLength, IsUrl, Matches } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsUrl } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class UpdateProfileDto {
@@ -26,9 +26,9 @@ export class UpdateProfileDto {
   bio?: string;
 
   @IsOptional()
-  @Matches(/^\+?[1-9]\d{1,14}$/, {
-    message: 'Phone number must be in E.164 format (e.g. +14155552671)',
-  })
+  @IsString()
+  @MaxLength(30)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   phone?: string;
 
   @IsOptional()

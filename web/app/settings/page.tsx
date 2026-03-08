@@ -1,6 +1,5 @@
 'use client';
 
-import { ProtectedRoute } from '@/components/protected-route';
 import { useAuth } from '@/lib/auth-context';
 import { useState, useEffect } from 'react';
 
@@ -633,9 +632,8 @@ function SettingsContent() {
 }
 
 export default function SettingsPage() {
-  return (
-    <ProtectedRoute>
-      <SettingsContent />
-    </ProtectedRoute>
-  );
+  // Route protection is handled server-side by middleware (jose.jwtVerify).
+  // A redundant client-side ProtectedRoute guard was removed here to prevent
+  // a redirect loop when the auth-service is slow or temporarily unavailable.
+  return <SettingsContent />;
 }
