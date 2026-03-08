@@ -26,6 +26,7 @@ model Order {
   deliveredAt      DateTime?   @map("delivered_at")
   completedAt      DateTime?   @map("completed_at")
   disputedAt       DateTime?   @map("disputed_at")
+  refundedAt       DateTime?   @map("refunded_at")
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
 
