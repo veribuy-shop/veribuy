@@ -34,4 +34,4 @@ COPY --from=build /app/services/listing-service/node_modules/@prisma ./services/
 COPY services/listing-service/prisma ./services/listing-service/prisma
 WORKDIR /app/services/listing-service
 EXPOSE 3003
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main"]
