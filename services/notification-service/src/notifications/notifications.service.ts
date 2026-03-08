@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nest
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
+import { EmailService } from './email.service';
 
 @Injectable()
 export class NotificationsService {
@@ -10,16 +11,28 @@ export class NotificationsService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private email: EmailService,
   ) {}
 
-  // Create a new message
-  async createMessage(data: {
-    senderId: string;
-    recipientId: string;
-    listingId?: string;
-    subject?: string;
-    content: string;
-  }) {
+  // ─── In-app messages ─────────────────────────────────────────────────────────
+
+  // Create a new in-app message.
+  // Pass emailContext to also fire an email notification to the recipient.
+  async createMessage(
+    data: {
+      senderId: string;
+      recipientId: string;
+      listingId?: string;
+      subject?: string;
+      content: string;
+    },
+    emailContext?: {
+      senderName: string;
+      recipientEmail: string;
+      recipientName: string;
+      listingTitle: string;
+    },
+  ) {
     const message = await this.prisma.message.create({
       data: {
         senderId: data.senderId,
@@ -32,6 +45,23 @@ export class NotificationsService {
 
     // Invalidate recipient's unread count cache
     await this.redis.del(`unread:${data.recipientId}`);
+
+    // Fire email notification (fire-and-forget — never block the response)
+    if (emailContext) {
+      this.email
+        .sendContactSellerEmail({
+          sellerEmail: emailContext.recipientEmail,
+          sellerName: emailContext.recipientName,
+          buyerName: emailContext.senderName,
+          listingTitle: emailContext.listingTitle,
+          subject: data.subject || 'New message',
+          message: data.content,
+          listingId: data.listingId || '',
+        })
+        .catch((err) =>
+          this.logger.error(`Contact-seller email failed: ${err?.message}`),
+        );
+    }
 
     return message;
   }
@@ -197,5 +227,73 @@ export class NotificationsService {
     await this.redis.set(cacheKey, count, 60);
 
     return count;
+  }
+
+  // ─── Email-only notifications (no in-app message stored) ─────────────────────
+
+  // Generic internal email dispatch — called by other services via internal token
+  async sendEmailInternal(data: {
+    type: string;
+    to: string;
+    payload: Record<string, any>;
+  }): Promise<void> {
+    switch (data.type) {
+      case 'verification':
+        await this.email.sendVerificationEmail(data.to, data.payload['name'], data.payload['token']);
+        break;
+      case 'welcome':
+        await this.email.sendWelcomeEmail(data.to, data.payload['name']);
+        break;
+      case 'order_confirmed':
+        await this.email.sendOrderConfirmationEmail({
+          buyerEmail: data.to,
+          buyerName: data.payload['buyerName'],
+          listingTitle: data.payload['listingTitle'],
+          orderId: data.payload['orderId'],
+          amount: data.payload['amount'],
+        });
+        break;
+      case 'order_status':
+        await this.email.sendOrderStatusEmail({
+          recipientEmail: data.to,
+          recipientName: data.payload['recipientName'],
+          listingTitle: data.payload['listingTitle'],
+          orderId: data.payload['orderId'],
+          status: data.payload['status'],
+          message: data.payload['message'],
+        });
+        break;
+      case 'trust_lens_result':
+        await this.email.sendTrustLensResultEmail({
+          sellerEmail: data.to,
+          sellerName: data.payload['sellerName'],
+          listingTitle: data.payload['listingTitle'],
+          listingId: data.payload['listingId'],
+          passed: data.payload['passed'],
+          conditionGrade: data.payload['conditionGrade'],
+          notes: data.payload['notes'],
+        });
+        break;
+      case 'raw':
+        await this.email.sendRaw({
+          to: data.to,
+          subject: data.payload['subject'],
+          html: data.payload['html'],
+          replyTo: data.payload['replyTo'],
+        });
+        break;
+      default:
+        this.logger.warn(`Unknown email type: ${data.type}`);
+    }
+  }
+
+  // Contact Us — fires email to veribuy.shop@gmail.com + acknowledgement to sender
+  async contactUs(data: {
+    fromName: string;
+    fromEmail: string;
+    subject: string;
+    message: string;
+  }): Promise<void> {
+    await this.email.sendContactUsEmail(data);
   }
 }

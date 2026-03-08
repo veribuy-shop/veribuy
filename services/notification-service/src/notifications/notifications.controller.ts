@@ -12,11 +12,15 @@ import {
   Headers,
   UnauthorizedException,
   ParseUUIDPipe,
+  HttpCode,
+  HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import * as crypto from 'crypto';
 import { NotificationsService } from './notifications.service';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { ContactUsDto } from './dto/contact-us.dto';
 import { JwtAuthGuard, RolesGuard, Public, CurrentUser, PaginationDto } from '@veribuy/common';
 
 @Controller('notifications')
@@ -32,12 +36,22 @@ export class NotificationsController {
     return { message: 'notification-service is running' };
   }
 
-  /**
-   * Internal endpoint for service-to-service system notifications.
-   * Called by transaction-service (and other services) without a user JWT.
-   * Uses `x-internal-service` header to identify the caller.
-   * No JWT is required — this route is @Public() but validates the token with timingSafeEqual.
-   */
+  // ─── Internal: generic email dispatch ───────────────────────────────────────
+  // Called by auth-service (and any other service) using INTERNAL_SERVICE_TOKEN.
+  // No JWT — validated via timing-safe header check.
+  @Post('send-email')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  async sendEmail(
+    @Headers('x-internal-service') internalToken: string,
+    @Body() body: { type: string; to: string; payload: Record<string, any> },
+  ) {
+    this.verifyInternalToken(internalToken);
+    await this.notificationsService.sendEmailInternal(body);
+    return { ok: true };
+  }
+
+  // ─── Internal: system message (service-to-service) ──────────────────────────
   @Post('messages/internal')
   @Public()
   async createSystemMessage(
@@ -49,41 +63,41 @@ export class NotificationsController {
       content: string;
     },
   ) {
-    const expected = process.env.INTERNAL_SERVICE_TOKEN;
-    if (!expected) {
-      this.logger.error('INTERNAL_SERVICE_TOKEN is not configured');
-      throw new UnauthorizedException('Internal service token not configured');
-    }
-
-    let valid = false;
-    try {
-      const a = Buffer.from(internalToken ?? '');
-      const b = Buffer.from(expected);
-      valid = a.length === b.length && crypto.timingSafeEqual(a, b);
-    } catch {
-      valid = false;
-    }
-
-    if (!valid) {
-      throw new UnauthorizedException('Invalid x-internal-service token');
-    }
-
+    this.verifyInternalToken(internalToken);
     return this.notificationsService.createMessage(body);
   }
 
-  // Create a new message — senderId always comes from JWT
+  // ─── Public: Contact Us form ─────────────────────────────────────────────────
+  // 5 submissions per hour per IP
+  @Post('contact-us')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
+  async contactUs(@Body() dto: ContactUsDto) {
+    await this.notificationsService.contactUs(dto);
+    return { ok: true };
+  }
+
+  // ─── In-app messages ─────────────────────────────────────────────────────────
+
+  // Create a new message — senderId always comes from JWT.
+  // Optionally include emailContext to fire an email to the recipient.
   @Post('messages')
   async createMessage(
     @Body() dto: CreateMessageDto,
     @CurrentUser() user: { userId: string; role: string },
   ) {
-    return this.notificationsService.createMessage({
-      senderId: user.userId,
-      recipientId: dto.recipientId,
-      listingId: dto.listingId,
-      subject: dto.subject,
-      content: dto.content,
-    });
+    return this.notificationsService.createMessage(
+      {
+        senderId: user.userId,
+        recipientId: dto.recipientId,
+        listingId: dto.listingId,
+        subject: dto.subject,
+        content: dto.content,
+      },
+      // emailContext is optional — only sent by the contact-seller flow via the web BFF
+      (dto as any).emailContext,
+    );
   }
 
   // Get all messages for a user
@@ -144,5 +158,28 @@ export class NotificationsController {
     }
     const count = await this.notificationsService.getUnreadCount(userId);
     return { count };
+  }
+
+  // ─── Private helpers ─────────────────────────────────────────────────────────
+
+  private verifyInternalToken(internalToken: string): void {
+    const expected = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!expected) {
+      this.logger.error('INTERNAL_SERVICE_TOKEN is not configured');
+      throw new UnauthorizedException('Internal service token not configured');
+    }
+
+    let valid = false;
+    try {
+      const a = Buffer.from(internalToken ?? '');
+      const b = Buffer.from(expected);
+      valid = a.length === b.length && crypto.timingSafeEqual(a, b);
+    } catch {
+      valid = false;
+    }
+
+    if (!valid) {
+      throw new UnauthorizedException('Invalid x-internal-service token');
+    }
   }
 }

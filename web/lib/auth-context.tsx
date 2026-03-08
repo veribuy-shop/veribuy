@@ -90,11 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.message || 'Registration failed');
     }
 
-    // Tokens are now in HttpOnly cookies, only store user data in memory
-    setUser(data.user);
-
-    // Redirect to dashboard
-    router.push('/dashboard');
+    // Email not yet verified — do NOT set user in state.
+    // Redirect to check-email page so the user can verify their email first.
+    router.push('/check-email');
   };
 
   const logout = async () => {
