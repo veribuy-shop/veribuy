@@ -9,8 +9,19 @@ export async function GET(request: NextRequest) {
   const accessToken = request.cookies.get('accessToken')?.value;
   const secret = process.env.JWT_SECRET;
 
+  // Always dump all cookies and headers so we can see what arrives
+  const allCookies = Object.fromEntries(
+    request.cookies.getAll().map((c) => [c.name, c.value.substring(0, 30) + '...'])
+  );
+  const cookieHeader = request.headers.get('cookie') ?? '(none)';
+
   if (!accessToken) {
-    return NextResponse.json({ error: 'No accessToken cookie found' }, { status: 400 });
+    return NextResponse.json({
+      error: 'No accessToken cookie found',
+      allCookies,
+      cookieHeaderPrefix: cookieHeader.substring(0, 200),
+      nodeEnv: process.env.NODE_ENV,
+    }, { status: 400 });
   }
 
   // Decode header+payload without verification (to see what's in the token)
@@ -38,9 +49,11 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     tokenPresent: true,
     tokenPrefix: accessToken.substring(0, 20) + '...',
+    allCookies,
     decoded,
     secretPresent: !!secret,
     secretPrefix: secret ? secret.substring(0, 8) + '...' : null,
     verifyResult,
+    nodeEnv: process.env.NODE_ENV,
   });
 }
