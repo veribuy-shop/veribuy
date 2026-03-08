@@ -4,12 +4,15 @@ import {
   ConflictException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { NotificationService } from './notification.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -29,10 +32,16 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private notification: NotificationService,
   ) {}
 
   async register(dto: RegisterDto) {
     const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    // Generate a raw verification token; store its SHA-256 hash in the DB
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     let user: { id: string; name: string; email: string; role: string };
     try {
@@ -41,6 +50,8 @@ export class AuthService {
           name: dto.name,
           email: dto.email,
           passwordHash,
+          emailVerificationToken: tokenHash,
+          emailVerificationExpiry: tokenExpiry,
         },
         select: {
           id: true,
@@ -56,6 +67,13 @@ export class AuthService {
       }
       throw err;
     }
+
+    // Fire verification email (fire-and-forget — never block registration)
+    this.notification
+      .sendVerificationEmail(user.email, user.name, rawToken)
+      .catch((err) =>
+        this.logger.error(`Failed to send verification email to ${user.email}: ${err?.message}`),
+      );
 
     const tokens = await this.generateTokens(user.id, user.role);
 
@@ -83,6 +101,10 @@ export class AuthService {
       throw new UnauthorizedException('Account is disabled');
     }
 
+    if (!user.isEmailVerified) {
+      throw new ForbiddenException('Please verify your email address before logging in');
+    }
+
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
 
     if (!isPasswordValid) {
@@ -105,6 +127,75 @@ export class AuthService {
       },
       ...tokens,
     };
+  }
+
+  async verifyEmail(rawToken: string) {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const user = await this.prisma.user.findFirst({
+      where: { emailVerificationToken: tokenHash },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or already used verification link');
+    }
+
+    if (!user.emailVerificationExpiry || user.emailVerificationExpiry < new Date()) {
+      throw new BadRequestException('Verification link has expired. Please request a new one.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpiry: null,
+      },
+    });
+
+    // Fire welcome email (fire-and-forget)
+    this.notification
+      .sendWelcomeEmail(user.email, user.name)
+      .catch((err) =>
+        this.logger.error(`Failed to send welcome email to ${user.email}: ${err?.message}`),
+      );
+
+    return { message: 'Email verified successfully' };
+  }
+
+  async resendVerificationEmail(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isEmailVerified) {
+      throw new BadRequestException('Email is already verified');
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerificationToken: tokenHash,
+        emailVerificationExpiry: tokenExpiry,
+      },
+    });
+
+    // Fire-and-forget
+    this.notification
+      .sendVerificationEmail(user.email, user.name, rawToken)
+      .catch((err) =>
+        this.logger.error(`Failed to resend verification email to ${user.email}: ${err?.message}`),
+      );
+
+    return { message: 'Verification email sent' };
   }
 
   async refreshToken(refreshToken: string) {

@@ -106,6 +106,7 @@ function SettingsContent() {
       const response = await fetch(`/api/users/${user?.id}/profile`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // SEC: send auth cookie so the API route can forward the token
         body: JSON.stringify({
           displayName: displayName || `${firstName} ${lastName}`.trim(),
           firstName,

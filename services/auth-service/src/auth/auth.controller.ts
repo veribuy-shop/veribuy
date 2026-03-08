@@ -7,12 +7,15 @@ import {
   Body,
   Query,
   Param,
+  Headers,
   UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import * as crypto from 'crypto';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -31,6 +34,22 @@ interface AuthenticatedUser {
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  // 10 verify-email requests per minute per IP (clicked from email link)
+  @Get('verify-email')
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  // 3 resend verification emails per hour per authenticated user
+  @Post('send-verification-email')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
+  async sendVerificationEmail(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.resendVerificationEmail(user.userId);
+  }
 
   // 3 registrations per hour per IP
   @Post('register')
@@ -72,6 +91,29 @@ export class AuthController {
   async logout(@CurrentUser() user: AuthenticatedUser, @Body() dto: LogoutDto) {
     await this.authService.logout(dto.refreshToken);
     return { message: 'Logged out successfully' };
+  }
+
+  // Internal service-to-service: look up name+email for any userId.
+  // Protected by INTERNAL_SERVICE_TOKEN — not a JWT route.
+  @Get('internal/users/:userId')
+  @Public()
+  async internalGetUser(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Headers('x-internal-service') token: string,
+  ) {
+    const expected = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!expected) {
+      throw new UnauthorizedException('Internal token not configured');
+    }
+    const tokenBuf    = Buffer.from(token    ?? '', 'utf8');
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    if (
+      tokenBuf.length !== expectedBuf.length ||
+      !crypto.timingSafeEqual(tokenBuf, expectedBuf)
+    ) {
+      throw new UnauthorizedException('Invalid internal service token');
+    }
+    return this.authService.verifyAndHydrate(userId);
   }
 
   @Get('users')

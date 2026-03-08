@@ -9,14 +9,36 @@ export default function ContactPage() {
   const [message, setMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    // Simulate a brief delay for demo purposes
-    await new Promise((r) => setTimeout(r, 600));
-    setSubmitted(true);
-    setSubmitting(false);
+    setError('');
+
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromName: name,
+          fromEmail: email,
+          subject,
+          message,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Failed to send message. Please try again.');
+      }
+
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -130,6 +152,11 @@ export default function ContactPage() {
                 >
                   {submitting ? 'Sending...' : 'Send Message'}
                 </button>
+                {error && (
+                  <p role="alert" aria-live="assertive" className="text-sm text-red-600 text-center">
+                    {error}
+                  </p>
+                )}
               </form>
             )}
           </div>
@@ -138,13 +165,9 @@ export default function ContactPage() {
           <div className="space-y-6">
             <div className="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-[var(--color-border)]">
               <h3 className="text-xl font-bold text-[var(--color-text)] mb-4">Email</h3>
-              <p className="text-[var(--color-text-muted)] mb-2">General inquiries:</p>
-              <a href="mailto:hello@veribuy.com" className="text-[var(--color-primary)] font-medium">
-                hello@veribuy.com
-              </a>
-              <p className="text-[var(--color-text-muted)] mt-4 mb-2">Support:</p>
-              <a href="mailto:support@veribuy.com" className="text-[var(--color-primary)] font-medium">
-                support@veribuy.com
+              <p className="text-[var(--color-text-muted)] mb-2">General inquiries &amp; support:</p>
+              <a href="mailto:veribuy.shop@gmail.com" className="text-[var(--color-primary)] font-medium">
+                veribuy.shop@gmail.com
               </a>
             </div>
 

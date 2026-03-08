@@ -27,6 +27,13 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
 
     if (!response.ok) {
+      // 403 from auth-service means email not yet verified
+      if (response.status === 403) {
+        return NextResponse.json(
+          { message: 'Please verify your email before signing in. Check your inbox for the verification link.' },
+          { status: 403 }
+        );
+      }
       // Return only the message field — never the full backend error object
       return NextResponse.json(
         { message: data.message || 'Invalid credentials' },
