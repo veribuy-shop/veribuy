@@ -6,7 +6,7 @@
     "watchPatterns": ["services/notification-service/**", "packages/**", "pnpm-lock.yaml"]
   },
   "deploy": {
-    "startCommand": "node dist/main",
+    "startCommand": "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
