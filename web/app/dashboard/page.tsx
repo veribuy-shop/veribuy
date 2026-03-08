@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ProtectedRoute } from '@/components/protected-route';
 import { useAuth } from '@/lib/auth-context';
 import { formatPrice } from '@/lib/currency';
 
@@ -16,7 +15,7 @@ interface UserProfile {
   lastName?: string;
   bio?: string;
   avatarUrl?: string;
-  phoneNumber?: string;
+  phone?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -867,9 +866,9 @@ function DashboardContent() {
 }
 
 export default function DashboardPage() {
-  return (
-    <ProtectedRoute>
-      <DashboardContent />
-    </ProtectedRoute>
-  );
+  // Route protection is handled server-side by middleware (jose.jwtVerify).
+  // A redundant client-side ProtectedRoute guard was removed here because it
+  // relied on a live auth-service call and could push to /login if the service
+  // was slow, creating a redirect loop. Middleware is the single gating layer.
+  return <DashboardContent />;
 }

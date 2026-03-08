@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
           nextResponse.cookies.set('accessToken', refreshData.accessToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            sameSite: 'strict',
             maxAge: 15 * 60, // 15 minutes
             path: '/',
           });

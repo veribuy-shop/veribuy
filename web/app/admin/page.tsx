@@ -1,6 +1,5 @@
 'use client';
 
-import { ProtectedRoute } from '@/components/protected-route';
 import { useAuth } from '@/lib/auth-context';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
@@ -920,8 +919,9 @@ function UsersTab({ users }: { users: User[] }) {
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
           >
             <option value="ALL">All Roles</option>
+            <option value="BUYER">Buyer</option>
+            <option value="SELLER">Seller</option>
             <option value="ADMIN">Admin</option>
-            <option value="USER">User</option>
           </select>
         </div>
       </div>
@@ -946,8 +946,13 @@ function UsersTab({ users }: { users: User[] }) {
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{u.name || 'N/A'}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{u.email}</td>
                   <td className="px-6 py-4">
-                    <span className={`px-2 py-1 text-xs rounded-full ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
-                      {u.role === 'ADMIN' ? 'ADMIN' : 'USER'}
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      u.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' :
+                      u.role === 'SELLER' ? 'bg-blue-100 text-blue-800' :
+                      u.role === 'BUYER' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {u.role}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm">{u.isEmailVerified ? '✅' : '❌'}</td>
@@ -997,7 +1002,8 @@ function UsersTab({ users }: { users: User[] }) {
                   onChange={e => setEditingUser({ ...editingUser, role: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="USER">User</option>
+                  <option value="BUYER">Buyer</option>
+                  <option value="SELLER">Seller</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </div>
@@ -1587,15 +1593,16 @@ function OrdersTab({
 // ============================================================================
 
 export default function AdminDashboard() {
+  // Route protection + ADMIN role enforcement is handled server-side by middleware
+  // (jose.jwtVerify + role check). The ProtectedRoute wrapper was removed to prevent
+  // a client-side redirect loop when auth-service is slow or temporarily unavailable.
   return (
-    <ProtectedRoute requireAdmin>
-      <Suspense fallback={
-        <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
-        </div>
-      }>
-        <AdminDashboardContent />
-      </Suspense>
-    </ProtectedRoute>
+    <Suspense fallback={
+      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
+      </div>
+    }>
+      <AdminDashboardContent />
+    </Suspense>
   );
 }
