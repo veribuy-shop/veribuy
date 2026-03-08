@@ -31,6 +31,10 @@ export class NotificationService {
     await this.dispatch({ type: 'welcome', to, payload: { name } });
   }
 
+  async sendPasswordResetEmail(to: string, name: string, token: string): Promise<void> {
+    await this.dispatch({ type: 'password_reset', to, payload: { name, token } });
+  }
+
   private async dispatch(body: {
     type: string;
     to: string;

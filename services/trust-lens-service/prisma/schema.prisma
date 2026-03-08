@@ -61,6 +61,7 @@ model IdentifierValidation {
   icloudLocked          Boolean?            @map("icloud_locked")
   reportedStolen        Boolean?            @map("reported_stolen")
   blacklisted           Boolean?
+  fmiOn                 Boolean?            @map("fmi_on")
   rawApiResponse        Json?               @map("raw_api_response")
   verifiedAt            DateTime?           @map("verified_at")
   createdAt             DateTime            @default(now()) @map("created_at")

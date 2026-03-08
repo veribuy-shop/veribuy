@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { TrustLensSyncService } from './trust-lens-sync.service';
 import { CreateEvidencePackDto } from './dto/create-evidence-pack.dto';
 import { UploadEvidenceDto } from './dto/upload-evidence.dto';
 import { EvidenceType } from '.prisma/evidence-client';
@@ -36,6 +37,7 @@ export class EvidenceService {
   constructor(
     private prisma: PrismaService,
     private cloudinaryService: CloudinaryService,
+    private trustLensSync: TrustLensSyncService,
   ) {}
 
   /**
@@ -124,6 +126,12 @@ export class EvidenceService {
     });
 
     this.logger.log(`Uploaded evidence ${evidenceItem.id} for listing ${dto.listingId}`);
+
+    // Notify trust-lens-service to mark the corresponding checklist item fulfilled.
+    // Fire-and-forget — evidence upload must never fail because trust-lens is unreachable.
+    this.trustLensSync
+      .notifyEvidenceUploaded(dto.listingId, dto.type)
+      .catch(() => {});
 
     return evidenceItem;
   }

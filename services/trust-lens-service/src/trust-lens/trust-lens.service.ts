@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImeiCheckService } from '../imei-check/imei-check.service';
+import { ListingSyncService } from './listing-sync.service';
+import { UserSyncService } from './user-sync.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { CreateVerificationRequestDto } from './dto/create-verification-request.dto';
 
@@ -15,6 +17,7 @@ const SELLER_ID_VALIDATION_SELECT = {
   icloudLocked: true,
   reportedStolen: true,
   blacklisted: true,
+  fmiOn: true,
   verifiedAt: true,
   createdAt: true,
   // rawApiResponse intentionally excluded — may contain 3rd-party PII / pricing
@@ -35,6 +38,8 @@ export class TrustLensService {
     private prisma: PrismaService,
     private configService: ConfigService,
     private imeiCheckService: ImeiCheckService,
+    private listingSync: ListingSyncService,
+    private userSync: UserSyncService,
   ) {}
 
   /**
@@ -103,6 +108,7 @@ export class TrustLensService {
           icloudLocked: result.icloudLocked,
           reportedStolen: result.reportedStolen,
           blacklisted: result.blacklisted,
+          fmiOn: result.fmiOn ?? null,
           rawApiResponse: { ...sanitizedRaw, checksRun: result.checksRun } as any,
           verifiedAt: new Date(),
         },
@@ -121,13 +127,14 @@ export class TrustLensService {
 
       // Update VerificationRequest with flags + new status.
       // Never overwrite completedAt if it was already set (admin may have set it).
-      await this.prisma.verificationRequest.update({
+      const updatedRequest = await this.prisma.verificationRequest.update({
         where: { id: verificationRequestId },
         data: {
           status: newStatus,
           integrityFlags: { set: integrityFlags as any },
           ...(isClean && !current?.completedAt ? { completedAt: new Date() } : {}),
         },
+        select: { sellerId: true },
       });
 
       // Auto-fulfill the IMEI checklist item (settings screenshot) only when check passed
@@ -147,6 +154,17 @@ export class TrustLensService {
       this.logger.log(
         `IMEI check complete for listing ${listingId} (IMEI ${maskImei(imei)}): status=${newStatus}, flags=[${result.flags.join(', ')}]`,
       );
+
+      // If IMEI check auto-passed, propagate the result to listing-service and user-service.
+      // Both calls are fire-and-forget — errors are logged inside the sync services.
+      if (isClean) {
+        this.listingSync
+          .syncTrustLensResult(listingId, 'PASSED', undefined, [])
+          .catch(() => {});
+        this.userSync
+          .syncVerificationStatus(updatedRequest.sellerId, 'VERIFIED')
+          .catch(() => {});
+      }
     } catch (error) {
       this.logger.error(
         `triggerIdentifierVerification failed for listing ${listingId}: ${error.message}`,
@@ -306,15 +324,85 @@ export class TrustLensService {
     };
   }
 
-  async updateVerificationStatus(
-    listingId: string,
+  /**
+   * Mark EvidenceChecklist items of a given type as fulfilled for a listing.
+   * Called internally by evidence-service when files are uploaded.
+   *
+   * Maps fine-grained evidence-service types to trust-lens checklist types:
+   *   IMAGE category  → 'IMAGE'  (DEVICE_IMAGE, SCREEN_IMAGE, BODY_IMAGE, etc.)
+   *   SCREENSHOT cat. → 'SCREENSHOT' (SETTINGS_SCREENSHOT, IMEI_SCREENSHOT)
+   *   VIDEO category  → 'VIDEO'
+   *
+   * @param listingId     The listing whose checklist must be updated.
+   * @param evidenceType  The fine-grained evidence type from evidence-service.
+   */
+  async fulfillEvidenceChecklist(listingId: string, evidenceType: string): Promise<void> {
+    const verificationRequest = await this.prisma.verificationRequest.findUnique({
+      where: { listingId },
+      select: { id: true },
+    });
+
+    if (!verificationRequest) {
+      // No verification request yet — silently skip (evidence may be uploaded before trust-lens)
+      this.logger.warn(
+        `fulfillEvidenceChecklist: no verification request found for listing ${listingId} — skipping`,
+      );
+      return;
+    }
+
+    // Map fine-grained evidence-service type to trust-lens checklist category
+    const checklistType = this.resolveChecklistType(evidenceType);
+    if (!checklistType) {
+      this.logger.warn(
+        `fulfillEvidenceChecklist: unrecognised evidenceType ${evidenceType} for listing ${listingId} — skipping`,
+      );
+      return;
+    }
+
+    await this.prisma.evidenceChecklist.updateMany({
+      where: {
+        verificationRequestId: verificationRequest.id,
+        type: checklistType as any,
+        fulfilled: false, // Only update unfulfilled items (idempotent)
+      },
+      data: {
+        fulfilled: true,
+        fulfilledAt: new Date(),
+      },
+    });
+
+    this.logger.log(
+      `Fulfilled '${checklistType}' checklist items for listing ${listingId} (evidenceType=${evidenceType})`,
+    );
+  }
+
+  /** Map an evidence-service EvidenceType string to a trust-lens EvidenceType. */
+  private resolveChecklistType(evidenceType: string): string | null {
+    const imageTypes = [
+      'DEVICE_IMAGE',
+      'SCREEN_IMAGE',
+      'BODY_IMAGE',
+      'PACKAGING_IMAGE',
+      'ACCESSORIES_IMAGE',
+      'IMAGE',
+    ];
+    const screenshotTypes = ['SETTINGS_SCREENSHOT', 'IMEI_SCREENSHOT', 'SCREENSHOT'];
+    const videoTypes = ['VIDEO'];
+
+    if (imageTypes.includes(evidenceType)) return 'IMAGE';
+    if (screenshotTypes.includes(evidenceType)) return 'SCREENSHOT';
+    if (videoTypes.includes(evidenceType)) return 'VIDEO';
+    return null;
+  }
+
+  async updateVerificationStatus(    listingId: string,
     status: 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW',
     reviewNotes?: string,
     integrityFlags?: string[],
   ) {
     const existing = await this.prisma.verificationRequest.findUnique({
       where: { listingId },
-      select: { completedAt: true },
+      select: { completedAt: true, sellerId: true, conditionGrade: true },
     });
     if (!existing) {
       throw new NotFoundException(`Verification request not found for listing ${listingId}`);
@@ -322,7 +410,7 @@ export class TrustLensService {
 
     const isTerminal = status === 'PASSED' || status === 'FAILED';
 
-    return this.prisma.verificationRequest.update({
+    const updated = await this.prisma.verificationRequest.update({
       where: { listingId },
       data: {
         status,
@@ -334,5 +422,33 @@ export class TrustLensService {
         ...(isTerminal && !existing.completedAt ? { completedAt: new Date() } : {}),
       },
     });
+
+    // Propagate terminal decisions to listing-service and (on PASSED) user-service.
+    // Both are fire-and-forget — errors are logged inside the sync services.
+    if (isTerminal) {
+      const conditionGrade = updated.conditionGrade ?? undefined;
+      const flags = integrityFlags ?? [];
+
+      this.listingSync
+        .syncTrustLensResult(
+          listingId,
+          status as 'PASSED' | 'FAILED',
+          conditionGrade as string | undefined,
+          flags,
+        )
+        .catch(() => {});
+
+      if (status === 'PASSED') {
+        this.userSync
+          .syncVerificationStatus(existing.sellerId, 'VERIFIED')
+          .catch(() => {});
+      } else if (status === 'FAILED') {
+        this.userSync
+          .syncVerificationStatus(existing.sellerId, 'REJECTED')
+          .catch(() => {});
+      }
+    }
+
+    return updated;
   }
 }

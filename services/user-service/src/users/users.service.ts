@@ -136,4 +136,39 @@ export class UsersService {
 
     return profile;
   }
+
+  async updateVerificationStatus(
+    userId: string,
+    verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED',
+  ) {
+    const data: Record<string, unknown> = { verificationStatus };
+    if (verificationStatus === 'VERIFIED') {
+      data['kycVerifiedAt'] = new Date();
+    }
+
+    try {
+      await this.prisma.profile.update({
+        where: { userId },
+        data: data as any,
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        throw new NotFoundException('Profile not found');
+      }
+      throw err;
+    }
+
+    // Invalidate cache so the next read reflects the new status
+    try {
+      await this.redis.del(`profile:${userId}`);
+    } catch (err) {
+      this.logger.warn(
+        `Redis DEL failed after verificationStatus update for profile:${userId}: ${(err as Error).message}`,
+      );
+    }
+
+    this.logger.log(
+      `Updated verificationStatus to ${verificationStatus} for user ${userId}`,
+    );
+  }
 }

@@ -17,6 +17,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 
 // Typed interface for the authenticated user (from JWT)
@@ -374,6 +376,78 @@ export class AuthService {
     });
 
     return { message: 'Password updated successfully' };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    // Anti-enumeration: always return the same response regardless of whether the email exists
+    const SAFE_RESPONSE = { message: 'If that email is registered, you will receive a password reset link shortly.' };
+
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, name: true, email: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      return SAFE_RESPONSE;
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiry: tokenExpiry,
+      },
+    });
+
+    // Fire-and-forget — never reveal email existence via timing
+    this.notification
+      .sendPasswordResetEmail(user.email, user.name, rawToken)
+      .catch((err) =>
+        this.logger.error(`Failed to send password reset email to ${user.email}: ${err?.message}`),
+      );
+
+    return SAFE_RESPONSE;
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const tokenHash = crypto.createHash('sha256').update(dto.token).digest('hex');
+
+    const user = await this.prisma.user.findFirst({
+      where: { passwordResetToken: tokenHash },
+      select: { id: true, passwordResetExpiry: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or already used password reset link');
+    }
+
+    if (!user.passwordResetExpiry || user.passwordResetExpiry < new Date()) {
+      throw new BadRequestException('Password reset link has expired. Please request a new one.');
+    }
+
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 12);
+
+    // Update password, clear reset token, and revoke all refresh tokens in one transaction
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash: newPasswordHash,
+          passwordResetToken: null,
+          passwordResetExpiry: null,
+        },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    ]);
+
+    return { message: 'Password reset successfully. You can now sign in with your new password.' };
   }
 
   private async generateTokens(userId: string, role: string) {

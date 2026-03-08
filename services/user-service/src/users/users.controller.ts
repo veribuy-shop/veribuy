@@ -3,18 +3,22 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Body,
   Param,
+  Headers,
   HttpCode,
   HttpStatus,
   UseGuards,
   ForbiddenException,
+  UnauthorizedException,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import * as nodeCrypto from 'crypto';
 import { UsersService } from './users.service';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { JwtAuthGuard, RolesGuard, CurrentUser, Roles } from '@veribuy/common';
+import { JwtAuthGuard, RolesGuard, CurrentUser, Roles, Public } from '@veribuy/common';
 
 interface AuthenticatedUser {
   userId: string;
@@ -63,5 +67,44 @@ export class UsersController {
       throw new ForbiddenException('You can only update your own profile');
     }
     return this.usersService.updateProfile(userId, dto);
+  }
+
+  /**
+   * Internal endpoint — called by trust-lens-service (and future services) to
+   * advance a seller's KYC verificationStatus after a Trust Lens review.
+   * Protected by timing-safe INTERNAL_SERVICE_TOKEN check (no JWT).
+   */
+  @Patch(':userId/verification-status')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async updateVerificationStatus(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Headers('x-internal-service') internalToken: string,
+    @Body() body: { verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' },
+  ) {
+    this.verifyInternalToken(internalToken);
+    await this.usersService.updateVerificationStatus(userId, body.verificationStatus);
+  }
+
+  // ─── Private helpers ─────────────────────────────────────────────────────────
+
+  private verifyInternalToken(internalToken: string): void {
+    const expected = process.env.INTERNAL_SERVICE_TOKEN;
+    if (!expected) {
+      throw new UnauthorizedException('Internal service token not configured');
+    }
+
+    let valid = false;
+    try {
+      const a = Buffer.from(internalToken ?? '');
+      const b = Buffer.from(expected);
+      valid = a.length === b.length && nodeCrypto.timingSafeEqual(a, b);
+    } catch {
+      valid = false;
+    }
+
+    if (!valid) {
+      throw new UnauthorizedException('Invalid x-internal-service token');
+    }
   }
 }

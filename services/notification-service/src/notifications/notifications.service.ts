@@ -244,6 +244,9 @@ export class NotificationsService {
       case 'welcome':
         await this.email.sendWelcomeEmail(data.to, data.payload['name']);
         break;
+      case 'password_reset':
+        await this.email.sendPasswordResetEmail(data.to, data.payload['name'], data.payload['token']);
+        break;
       case 'order_confirmed':
         await this.email.sendOrderConfirmationEmail({
           buyerEmail: data.to,
