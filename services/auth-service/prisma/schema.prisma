@@ -21,6 +21,8 @@ model User {
   deletedAt       DateTime?      @map("deleted_at")
   emailVerificationToken  String?   @map("email_verification_token")
   emailVerificationExpiry DateTime? @map("email_verification_expiry")
+  passwordResetToken      String?   @map("password_reset_token")
+  passwordResetExpiry     DateTime? @map("password_reset_expiry")
   refreshTokens   RefreshToken[]
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")

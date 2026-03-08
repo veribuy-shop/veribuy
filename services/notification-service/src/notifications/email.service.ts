@@ -69,6 +69,31 @@ export class EmailService {
     });
   }
 
+  // ─── Password Reset ──────────────────────────────────────────────────────────
+
+  async sendPasswordResetEmail(to: string, name: string, token: string): Promise<void> {
+    const link = `${this.appUrl}/reset-password?token=${token}`;
+    await this.send({
+      to,
+      subject: 'Reset your VeriBuy password',
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+          <h2 style="color:#1a56db">Reset your password</h2>
+          <p>Hi ${this.escape(name)},</p>
+          <p>We received a request to reset your VeriBuy password. Click the button below to choose a new password.</p>
+          <p style="margin:32px 0">
+            <a href="${link}" style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+              Reset Password
+            </a>
+          </p>
+          <p style="color:#6b7280;font-size:14px">This link expires in 1 hour. If you did not request a password reset, you can safely ignore this email — your password will not change.</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+          <p style="color:#9ca3af;font-size:12px">VeriBuy — Verified Electronics Marketplace</p>
+        </div>
+      `,
+    });
+  }
+
   // ─── Contact Us ──────────────────────────────────────────────────────────────
 
   async sendContactUsEmail(data: {
