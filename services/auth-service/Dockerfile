@@ -35,4 +35,4 @@ COPY --from=build /app/services/auth-service/node_modules/@prisma ./services/aut
 COPY services/auth-service/prisma ./services/auth-service/prisma
 WORKDIR /app/services/auth-service
 EXPOSE 3001
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main"]

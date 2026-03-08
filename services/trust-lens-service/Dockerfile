@@ -34,4 +34,4 @@ COPY --from=build /app/services/trust-lens-service/node_modules/@prisma ./servic
 COPY services/trust-lens-service/prisma ./services/trust-lens-service/prisma
 WORKDIR /app/services/trust-lens-service
 EXPOSE 3004
-CMD ["node", "dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main"]
