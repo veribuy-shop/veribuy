@@ -52,10 +52,7 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              // SEC-10: 'unsafe-eval' removed (prevents eval-based code execution).
-              // 'unsafe-inline' replaced with 'strict-dynamic' so explicitly allowed
-              // scripts (Stripe SDK) can load their own dynamic sub-scripts.
-              "script-src 'self' 'strict-dynamic' https://js.stripe.com", // Allow Stripe SDK
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com", // Allow Next.js hydration + Stripe SDK
               "style-src 'self' 'unsafe-inline'", // Allow inline styles (Tailwind)
               "img-src 'self' data: https: http:",
               "font-src 'self' data:",
