@@ -105,13 +105,34 @@ export class UlistingsService {
       ];
     }
 
+    // conditionGrade: DTO normalises to string[] via @Transform
+    if (query.conditionGrade && query.conditionGrade.length > 0) {
+      where.conditionGrade = { in: query.conditionGrade };
+    }
+
+    // Price range filters (query params arrive as strings)
+    if (query.minPrice !== undefined || query.maxPrice !== undefined) {
+      where.price = {};
+      if (query.minPrice !== undefined) {
+        where.price.gte = parseFloat(query.minPrice);
+      }
+      if (query.maxPrice !== undefined) {
+        where.price.lte = parseFloat(query.maxPrice);
+      }
+    }
+
+    // Dynamic sort: default to createdAt desc
+    const sortField = query.sortBy ?? 'createdAt';
+    const sortDir = query.sortOrder ?? 'desc';
+    const orderBy = { [sortField]: sortDir };
+
     const [data, total] = await Promise.all([
       this.prisma.listing.findMany({
         where,
         select: PUBLIC_SELECT,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
       }),
       this.prisma.listing.count({ where }),
     ]);
