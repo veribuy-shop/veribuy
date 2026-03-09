@@ -13,14 +13,14 @@ export class ProxyController {
 
   constructor(private configService: ConfigService) {
     this.routes = [
-      { prefix: 'auth', target: `http://auth-service:${this.configService.get('AUTH_SERVICE_PORT', 3001)}` },
-      { prefix: 'users', target: `http://user-service:${this.configService.get('USER_SERVICE_PORT', 3002)}` },
-      { prefix: 'listings', target: `http://listing-service:${this.configService.get('LISTING_SERVICE_PORT', 3003)}` },
-      { prefix: 'trust-lens', target: `http://trust-lens-service:${this.configService.get('TRUST_LENS_SERVICE_PORT', 3004)}` },
-      { prefix: 'device-verification', target: `http://device-verification-service:${this.configService.get('DEVICE_VERIFICATION_SERVICE_PORT', 3005)}` },
-      { prefix: 'evidence', target: `http://evidence-service:${this.configService.get('EVIDENCE_SERVICE_PORT', 3006)}` },
-      { prefix: 'transactions', target: `http://transaction-service:${this.configService.get('TRANSACTION_SERVICE_PORT', 3007)}` },
-      { prefix: 'notifications', target: `http://notification-service:${this.configService.get('NOTIFICATION_SERVICE_PORT', 3008)}` },
+      { prefix: 'auth',                target: this.configService.get('AUTH_SERVICE_URL',                  'http://localhost:3001') },
+      { prefix: 'users',               target: this.configService.get('USER_SERVICE_URL',                  'http://localhost:3002') },
+      { prefix: 'listings',            target: this.configService.get('LISTING_SERVICE_URL',               'http://localhost:3003') },
+      { prefix: 'trust-lens',          target: this.configService.get('TRUST_LENS_SERVICE_URL',            'http://localhost:3004') },
+      { prefix: 'device-verification', target: this.configService.get('DEVICE_VERIFICATION_SERVICE_URL',   'http://localhost:3005') },
+      { prefix: 'evidence',            target: this.configService.get('EVIDENCE_SERVICE_URL',              'http://localhost:3006') },
+      { prefix: 'transactions',        target: this.configService.get('TRANSACTION_SERVICE_URL',           'http://localhost:3007') },
+      { prefix: 'notifications',       target: this.configService.get('NOTIFICATION_SERVICE_URL',          'http://localhost:3008') },
     ];
   }
 

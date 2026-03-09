@@ -3,9 +3,10 @@ import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { createLogger } from './logger.config';
-import { AllExceptionsFilter } from '@veribuy/logger';
+import { AllExceptionsFilter, assertTlsInProduction } from '@veribuy/logger';
 
 async function bootstrap() {
+  assertTlsInProduction('listing-service');
   const logger = createLogger('listing-service');
   const app = await NestFactory.create(AppModule, { logger });
 

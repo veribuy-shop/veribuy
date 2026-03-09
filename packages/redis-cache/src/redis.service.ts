@@ -6,18 +6,32 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client!: Redis;
 
   async onModuleInit() {
+    // REDIS_TLS=true enables TLS (required in production on Railway — port 6380).
+    // Local dev leaves this unset so plain Redis on 6379 continues to work.
+    const tlsEnabled = process.env.REDIS_TLS === 'true';
+
     // Prefer REDIS_URL (Railway injects this automatically) over individual vars.
     const redisUrl = process.env.REDIS_URL;
 
-    this.client = redisUrl
-      ? new Redis(redisUrl, {
+    // When REDIS_TLS is set and the URL uses plain redis://, promote it to rediss://
+    // so ioredis activates TLS on the same URL path.
+    const effectiveUrl = redisUrl
+      ? tlsEnabled && redisUrl.startsWith('redis://')
+        ? redisUrl.replace(/^redis:\/\//, 'rediss://')
+        : redisUrl
+      : undefined;
+
+    this.client = effectiveUrl
+      ? new Redis(effectiveUrl, {
+          tls: tlsEnabled ? {} : undefined,
           retryStrategy: (times: number) => Math.min(times * 50, 2000),
         })
       : new Redis({
           host: process.env.REDIS_HOST || 'localhost',
-          port: parseInt(process.env.REDIS_PORT || '6379'),
+          port: parseInt(process.env.REDIS_PORT || (tlsEnabled ? '6380' : '6379')),
           password: process.env.REDIS_PASSWORD,
           db: parseInt(process.env.REDIS_DB || '0'),
+          tls: tlsEnabled ? {} : undefined,
           retryStrategy: (times: number) => Math.min(times * 50, 2000),
         });
 
