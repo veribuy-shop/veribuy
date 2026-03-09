@@ -17,6 +17,7 @@ COPY --from=deps /app ./
 COPY services/trust-lens-service ./services/trust-lens-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
+RUN pnpm --filter @veribuy/logger run build || true
 RUN cd services/trust-lens-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/trust-lens-service run build
 
@@ -30,6 +31,7 @@ COPY services/trust-lens-service/package.json ./services/trust-lens-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/trust-lens-service...
 # Overwrite raw package sources with compiled dist from build stage
 COPY --from=build /app/packages/common/dist ./packages/common/dist
+COPY --from=build /app/packages/logger/dist ./packages/logger/dist
 COPY --from=build /app/services/trust-lens-service/dist ./services/trust-lens-service/dist
 COPY --from=build /app/services/trust-lens-service/node_modules/.prisma ./services/trust-lens-service/node_modules/.prisma
 COPY --from=build /app/services/trust-lens-service/node_modules/@prisma ./services/trust-lens-service/node_modules/@prisma
