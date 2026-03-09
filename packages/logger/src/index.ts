@@ -52,14 +52,16 @@ export function assertTlsInProduction(serviceName: string): void {
 
   for (const varName of SERVICE_URL_VARS) {
     const value = process.env[varName];
-    if (value && value.startsWith('http://')) {
+    // Exempt Railway private network hostnames — .railway.internal is a
+    // private overlay network; TLS is not available on these addresses.
+    if (value && value.startsWith('http://') && !value.includes('.railway.internal')) {
       violations.push(`  ${varName}=${value}`);
     }
   }
 
   // Also check DATABASE_URL for plain postgresql:// without sslmode=require
   const dbUrl = process.env.DATABASE_URL;
-  if (dbUrl && !dbUrl.includes('sslmode=require')) {
+  if (dbUrl && !dbUrl.includes('sslmode=require') && !dbUrl.includes('.railway.internal')) {
     violations.push(`  DATABASE_URL is missing sslmode=require`);
   }
 
