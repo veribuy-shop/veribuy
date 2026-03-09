@@ -11,6 +11,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import Stripe from 'stripe';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
+import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
 
 /**
  * Allowed status transitions for each actor.
@@ -37,7 +38,10 @@ export class TransactionsService implements OnModuleInit {
   private readonly logger = new Logger(TransactionsService.name);
   private stripe: Stripe;
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private invoicesService: InvoicesService,
+  ) {}
 
   /**
    * Fail fast if required secrets are missing — prevents silent failures in production.
@@ -58,6 +62,19 @@ export class TransactionsService implements OnModuleInit {
     const { buyerId, sellerId, listingId, amount, currency = 'GBP', shippingAddress } =
       createOrderDto;
 
+    // Snapshot listing details for invoice generation — fire-and-forget on failure
+    let listingTitle: string | null = null;
+    let listingDescription: string | null = null;
+    let listingCategory: string | null = null;
+    try {
+      const listing = await this.fetchListing(listingId);
+      listingTitle = listing?.title ?? null;
+      listingDescription = listing?.description ?? null;
+      listingCategory = listing?.deviceType ?? listing?.brand ?? null;
+    } catch (err) {
+      this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
+    }
+
     // Create Stripe Payment Intent
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount: Math.round(amount * 100),
@@ -72,6 +89,9 @@ export class TransactionsService implements OnModuleInit {
         buyerId,
         sellerId,
         listingId,
+        listingTitle,
+        listingDescription,
+        listingCategory,
         amount,
         currency,
         status: 'PENDING',
@@ -181,6 +201,11 @@ export class TransactionsService implements OnModuleInit {
       this.logger.error('Failed to send seller escrow notification', err?.stack ?? err);
     });
 
+    // Generate invoice — fire-and-forget
+    this.generateInvoiceForOrder(updatedOrder).catch((err) => {
+      this.logger.error('Failed to generate invoice for confirmed payment', err?.stack ?? err);
+    });
+
     return { order: updatedOrder, escrow };
   }
 
@@ -257,6 +282,11 @@ export class TransactionsService implements OnModuleInit {
     // Send notifications — fire-and-forget
     this.sendStatusChangeNotification(updatedOrder, order.status).catch((err) => {
       this.logger.error('Failed to send status change notification', err?.stack ?? err);
+    });
+
+    // Generate invoice for this status — fire-and-forget
+    this.generateInvoiceForOrder(updatedOrder).catch((err) => {
+      this.logger.error('Failed to generate invoice for status change', err?.stack ?? err);
     });
 
     return updatedOrder;
@@ -532,5 +562,77 @@ export class TransactionsService implements OnModuleInit {
         response.status,
       );
     }
+  }
+
+  /**
+   * Fetch a listing from listing-service (internal call).
+   * Returns null on failure — callers should handle gracefully.
+   */
+  private async fetchListing(listingId: string): Promise<Record<string, any> | null> {
+    const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
+
+    const response = await fetch(`${LISTING_SERVICE_URL}/listings/${listingId}`, {
+      headers: { 'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN! },
+      signal: AbortSignal.timeout(3000),
+    });
+
+    if (!response.ok) return null;
+    return response.json() as Promise<Record<string, any>>;
+  }
+
+  /**
+   * Fetch buyer email from auth-service (internal call).
+   * Returns null on failure.
+   */
+  private async getBuyerEmail(buyerId: string): Promise<string | null> {
+    const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+
+    try {
+      const response = await fetch(`${AUTH_SERVICE_URL}/auth/internal/users/${buyerId}`, {
+        headers: { 'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN! },
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (!response.ok) return null;
+      const data = await response.json() as Record<string, any>;
+      return (data.email as string) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Orchestrate invoice generation for an order.
+   * Always call fire-and-forget — must not block order flow.
+   */
+  private async generateInvoiceForOrder(order: any): Promise<void> {
+    const buyerEmail = await this.getBuyerEmail(order.buyerId);
+    if (!buyerEmail) {
+      this.logger.warn(`Could not fetch buyer email for order ${order.id} — skipping invoice`);
+      return;
+    }
+
+    const invoiceData: InvoiceOrderData = {
+      id: order.id,
+      buyerId: order.buyerId,
+      sellerId: order.sellerId,
+      listingId: order.listingId,
+      listingTitle: order.listingTitle ?? null,
+      listingDescription: order.listingDescription ?? null,
+      listingCategory: order.listingCategory ?? null,
+      amount: order.amount,
+      currency: order.currency,
+      status: order.status,
+      shippingAddress: order.shippingAddress ?? null,
+      paidAt: order.paidAt ?? null,
+      shippedAt: order.shippedAt ?? null,
+      deliveredAt: order.deliveredAt ?? null,
+      completedAt: order.completedAt ?? null,
+      disputedAt: order.disputedAt ?? null,
+      refundedAt: order.refundedAt ?? null,
+      createdAt: order.createdAt,
+    };
+
+    await this.invoicesService.generateAndSendInvoice(invoiceData, buyerEmail);
   }
 }
