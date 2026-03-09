@@ -30,14 +30,20 @@ export interface InvoiceOrderData {
 @Injectable()
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
-  private readonly resend: Resend;
+  private readonly resend: Resend | null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinary: CloudinaryService,
     private readonly configService: ConfigService,
   ) {
-    this.resend = new Resend(this.configService.getOrThrow<string>('RESEND_API_KEY'));
+    const resendKey = this.configService.get<string>('RESEND_API_KEY');
+    if (resendKey) {
+      this.resend = new Resend(resendKey);
+    } else {
+      this.resend = null;
+      this.logger.warn('RESEND_API_KEY not configured — invoice emails will be skipped');
+    }
   }
 
   /**
@@ -53,7 +59,7 @@ export class InvoicesService {
       // 1. Build the PDF buffer
       const pdfBuffer = await this.buildPdfBuffer(order, invoiceNumber);
 
-      // 2. Upload to Cloudinary
+      // 2. Upload to Cloudinary (may return null if not configured)
       const pdfUrl = await this.cloudinary.uploadPdf(
         pdfBuffer,
         `invoices/${order.id}`,
@@ -61,36 +67,42 @@ export class InvoicesService {
       );
 
       // 3. Persist the invoice record
-      const invoice = await this.prisma.invoice.create({
+      const invoice = await (this.prisma as any).invoice.create({
         data: {
           orderId: order.id,
           invoiceNumber,
-          status: order.status as any,
+          status: order.status,
           buyerId: order.buyerId,
           sellerId: order.sellerId,
           amount: order.amount as any,
           currency: order.currency,
-          pdfUrl,
+          pdfUrl: pdfUrl ?? null,
         },
       });
 
-      // 4. Email the invoice to the buyer
-      await this.resend.emails.send({
-        from: 'VeriBuy <invoices@veribuy.com>',
-        to: buyerEmail,
-        subject: `Invoice ${invoiceNumber} — Order #${shortId} (${order.status})`,
-        html: this.buildEmailHtml(order, invoiceNumber, pdfUrl),
-      });
+      // 4. Email the invoice to the buyer (skip if Resend not configured or no PDF URL)
+      if (this.resend && pdfUrl) {
+        await this.resend.emails.send({
+          from: 'VeriBuy <invoices@veribuy.com>',
+          to: buyerEmail,
+          subject: `Invoice ${invoiceNumber} — Order #${shortId} (${order.status})`,
+          html: this.buildEmailHtml(order, invoiceNumber, pdfUrl),
+        });
 
-      // 5. Mark email as sent
-      await this.prisma.invoice.update({
-        where: { id: invoice.id },
-        data: { emailSentAt: new Date() },
-      });
+        // 5. Mark email as sent
+        await (this.prisma as any).invoice.update({
+          where: { id: invoice.id },
+          data: { emailSentAt: new Date() },
+        });
 
-      this.logger.log(
-        `Invoice ${invoiceNumber} generated and sent to ${buyerEmail} for order ${order.id}`,
-      );
+        this.logger.log(
+          `Invoice ${invoiceNumber} generated and sent to ${buyerEmail} for order ${order.id}`,
+        );
+      } else {
+        this.logger.log(
+          `Invoice ${invoiceNumber} persisted for order ${order.id} (email/PDF skipped — not configured)`,
+        );
+      }
     } catch (err) {
       this.logger.error(
         `Failed to generate invoice for order ${order.id}: ${(err as Error).message}`,

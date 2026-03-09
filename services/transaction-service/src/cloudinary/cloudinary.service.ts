@@ -5,23 +5,38 @@ import { v2 as cloudinary } from 'cloudinary';
 @Injectable()
 export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
+  private readonly configured: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    cloudinary.config({
-      cloud_name: this.configService.getOrThrow<string>('CLOUDINARY_CLOUD_NAME'),
-      api_key: this.configService.getOrThrow<string>('CLOUDINARY_API_KEY'),
-      api_secret: this.configService.getOrThrow<string>('CLOUDINARY_API_SECRET'),
-    });
+    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey    = this.configService.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+
+    if (cloudName && apiKey && apiSecret) {
+      cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+      this.configured = true;
+    } else {
+      this.logger.warn(
+        'Cloudinary credentials not configured — PDF uploads will be skipped',
+      );
+      this.configured = false;
+    }
   }
 
   /**
    * Upload a PDF buffer to Cloudinary as a raw resource.
+   * Returns null when Cloudinary is not configured.
    * @param buffer   - The PDF buffer
    * @param folder   - Cloudinary folder (e.g. "invoices/orderId")
    * @param publicId - Unique public ID (without extension)
-   * @returns The Cloudinary secure_url for the uploaded PDF
+   * @returns The Cloudinary secure_url, or null if not configured
    */
-  async uploadPdf(buffer: Buffer, folder: string, publicId: string): Promise<string> {
+  async uploadPdf(buffer: Buffer, folder: string, publicId: string): Promise<string | null> {
+    if (!this.configured) {
+      this.logger.warn(`Cloudinary not configured — skipping PDF upload for ${publicId}`);
+      return null;
+    }
+
     return new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
