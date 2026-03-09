@@ -17,6 +17,7 @@ COPY --from=deps /app ./
 COPY services/user-service ./services/user-service
 RUN pnpm --filter @veribuy/common run build || true
 RUN pnpm --filter @veribuy/redis-cache run build || true
+RUN pnpm --filter @veribuy/logger run build || true
 RUN cd services/user-service && cp prisma/prisma.config.ts prisma.config.ts && node_modules/.bin/prisma generate
 RUN pnpm --filter @veribuy/user-service run build
 
@@ -30,6 +31,7 @@ COPY services/user-service/package.json ./services/user-service/
 RUN pnpm install --prod --frozen-lockfile --filter @veribuy/user-service...
 # Overwrite raw package sources with compiled dist from build stage
 COPY --from=build /app/packages/common/dist ./packages/common/dist
+COPY --from=build /app/packages/logger/dist ./packages/logger/dist
 COPY --from=build /app/packages/redis-cache/dist ./packages/redis-cache/dist
 COPY --from=build /app/services/user-service/dist ./services/user-service/dist
 COPY --from=build /app/services/user-service/node_modules/.prisma ./services/user-service/node_modules/.prisma
