@@ -101,7 +101,9 @@ export class TransactionsController {
   /**
    * Internal status update — called by the BFF Stripe webhook handler.
    * No JWT required; validated via x-internal-service header with timingSafeEqual.
-   * Actor role is treated as ADMIN to bypass state machine ownership check.
+   * DI-03: The state machine is enforced for all callers — internal callers are
+   * NOT granted full ADMIN bypass. Only transitions valid from the order's
+   * current state are permitted.
    */
   @Patch('orders/:orderId/status/internal')
   @Public()
@@ -111,7 +113,7 @@ export class TransactionsController {
     @Headers('x-internal-service') internalService: string,
   ) {
     validateInternalToken(internalService);
-    return this.transactionsService.updateOrderStatus(orderId, updateOrderStatusDto, 'ADMIN');
+    return this.transactionsService.updateOrderStatus(orderId, updateOrderStatusDto, 'INTERNAL');
   }
 
   /**

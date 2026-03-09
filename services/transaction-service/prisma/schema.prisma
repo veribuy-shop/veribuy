@@ -91,20 +91,48 @@ model Invoice {
   id            String        @id @default(uuid())
   orderId       String        @map("order_id")
   invoiceNumber String        @unique @map("invoice_number")
+  /// RECEIPT = initial payment; CREDIT_NOTE = refund
+  invoiceType   InvoiceType   @default(RECEIPT) @map("invoice_type")
   status        OrderStatus   @map("status")
   buyerId       String        @map("buyer_id")
   sellerId      String        @map("seller_id")
   amount        Decimal       @db.Decimal(10, 2)
+  vatRate       Decimal?      @db.Decimal(5, 4) @map("vat_rate")
+  vatAmount     Decimal?      @db.Decimal(10, 2) @map("vat_amount")
+  netAmount     Decimal?      @db.Decimal(10, 2) @map("net_amount")
   currency      String        @default("GBP")
   pdfUrl        String?       @map("pdf_url")
   emailSentAt   DateTime?     @map("email_sent_at")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
+  @@unique([orderId, invoiceType], name: "invoices_order_id_type_key")
   @@index([orderId])
   @@index([buyerId])
   @@index([sellerId])
   @@index([createdAt])
   @@schema("transactions")
   @@map("invoices")
+}
+
+model RefundRecord {
+  id             String   @id @default(uuid())
+  orderId        String   @map("order_id")
+  stripeRefundId String   @unique @map("stripe_refund_id")
+  amount         Decimal  @db.Decimal(10, 2)
+  currency       String   @default("GBP")
+  reason         String?
+  status         String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@schema("transactions")
+  @@map("refund_records")
+}
+
+enum InvoiceType {
+  RECEIPT
+  CREDIT_NOTE
+
+  @@schema("transactions")
 }
