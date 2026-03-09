@@ -29,6 +29,7 @@
     "@prisma/client": "^6.0.0",
     "@types/pg": "^8.16.0",
     "@veribuy/common": "workspace:*",
+    "@veribuy/logger": "workspace:*",
     "@veribuy/redis-cache": "workspace:*",
     "@willsoto/nestjs-prometheus": "^6.0.2",
     "class-transformer": "^0.5.1",
