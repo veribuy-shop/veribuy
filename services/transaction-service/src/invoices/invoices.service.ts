@@ -50,14 +50,27 @@ export class InvoicesService {
    * Generate and persist an invoice for the given order at its current status.
    * Uploads the PDF to Cloudinary and emails it to the buyer.
    * Always call fire-and-forget — must not block order flow.
+   *
+   * INV-02: Invoice number is derived from a DB sequence — collision-free and
+   *         sequential: INV-YYYY-NNNNN.
+   * INV-04: invoiceType is RECEIPT for ESCROW_HELD, CREDIT_NOTE for REFUNDED.
+   * REG-04: VAT fields stored (currently 0% — update when VAT-registered).
    */
   async generateAndSendInvoice(order: InvoiceOrderData, buyerEmail: string): Promise<void> {
-    const invoiceNumber = `INV-${Date.now()}`;
+    const invoiceType = order.status === 'REFUNDED' ? 'CREDIT_NOTE' : 'RECEIPT';
+
+    // INV-02: Pull next value from the Postgres sequence for a gap-free, human-readable number
+    const seqResult = await (this.prisma as any).$queryRaw`
+      SELECT nextval('transactions.invoice_seq') AS seq
+    `;
+    const seq = String(seqResult[0].seq).padStart(5, '0');
+    const year = new Date().getFullYear();
+    const invoiceNumber = `INV-${year}-${seq}`;
     const shortId = order.id.substring(0, 8);
 
     try {
       // 1. Build the PDF buffer
-      const pdfBuffer = await this.buildPdfBuffer(order, invoiceNumber);
+      const pdfBuffer = await this.buildPdfBuffer(order, invoiceNumber, invoiceType);
 
       // 2. Upload to Cloudinary (may return null if not configured)
       const pdfUrl = await this.cloudinary.uploadPdf(
@@ -66,15 +79,21 @@ export class InvoicesService {
         invoiceNumber,
       );
 
-      // 3. Persist the invoice record
+      // 3. Persist the invoice record (immutability trigger prevents future edits
+      //    to financial fields — only emailSentAt may be updated after creation)
       const invoice = await (this.prisma as any).invoice.create({
         data: {
           orderId: order.id,
           invoiceNumber,
+          invoiceType,
           status: order.status,
           buyerId: order.buyerId,
           sellerId: order.sellerId,
           amount: order.amount as any,
+          // REG-04: Store VAT breakdown (0% until VeriBuy is VAT-registered)
+          vatRate: 0,
+          vatAmount: 0,
+          netAmount: order.amount as any,
           currency: order.currency,
           pdfUrl: pdfUrl ?? null,
         },
@@ -82,21 +101,22 @@ export class InvoicesService {
 
       // 4. Email the invoice to the buyer (skip if Resend not configured or no PDF URL)
       if (this.resend && pdfUrl) {
+        const subjectLabel = invoiceType === 'CREDIT_NOTE' ? 'Credit Note' : 'Invoice';
         await this.resend.emails.send({
           from: 'VeriBuy <invoices@veribuy.com>',
           to: buyerEmail,
-          subject: `Invoice ${invoiceNumber} — Order #${shortId} (${order.status})`,
-          html: this.buildEmailHtml(order, invoiceNumber, pdfUrl),
+          subject: `${subjectLabel} ${invoiceNumber} — Order #${shortId}`,
+          html: this.buildEmailHtml(order, invoiceNumber, pdfUrl, invoiceType),
         });
 
-        // 5. Mark email as sent
+        // 5. Mark email as sent (only permitted UPDATE per immutability trigger)
         await (this.prisma as any).invoice.update({
           where: { id: invoice.id },
           data: { emailSentAt: new Date() },
         });
 
         this.logger.log(
-          `Invoice ${invoiceNumber} generated and sent to ${buyerEmail} for order ${order.id}`,
+          `${subjectLabel} ${invoiceNumber} generated and sent to ${buyerEmail} for order ${order.id}`,
         );
       } else {
         this.logger.log(
@@ -192,7 +212,11 @@ export class InvoicesService {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private async buildPdfBuffer(order: InvoiceOrderData, invoiceNumber: string): Promise<Buffer> {
+  private async buildPdfBuffer(
+    order: InvoiceOrderData,
+    invoiceNumber: string,
+    invoiceType: string,
+  ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const doc = new (PDFDocument as any)({ margin: 50, size: 'A4' });
       const chunks: Buffer[] = [];
@@ -206,6 +230,9 @@ export class InvoicesService {
         style: 'currency',
         currency: order.currency,
       }).format(Number(order.amount));
+
+      const docTypeLabel = invoiceType === 'CREDIT_NOTE' ? 'CREDIT NOTE' : 'INVOICE';
+      const refLabel = invoiceType === 'CREDIT_NOTE' ? 'Credit Note No' : 'Invoice No';
 
       // ---- Header ----
       doc
@@ -221,11 +248,11 @@ export class InvoicesService {
         .fontSize(20)
         .font('Helvetica-Bold')
         .fillColor('#000000')
-        .text('INVOICE', 400, 50, { align: 'right' })
+        .text(docTypeLabel, 400, 50, { align: 'right' })
         .fontSize(10)
         .font('Helvetica')
         .fillColor('#555555')
-        .text(`Invoice No: ${invoiceNumber}`, 400, 76, { align: 'right' })
+        .text(`${refLabel}: ${invoiceNumber}`, 400, 76, { align: 'right' })
         .text(`Date: ${new Date().toLocaleDateString('en-GB')}`, 400, 90, { align: 'right' });
 
       // ---- Divider ----
@@ -344,20 +371,31 @@ export class InvoicesService {
     });
   }
 
-  private buildEmailHtml(order: InvoiceOrderData, invoiceNumber: string, pdfUrl: string): string {
+  private buildEmailHtml(
+    order: InvoiceOrderData,
+    invoiceNumber: string,
+    pdfUrl: string,
+    invoiceType: string,
+  ): string {
     const shortId = order.id.substring(0, 8);
     const amountFormatted = new Intl.NumberFormat('en-GB', {
       style: 'currency',
       currency: order.currency,
     }).format(Number(order.amount));
 
+    const isCreditNote = invoiceType === 'CREDIT_NOTE';
+    const docLabel = isCreditNote ? 'Credit Note' : 'Invoice';
+    const headingText = isCreditNote ? 'Your VeriBuy Credit Note' : 'Your VeriBuy Invoice';
+    const downloadLabel = isCreditNote ? 'Download Credit Note PDF' : 'Download Invoice PDF';
+    const refLabel = isCreditNote ? 'Credit Note No.' : 'Invoice No.';
+
     return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8" /></head>
 <body style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; padding: 24px;">
-  <h2 style="color: #1a1a1a;">Your VeriBuy Invoice</h2>
+  <h2 style="color: #1a1a1a;">${headingText}</h2>
   <p>Hello,</p>
-  <p>Please find your invoice <strong>${invoiceNumber}</strong> for Order <strong>#${shortId}</strong> (status: <strong>${order.status.replace(/_/g, ' ')}</strong>).</p>
+  <p>Please find your ${docLabel} <strong>${invoiceNumber}</strong> for Order <strong>#${shortId}</strong> (status: <strong>${order.status.replace(/_/g, ' ')}</strong>).</p>
   <table style="width:100%; border-collapse:collapse; margin: 16px 0;">
     <tr>
       <td style="padding: 8px; border: 1px solid #eee; background: #f9f9f9;"><strong>Item</strong></td>
@@ -368,17 +406,17 @@ export class InvoicesService {
       <td style="padding: 8px; border: 1px solid #eee;">${amountFormatted}</td>
     </tr>
     <tr>
-      <td style="padding: 8px; border: 1px solid #eee;"><strong>Invoice No.</strong></td>
+      <td style="padding: 8px; border: 1px solid #eee;"><strong>${refLabel}</strong></td>
       <td style="padding: 8px; border: 1px solid #eee;">${invoiceNumber}</td>
     </tr>
   </table>
   <p>
     <a href="${pdfUrl}" style="display:inline-block; padding: 10px 20px; background: #0070f3; color: #fff; text-decoration: none; border-radius: 4px;">
-      Download Invoice PDF
+      ${downloadLabel}
     </a>
   </p>
   <p style="color: #999; font-size: 12px; margin-top: 32px;">
-    This invoice was generated automatically by VeriBuy.
+    This ${docLabel.toLowerCase()} was generated automatically by VeriBuy.
   </p>
 </body>
 </html>`;

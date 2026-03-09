@@ -62,6 +62,11 @@ export class TransactionsService implements OnModuleInit {
     const { buyerId, sellerId, listingId, amount, currency = 'GBP', shippingAddress } =
       createOrderDto;
 
+    // DI-06: Prevent self-dealing — buyer and seller must be different users
+    if (buyerId === sellerId) {
+      throw new BadRequestException('Buyer and seller cannot be the same user');
+    }
+
     // Snapshot listing details for invoice generation — fire-and-forget on failure
     let listingTitle: string | null = null;
     let listingDescription: string | null = null;
@@ -222,61 +227,54 @@ export class TransactionsService implements OnModuleInit {
       throw new NotFoundException('Order not found');
     }
 
-    // Enforce state machine — admins bypass
-    if (actorRole !== 'ADMIN') {
-      const allowed = ALLOWED_TRANSITIONS[order.status] ?? [];
-      if (!allowed.includes(updateOrderStatusDto.status)) {
-        throw new BadRequestException(
-          `Cannot transition order from ${order.status} to ${updateOrderStatusDto.status}`,
-        );
-      }
+    // Enforce state machine for all callers — even internal/admin are restricted
+    // to the defined transitions to prevent accidental invalid state jumps.
+    const allowed = ALLOWED_TRANSITIONS[order.status] ?? [];
+    if (!allowed.includes(updateOrderStatusDto.status)) {
+      throw new BadRequestException(
+        `Cannot transition order from ${order.status} to ${updateOrderStatusDto.status}`,
+      );
     }
 
-    const updateData: any = {
-      status: updateOrderStatusDto.status,
-    };
+    const updateData: any = { status: updateOrderStatusDto.status };
+    const now = new Date();
 
-    // Persist tracking number when moving to SHIPPED
     if (updateOrderStatusDto.status === 'SHIPPED') {
-      updateData.shippedAt = new Date();
+      updateData.shippedAt = now;
       if (updateOrderStatusDto.trackingNumber) {
         updateData.trackingNumber = updateOrderStatusDto.trackingNumber;
       }
     } else if (updateOrderStatusDto.status === 'DELIVERED') {
-      updateData.deliveredAt = new Date();
+      updateData.deliveredAt = now;
     } else if (updateOrderStatusDto.status === 'COMPLETED') {
-      updateData.completedAt = new Date();
-
-      // Release escrow when order is completed
-      if (order.escrowId) {
-        await this.prisma.escrowRecord.update({
-          where: { id: order.escrowId },
-          data: { status: 'RELEASED', releasedAt: new Date() },
-        });
-      }
+      updateData.completedAt = now;
     } else if (updateOrderStatusDto.status === 'DISPUTED') {
-      updateData.disputedAt = new Date();
+      updateData.disputedAt = now;
+    } else if (updateOrderStatusDto.status === 'REFUNDED') {
+      updateData.refundedAt = now;
+    }
 
-      if (order.escrowId) {
-        await this.prisma.escrowRecord.update({
+    // DI-04: Wrap escrow update + order update in a single transaction so a
+    // mid-flight crash cannot leave them in inconsistent states.
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      if (updateOrderStatusDto.status === 'COMPLETED' && order.escrowId) {
+        await tx.escrowRecord.update({
+          where: { id: order.escrowId },
+          data: { status: 'RELEASED', releasedAt: now },
+        });
+      } else if (updateOrderStatusDto.status === 'DISPUTED' && order.escrowId) {
+        await tx.escrowRecord.update({
           where: { id: order.escrowId },
           data: { status: 'DISPUTED' },
         });
-      }
-    } else if (updateOrderStatusDto.status === 'REFUNDED') {
-      updateData.refundedAt = new Date();
-
-      if (order.escrowId) {
-        await this.prisma.escrowRecord.update({
+      } else if (updateOrderStatusDto.status === 'REFUNDED' && order.escrowId) {
+        await tx.escrowRecord.update({
           where: { id: order.escrowId },
-          data: { status: 'REFUNDED', refundedAt: new Date() },
+          data: { status: 'REFUNDED', refundedAt: now },
         });
       }
-    }
 
-    const updatedOrder = await this.prisma.order.update({
-      where: { id: orderId },
-      data: updateData,
+      return tx.order.update({ where: { id: orderId }, data: updateData });
     });
 
     // Send notifications — fire-and-forget
@@ -284,10 +282,16 @@ export class TransactionsService implements OnModuleInit {
       this.logger.error('Failed to send status change notification', err?.stack ?? err);
     });
 
-    // Generate invoice for this status — fire-and-forget
-    this.generateInvoiceForOrder(updatedOrder).catch((err) => {
-      this.logger.error('Failed to generate invoice for status change', err?.stack ?? err);
-    });
+    // INV-04: Only generate invoices on financially significant transitions.
+    // ESCROW_HELD = sales receipt; REFUNDED = credit note.
+    if (
+      updatedOrder.status === 'ESCROW_HELD' ||
+      updatedOrder.status === 'REFUNDED'
+    ) {
+      this.generateInvoiceForOrder(updatedOrder).catch((err) => {
+        this.logger.error('Failed to generate invoice for status change', err?.stack ?? err);
+      });
+    }
 
     return updatedOrder;
   }
@@ -402,11 +406,24 @@ export class TransactionsService implements OnModuleInit {
     // Refund via Stripe
     const refund = await this.stripe.refunds.create({ payment_intent: escrow.providerRef });
 
-    // Wrap the DB writes in a transaction
+    // REG-02: Wrap all DB writes in a transaction and persist the Stripe refund
+    // record alongside the order/escrow updates so the audit trail is atomic.
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
       await tx.escrowRecord.update({
         where: { id: order.escrowId! },
         data: { status: 'REFUNDED', refundedAt: new Date() },
+      });
+
+      // Persist the Stripe refund ID — never lose this
+      await (tx as any).refundRecord.create({
+        data: {
+          orderId: order.id,
+          stripeRefundId: refund.id,
+          amount: order.amount,
+          currency: order.currency,
+          reason: refund.reason ?? null,
+          status: refund.status ?? 'pending',
+        },
       });
 
       return tx.order.update({
@@ -430,6 +447,11 @@ export class TransactionsService implements OnModuleInit {
       content: `Your refund of ${order.currency} ${order.amount} for order #${order.id.substring(0, 8)} has been processed. The amount will be returned to your original payment method within 5-10 business days.`,
     }).catch((err) => {
       this.logger.error('Failed to send refund notification', err?.stack ?? err);
+    });
+
+    // Generate credit note invoice — fire-and-forget
+    this.generateInvoiceForOrder(updatedOrder).catch((err) => {
+      this.logger.error('Failed to generate credit note invoice for refund', err?.stack ?? err);
     });
 
     return { order: updatedOrder, refund };
@@ -467,6 +489,7 @@ export class TransactionsService implements OnModuleInit {
           subject: params.subject,
           content: params.content,
         }),
+        signal: AbortSignal.timeout(5000),
       },
     );
 
@@ -553,6 +576,7 @@ export class TransactionsService implements OnModuleInit {
         'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN!,
       },
       body: JSON.stringify({ status }),
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!response.ok) {
