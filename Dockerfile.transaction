@@ -39,4 +39,4 @@ COPY --from=build /app/services/transaction-service/node_modules/@prisma ./servi
 COPY services/transaction-service/prisma ./services/transaction-service/prisma
 WORKDIR /app/services/transaction-service
 EXPOSE 3007
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]
+CMD ["sh", "-c", "export DIRECT_DATABASE_URL=${DIRECT_DATABASE_URL:-$DATABASE_URL} && node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]
