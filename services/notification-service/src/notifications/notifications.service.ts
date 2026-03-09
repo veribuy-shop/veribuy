@@ -266,8 +266,25 @@ export class NotificationsService {
           message: data.payload['message'],
         });
         break;
-      case 'trust_lens_result':
-        await this.email.sendTrustLensResultEmail({
+      case 'listing_created':
+        await this.email.sendListingCreatedEmail({
+          sellerEmail: data.to,
+          sellerName: data.payload['sellerName'],
+          listingTitle: data.payload['listingTitle'],
+          listingId: data.payload['listingId'],
+        });
+        break;
+      case 'listing_status':
+        await this.email.sendListingStatusEmail({
+          sellerEmail: data.to,
+          sellerName: data.payload['sellerName'],
+          listingTitle: data.payload['listingTitle'],
+          listingId: data.payload['listingId'],
+          status: data.payload['status'],
+          reason: data.payload['reason'],
+        });
+        break;
+      case 'trust_lens_result':        await this.email.sendTrustLensResultEmail({
           sellerEmail: data.to,
           sellerName: data.payload['sellerName'],
           listingTitle: data.payload['listingTitle'],
