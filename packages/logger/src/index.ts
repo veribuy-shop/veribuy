@@ -1,4 +1,13 @@
-import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NestMiddleware,
+  Logger,
+  Catch,
+  ArgumentsHost,
+  ExceptionFilter,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { WinstonModule } from 'nest-winston';
 import * as winston from 'winston';
@@ -9,10 +18,43 @@ const { combine, timestamp, printf, colorize, json, errors } = format;
 // Skip noisy health/metrics routes from HTTP logs
 const SKIP_PATHS = new Set(['/health', '/metrics', '/favicon.ico']);
 
+// Fields that must never appear in logs (passwords, tokens, secrets)
+const SENSITIVE_KEYS = new Set([
+  'password',
+  'passwordHash',
+  'currentPassword',
+  'newPassword',
+  'confirmPassword',
+  'token',
+  'refreshToken',
+  'accessToken',
+  'authorization',
+  'x-internal-service',
+  'secret',
+  'apiKey',
+  'api_key',
+  'stripeSecret',
+  'cardNumber',
+  'cvv',
+]);
+
+/**
+ * Recursively redact sensitive fields from an object so it is safe to log.
+ */
+function redact(obj: unknown, depth = 0): unknown {
+  if (depth > 5 || obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map((v) => redact(v, depth + 1));
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    result[k] = SENSITIVE_KEYS.has(k.toLowerCase()) ? '[REDACTED]' : redact(v, depth + 1);
+  }
+  return result;
+}
+
 /**
  * Console format that handles both plain string messages and structured object
- * messages. When the message is an object (or JSON-parseable), it is printed
- * in the same style as the octocare-prod-be reference logs:
+ * messages, rendered as multi-line Object: blocks:
  *
  *   2026-03-09 10:07:17 [info] [OrdersService] Object:
  *   {
@@ -25,11 +67,9 @@ const consoleFormat = printf(({ level, message, timestamp, context, trace, ...me
 
   let body: string;
 
-  // Detect object messages — nest-winston passes objects through as-is
   if (typeof message === 'object' && message !== null) {
     body = `Object:\n${JSON.stringify(message, null, 2)}`;
   } else if (typeof message === 'string') {
-    // Try to detect a JSON string that should be pretty-printed
     const trimmed = message.trim();
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
       try {
@@ -45,20 +85,17 @@ const consoleFormat = printf(({ level, message, timestamp, context, trace, ...me
     body = String(message);
   }
 
-  // Append any extra metadata keys (excluding internal winston/nest fields)
   const EXCLUDED_META_KEYS = new Set(['service', 'environment', 'version', 'splat', 'ms']);
   const extraKeys = Object.keys(metadata).filter((k) => !EXCLUDED_META_KEYS.has(k));
   if (extraKeys.length > 0) {
-    const extra = Object.fromEntries(extraKeys.map((k) => [k, (metadata as Record<string, unknown>)[k]]));
+    const extra = Object.fromEntries(
+      extraKeys.map((k) => [k, (metadata as Record<string, unknown>)[k]]),
+    );
     body += ` ${JSON.stringify(extra)}`;
   }
 
   let msg = `${timestamp} [${level}] [${ctx}] ${body}`;
-
-  if (trace) {
-    msg += `\n${trace}`;
-  }
-
+  if (trace) msg += `\n${trace}`;
   return msg;
 });
 
@@ -72,11 +109,6 @@ export interface LoggerOptions {
 /**
  * Create a Winston logger instance configured for VeriBuy services.
  * Pass the returned value to NestFactory.create(AppModule, { logger }).
- *
- * Console output format:
- *   2026-03-09 10:07:16 [info]  [Bootstrap] auth-service running on port 3001
- *   2026-03-09 10:07:17 [info]  [OrdersService] Object:
- *   { "orderId": "abc123", ... }
  *
  * Set LOG_LEVEL env var to control verbosity (default: info).
  */
@@ -136,21 +168,15 @@ export const createLogger = (options: LoggerOptions) => {
 /**
  * NestJS middleware that logs every incoming HTTP request and its response.
  *
- * Incoming:  →  POST /orders
- * Outgoing:  ←  201 POST /orders 45ms
+ * On success:
+ *   →  POST /orders
+ *   ←  201 POST /orders 45ms
+ *
+ * On 4xx/5xx the response line is logged at warn/error AND the sanitised
+ * request body is appended so you can reproduce the exact call:
+ *   ←  422 POST /orders/pay 12ms  body: { "amount": "abc" }
  *
  * Health/metrics routes are skipped to avoid log noise.
- *
- * Usage — in any AppModule:
- *
- *   import { MiddlewareConsumer, NestModule } from '@nestjs/common';
- *   import { HttpLoggerMiddleware } from '@veribuy/logger';
- *
- *   export class AppModule implements NestModule {
- *     configure(consumer: MiddlewareConsumer): void {
- *       consumer.apply(HttpLoggerMiddleware).forRoutes('*');
- *     }
- *   }
  */
 @Injectable()
 export class HttpLoggerMiddleware implements NestMiddleware {
@@ -170,10 +196,104 @@ export class HttpLoggerMiddleware implements NestMiddleware {
     res.on('finish', () => {
       const { statusCode } = res;
       const ms = Date.now() - start;
-      const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'log';
-      this.logger[level](`←  ${statusCode} ${method} ${originalUrl} ${ms}ms`);
+
+      if (statusCode >= 400) {
+        const level = statusCode >= 500 ? 'error' : 'warn';
+        // Attach sanitised request body so the failure is reproducible
+        const body = req.body && Object.keys(req.body).length > 0
+          ? `  body: ${JSON.stringify(redact(req.body))}`
+          : '';
+        this.logger[level](`←  ${statusCode} ${method} ${originalUrl} ${ms}ms${body}`);
+      } else {
+        this.logger.log(`←  ${statusCode} ${method} ${originalUrl} ${ms}ms`);
+      }
     });
 
     next();
+  }
+}
+
+/**
+ * Global exception filter — catches every unhandled exception thrown anywhere
+ * in the NestJS pipeline (guards, pipes, interceptors, services, controllers)
+ * and logs a structured error entry before returning the HTTP response.
+ *
+ * Log output for a 404:
+ *   [ExceptionFilter] NotFoundException: Order abc123 not found
+ *     GET /transactions/orders/abc123 — userId: u-456 — 404
+ *
+ * Log output for an unexpected 500:
+ *   [ExceptionFilter] TypeError: Cannot read properties of undefined
+ *     POST /transactions/orders — userId: u-789 — 500
+ *     <full stack trace>
+ *
+ * Register once in every main.ts:
+ *   app.useGlobalFilters(new AllExceptionsFilter());
+ */
+@Catch()
+export class AllExceptionsFilter implements ExceptionFilter {
+  private readonly logger = new Logger('ExceptionFilter');
+
+  catch(exception: unknown, host: ArgumentsHost): void {
+    const ctx = host.switchToHttp();
+    const req = ctx.getRequest<Request>();
+    const res = ctx.getResponse<Response>();
+
+    // Determine HTTP status
+    const status =
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+
+    // Determine response body (mirrors NestJS default behaviour)
+    let responseBody: Record<string, unknown>;
+    if (exception instanceof HttpException) {
+      const resp = exception.getResponse();
+      responseBody =
+        typeof resp === 'object' && resp !== null
+          ? (resp as Record<string, unknown>)
+          : { message: resp };
+    } else {
+      responseBody = {
+        statusCode: status,
+        message: 'Internal server error',
+        error: 'Internal Server Error',
+      };
+    }
+
+    // Build a rich log line
+    const method = req.method;
+    const url = req.originalUrl;
+    const userId = (req as Request & { user?: { userId?: string } }).user?.userId ?? 'unauthenticated';
+    const errorName =
+      exception instanceof Error ? exception.constructor.name : 'UnknownError';
+    const errorMessage =
+      exception instanceof Error ? exception.message : String(exception);
+    const stack =
+      exception instanceof Error && status >= 500 ? exception.stack : undefined;
+
+    // Sanitise body for the log (strip sensitive fields)
+    const reqBody =
+      req.body && Object.keys(req.body as object).length > 0
+        ? redact(req.body as Record<string, unknown>)
+        : undefined;
+
+    const logPayload = [
+      `${errorName}: ${errorMessage}`,
+      `  ${method} ${url} — userId: ${userId} — ${status}`,
+      reqBody ? `  request body: ${JSON.stringify(reqBody)}` : null,
+      stack ? `\n${stack}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    if (status >= 500) {
+      this.logger.error(logPayload);
+    } else if (status >= 400) {
+      this.logger.warn(logPayload);
+    }
+    // 3xx and below are not errors — NestJS handles redirects internally
+
+    res.status(status).json(responseBody);
   }
 }
