@@ -18,6 +18,62 @@ const { combine, timestamp, printf, colorize, json, errors } = format;
 // Skip noisy health/metrics routes from HTTP logs
 const SKIP_PATHS = new Set(['/health', '/metrics', '/favicon.ico']);
 
+/**
+ * The set of env var names that must use https:// in production.
+ * Checked at startup by assertTlsInProduction().
+ */
+const SERVICE_URL_VARS = [
+  'AUTH_SERVICE_URL',
+  'USER_SERVICE_URL',
+  'LISTING_SERVICE_URL',
+  'TRUST_LENS_SERVICE_URL',
+  'DEVICE_VERIFICATION_SERVICE_URL',
+  'EVIDENCE_SERVICE_URL',
+  'TRANSACTION_SERVICE_URL',
+  'NOTIFICATION_SERVICE_URL',
+] as const;
+
+/**
+ * Asserts that all inter-service URL env vars use https:// when running in
+ * production (NODE_ENV === 'production'). Call once at the top of bootstrap(),
+ * before NestFactory.create(), so the process exits immediately with a clear
+ * error rather than silently transmitting credentials over plain HTTP.
+ *
+ * Each service only sets the URLs it actually calls, so missing env vars (i.e.
+ * vars that are undefined) are silently ignored — only present http:// values
+ * are rejected.
+ *
+ * Local development (NODE_ENV !== 'production') is never checked.
+ */
+export function assertTlsInProduction(serviceName: string): void {
+  if (process.env.NODE_ENV !== 'production') return;
+
+  const violations: string[] = [];
+
+  for (const varName of SERVICE_URL_VARS) {
+    const value = process.env[varName];
+    if (value && value.startsWith('http://')) {
+      violations.push(`  ${varName}=${value}`);
+    }
+  }
+
+  // Also check DATABASE_URL for plain postgresql:// without sslmode=require
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl && !dbUrl.includes('sslmode=require')) {
+    violations.push(`  DATABASE_URL is missing sslmode=require`);
+  }
+
+  if (violations.length > 0) {
+    const logger = new Logger('TlsGuard');
+    logger.error(
+      `[${serviceName}] TLS enforcement failed — the following env vars use plain HTTP in production:\n` +
+        violations.join('\n') +
+        '\n  All *_SERVICE_URL values must use https:// and DATABASE_URL must include sslmode=require.',
+    );
+    process.exit(1);
+  }
+}
+
 // Fields that must never appear in logs (passwords, tokens, secrets).
 // All values MUST be lowercase — redact() compares k.toLowerCase() against this set.
 const SENSITIVE_KEYS = new Set([

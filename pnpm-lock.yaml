@@ -38,6 +38,9 @@ importers:
       '@nestjs/throttler':
         specifier: ^6.5.0
         version: 6.5.0(@nestjs/common@11.1.14(class-transformer@0.5.1)(class-validator@0.14.3)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.14)(reflect-metadata@0.2.2)
+      '@veribuy/logger':
+        specifier: workspace:*
+        version: link:../packages/logger
       class-transformer:
         specifier: ^0.5.1
         version: 0.5.1

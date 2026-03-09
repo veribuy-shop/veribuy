@@ -4,9 +4,11 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  schemas  = ["users"]
+  provider  = "postgresql"
+  // In production: must include ?sslmode=require (enforced at startup by assertTlsInProduction)
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+  schemas   = ["users"]
 }
 
 model Profile {

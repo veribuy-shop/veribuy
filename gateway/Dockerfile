@@ -20,9 +20,11 @@ COPY --from=deps /app .
 # Copy source code
 COPY packages ./packages
 COPY gateway ./gateway
-# Change to gateway directory
-WORKDIR /app/gateway
+# Build shared packages first
+WORKDIR /app
+RUN pnpm --filter @veribuy/logger run build || true
 # Build the gateway
+WORKDIR /app/gateway
 RUN pnpm build
 
 # Production stage
@@ -36,7 +38,8 @@ COPY packages ./packages
 COPY gateway ./gateway
 # Install production dependencies only
 RUN pnpm install --prod --frozen-lockfile
-# Copy built application from build stage
+# Copy compiled packages and built application from build stage
+COPY --from=build /app/packages/logger/dist ./packages/logger/dist
 COPY --from=build /app/gateway/dist ./gateway/dist
 # Set working directory to the gateway
 WORKDIR /app/gateway
