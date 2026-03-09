@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { createLogger } from './logger.config';
+import { AllExceptionsFilter } from '@veribuy/logger';
 
 async function bootstrap() {
   const logger = createLogger('trust-lens-service');
@@ -27,6 +28,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Global exception filter — logs every unhandled exception with full context
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   const port = process.env.PORT || 3004;
   await app.listen(port);
