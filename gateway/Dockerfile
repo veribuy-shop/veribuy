@@ -1,6 +1,6 @@
 # Multi-stage build for API Gateway (monorepo)
 FROM node:22-alpine AS base
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.30.2 --activate
 WORKDIR /app
 
 # Dependencies stage - install all monorepo dependencies
