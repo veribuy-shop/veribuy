@@ -18,23 +18,24 @@ const { combine, timestamp, printf, colorize, json, errors } = format;
 // Skip noisy health/metrics routes from HTTP logs
 const SKIP_PATHS = new Set(['/health', '/metrics', '/favicon.ico']);
 
-// Fields that must never appear in logs (passwords, tokens, secrets)
+// Fields that must never appear in logs (passwords, tokens, secrets).
+// All values MUST be lowercase — redact() compares k.toLowerCase() against this set.
 const SENSITIVE_KEYS = new Set([
   'password',
-  'passwordHash',
-  'currentPassword',
-  'newPassword',
-  'confirmPassword',
+  'passwordhash',
+  'currentpassword',
+  'newpassword',
+  'confirmpassword',
   'token',
-  'refreshToken',
-  'accessToken',
+  'refreshtoken',
+  'accesstoken',
   'authorization',
   'x-internal-service',
   'secret',
-  'apiKey',
+  'apikey',
   'api_key',
-  'stripeSecret',
-  'cardNumber',
+  'stripesecret',
+  'cardnumber',
   'cvv',
 ]);
 
@@ -197,16 +198,8 @@ export class HttpLoggerMiddleware implements NestMiddleware {
       const { statusCode } = res;
       const ms = Date.now() - start;
 
-      if (statusCode >= 400) {
-        const level = statusCode >= 500 ? 'error' : 'warn';
-        // Attach sanitised request body so the failure is reproducible
-        const body = req.body && Object.keys(req.body).length > 0
-          ? `  body: ${JSON.stringify(redact(req.body))}`
-          : '';
-        this.logger[level](`←  ${statusCode} ${method} ${originalUrl} ${ms}ms${body}`);
-      } else {
-        this.logger.log(`←  ${statusCode} ${method} ${originalUrl} ${ms}ms`);
-      }
+      const level = statusCode >= 500 ? 'error' : statusCode >= 400 ? 'warn' : 'log';
+      this.logger[level](`←  ${statusCode} ${method} ${originalUrl} ${ms}ms`);
     });
 
     next();
