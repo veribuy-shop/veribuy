@@ -236,6 +236,85 @@ export class EmailService {
     });
   }
 
+  // ─── Listing Notifications ───────────────────────────────────────────────────
+
+  async sendListingCreatedEmail(data: {
+    sellerEmail: string;
+    sellerName: string;
+    listingTitle: string;
+    listingId: string;
+  }): Promise<void> {
+    const listingUrl = `${this.appUrl}/dashboard/listings/${data.listingId}`;
+    await this.send({
+      to: data.sellerEmail,
+      subject: 'Your listing has been submitted — VeriBuy',
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+          <h2 style="color:#1a56db">Listing Submitted</h2>
+          <p>Hi ${this.escape(data.sellerName)},</p>
+          <p>Your listing <strong>${this.escape(data.listingTitle)}</strong> has been submitted and is currently under review. We'll notify you once it goes live.</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0">
+            <tr><td style="color:#6b7280;padding:4px 0">Status:</td><td><strong>Under Review</strong></td></tr>
+          </table>
+          <p style="margin:24px 0">
+            <a href="${listingUrl}" style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+              View Listing
+            </a>
+          </p>
+          <p style="color:#6b7280;font-size:14px">Our team will review your listing shortly. This usually takes less than 24 hours.</p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+          <p style="color:#9ca3af;font-size:12px">VeriBuy — Verified Electronics Marketplace</p>
+        </div>
+      `,
+    });
+  }
+
+  async sendListingStatusEmail(data: {
+    sellerEmail: string;
+    sellerName: string;
+    listingTitle: string;
+    listingId: string;
+    status: string;
+    reason?: string;
+  }): Promise<void> {
+    const listingUrl = `${this.appUrl}/dashboard/listings/${data.listingId}`;
+
+    const statusConfig: Record<string, { label: string; color: string; message: string }> = {
+      ACTIVE:    { label: 'Active',    color: '#16a34a', message: 'Great news — your listing has been approved and is now live on VeriBuy.' },
+      REJECTED:  { label: 'Rejected',  color: '#dc2626', message: 'Unfortunately your listing did not meet our listing requirements and has been rejected.' },
+      DELISTED:  { label: 'Delisted',  color: '#d97706', message: 'Your listing has been delisted and is no longer visible to buyers.' },
+      SOLD:      { label: 'Sold',      color: '#1a56db', message: 'Congratulations — your listing has been marked as sold!' },
+      UNDER_REVIEW: { label: 'Under Review', color: '#7c3aed', message: 'Your listing has been submitted for review.' },
+      DRAFT:     { label: 'Draft',     color: '#6b7280', message: 'Your listing has been moved back to draft.' },
+    };
+
+    const cfg = statusConfig[data.status] ?? { label: data.status, color: '#6b7280', message: `Your listing status has been updated to ${data.status}.` };
+
+    await this.send({
+      to: data.sellerEmail,
+      subject: `Listing update: ${cfg.label} — VeriBuy`,
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+          <h2 style="color:${cfg.color}">Listing ${cfg.label}</h2>
+          <p>Hi ${this.escape(data.sellerName)},</p>
+          <p>${cfg.message}</p>
+          <table style="width:100%;border-collapse:collapse;margin:16px 0">
+            <tr><td style="color:#6b7280;padding:4px 0">Listing:</td><td><strong>${this.escape(data.listingTitle)}</strong></td></tr>
+            <tr><td style="color:#6b7280;padding:4px 0">Status:</td><td style="color:${cfg.color};font-weight:600">${cfg.label}</td></tr>
+            ${data.reason ? `<tr><td style="color:#6b7280;padding:4px 0">Reason:</td><td>${this.escape(data.reason)}</td></tr>` : ''}
+          </table>
+          <p style="margin:24px 0">
+            <a href="${listingUrl}" style="background:#1a56db;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600">
+              View Listing
+            </a>
+          </p>
+          <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
+          <p style="color:#9ca3af;font-size:12px">VeriBuy — Verified Electronics Marketplace</p>
+        </div>
+      `,
+    });
+  }
+
   // ─── Trust Lens ──────────────────────────────────────────────────────────────
 
   async sendTrustLensResultEmail(data: {

@@ -12,6 +12,7 @@ import { ALLOWED_TRANSITIONS } from './dto/update-status.dto';
 import { Listing, ListingStatus, TrustLensStatus, IntegrityFlag } from '.prisma/listing-client';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
+import { NotificationClient } from './notification.client';
 
 // Fields safe to return to public callers — strips IMEI and serial number
 const PUBLIC_SELECT = {
@@ -42,6 +43,7 @@ export class UlistingsService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private notifications: NotificationClient,
   ) {}
 
   async create(dto: CreateListingDto): Promise<Listing> {
@@ -63,6 +65,18 @@ export class UlistingsService {
         integrityFlags: [IntegrityFlag.CLEAN],
       },
     });
+
+    // Fire-and-forget: notify seller of successful listing submission
+    this.getSellerInfo(listing.sellerId).then((seller) => {
+      if (seller) {
+        this.notifications.notifyListingCreated({
+          sellerEmail: seller.email,
+          sellerName: seller.name,
+          listingTitle: listing.title,
+          listingId: listing.id,
+        });
+      }
+    }).catch((err: Error) => this.logger.error(`listing_created notify fetch failed: ${err.message}`));
 
     return listing;
   }
@@ -247,7 +261,22 @@ export class UlistingsService {
     }
 
     await this.redis.del(`listing:${id}`).catch(() => {});
-    return this.findOneRaw(id);
+    const updated = await this.findOneRaw(id);
+
+    // Fire-and-forget: notify seller of status change
+    this.getSellerInfo(updated.sellerId).then((seller) => {
+      if (seller) {
+        this.notifications.notifyListingStatusChanged({
+          sellerEmail: seller.email,
+          sellerName: seller.name,
+          listingTitle: updated.title,
+          listingId: updated.id,
+          status: updated.status,
+        });
+      }
+    }).catch((err: Error) => this.logger.error(`listing_status notify fetch failed: ${err.message}`));
+
+    return updated;
   }
 
   /** Internal service-to-service status update — bypasses state machine */
@@ -259,13 +288,27 @@ export class UlistingsService {
     }
 
     try {
-      const listing = await this.prisma.listing.update({
+      const updated = await this.prisma.listing.update({
         where: { id },
         data: updateData,
       });
 
       await this.redis.del(`listing:${id}`).catch(() => {});
-      return listing;
+
+      // Fire-and-forget: notify seller of status change
+      this.getSellerInfo(updated.sellerId).then((seller) => {
+        if (seller) {
+          this.notifications.notifyListingStatusChanged({
+            sellerEmail: seller.email,
+            sellerName: seller.name,
+            listingTitle: updated.title,
+            listingId: updated.id,
+            status: updated.status,
+          });
+        }
+      }).catch((err: Error) => this.logger.error(`listing_status notify fetch failed: ${err.message}`));
+
+      return updated;
     } catch (err: any) {
       if (err?.code === 'P2025') {
         throw new NotFoundException('Listing not found');
@@ -332,6 +375,36 @@ export class UlistingsService {
         throw new NotFoundException('Listing not found');
       }
       throw err;
+    }
+  }
+
+  /**
+   * Fetch seller name + email from auth-service.
+   * Returns null on any failure — callers must handle gracefully.
+   */
+  private async getSellerInfo(
+    sellerId: string,
+  ): Promise<{ name: string; email: string } | null> {
+    const AUTH_SERVICE_URL =
+      process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    try {
+      const response = await fetch(
+        `${AUTH_SERVICE_URL}/auth/internal/users/${sellerId}`,
+        {
+          headers: {
+            'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN ?? '',
+          },
+          signal: AbortSignal.timeout(3000),
+        },
+      );
+      if (!response.ok) return null;
+      const data = (await response.json()) as Record<string, unknown>;
+      const name = typeof data['name'] === 'string' ? data['name'] : '';
+      const email = typeof data['email'] === 'string' ? data['email'] : '';
+      if (!email) return null;
+      return { name, email };
+    } catch {
+      return null;
     }
   }
 }
