@@ -40,4 +40,4 @@ COPY --from=build /app/services/user-service/node_modules/@prisma ./services/use
 COPY services/user-service/prisma ./services/user-service/prisma
 WORKDIR /app/services/user-service
 EXPOSE 3002
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]
+CMD ["sh", "-c", "export DIRECT_DATABASE_URL=${DIRECT_DATABASE_URL:-$DATABASE_URL} && node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main"]
