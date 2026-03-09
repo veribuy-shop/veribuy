@@ -6,7 +6,7 @@
     "watchPatterns": ["services/trust-lens-service/**", "packages/**", "pnpm-lock.yaml"]
   },
   "deploy": {
-    "startCommand": "node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main",
+    "startCommand": "export DIRECT_DATABASE_URL=${DIRECT_DATABASE_URL:-$DATABASE_URL} && node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma && node dist/main",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
