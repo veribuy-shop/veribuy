@@ -63,6 +63,7 @@ export class ProxyController {
         method: req.method,
         headers,
         body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body),
+        signal: AbortSignal.timeout(30000),
       });
 
       const data = await response.json();

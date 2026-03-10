@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
+import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { sanitizeOrderWithPayment } from '@/lib/sanitize';
 
 const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007';
@@ -12,14 +12,23 @@ export async function POST(req: NextRequest) {
       return authResult.error;
     }
 
+    // Extract buyerId from the verified JWT — never trust client-supplied buyerId
+    const buyerId = await getTokenUserId(authResult.token);
+    if (!buyerId) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Invalid or expired token' },
+        { status: 401 },
+      );
+    }
+
     const body = await req.json();
 
-    // Validate required fields
-    const { buyerId, sellerId, listingId, amount, currency, shippingAddress } = body;
+    // Validate required fields (buyerId now comes from JWT, not body)
+    const { sellerId, listingId, amount, currency, shippingAddress } = body;
 
-    if (!buyerId || !sellerId || !listingId || !amount || !currency) {
+    if (!sellerId || !listingId || !amount || !currency) {
       return NextResponse.json(
-        { error: 'Missing required fields: buyerId, sellerId, listingId, amount, and currency are required' },
+        { error: 'Missing required fields: sellerId, listingId, amount, and currency are required' },
         { status: 400 }
       );
     }

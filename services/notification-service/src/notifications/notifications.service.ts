@@ -44,7 +44,9 @@ export class NotificationsService {
     });
 
     // Invalidate recipient's unread count cache
-    await this.redis.del(`unread:${data.recipientId}`);
+    await this.redis.del(`unread:${data.recipientId}`).catch((err: Error) =>
+      this.logger.warn(`Redis DEL failed for unread:${data.recipientId}: ${err.message}`),
+    );
 
     // Fire email notification (fire-and-forget — never block the response)
     if (emailContext) {
@@ -202,7 +204,9 @@ export class NotificationsService {
     });
 
     // Invalidate unread count cache
-    await this.redis.del(`unread:${userId}`);
+    await this.redis.del(`unread:${userId}`).catch((err: Error) =>
+      this.logger.warn(`Redis DEL failed for unread:${userId}: ${err.message}`),
+    );
 
     return updatedMessage;
   }
@@ -211,9 +215,13 @@ export class NotificationsService {
   async getUnreadCount(userId: string) {
     const cacheKey = `unread:${userId}`;
 
-    const cached = await this.redis.get<number>(cacheKey);
-    if (cached !== null) {
-      return cached;
+    try {
+      const cached = await this.redis.get<number>(cacheKey);
+      if (cached !== null) {
+        return cached;
+      }
+    } catch (err) {
+      this.logger.warn(`Redis GET failed for ${cacheKey}: ${(err as Error).message}`);
     }
 
     const count = await this.prisma.message.count({
@@ -223,8 +231,10 @@ export class NotificationsService {
       },
     });
 
-    // Cache for 1 minute
-    await this.redis.set(cacheKey, count, 60);
+    // Cache for 1 minute — fail open
+    await this.redis.set(cacheKey, count, 60).catch((err: Error) =>
+      this.logger.warn(`Redis SET failed for ${cacheKey}: ${err.message}`),
+    );
 
     return count;
   }

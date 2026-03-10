@@ -18,6 +18,7 @@ import * as nodeCrypto from 'crypto';
 import { UsersService } from './users.service';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateVerificationStatusDto } from './dto/update-verification-status.dto';
 import { JwtAuthGuard, RolesGuard, CurrentUser, Roles, Public } from '@veribuy/common';
 
 interface AuthenticatedUser {
@@ -80,7 +81,7 @@ export class UsersController {
   async updateVerificationStatus(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Headers('x-internal-service') internalToken: string,
-    @Body() body: { verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED' },
+    @Body() body: UpdateVerificationStatusDto,
   ) {
     this.verifyInternalToken(internalToken);
     await this.usersService.updateVerificationStatus(userId, body.verificationStatus);

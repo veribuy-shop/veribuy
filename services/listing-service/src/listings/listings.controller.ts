@@ -108,7 +108,7 @@ export class UlistingsController {
   async updateListingStatusInternal(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateStatusDto,
-    @Headers('x-internal-token') token: string,
+    @Headers('x-internal-service') token: string,
   ) {
     const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
     if (!internalToken) {
