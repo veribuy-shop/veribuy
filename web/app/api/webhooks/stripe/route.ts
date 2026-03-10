@@ -23,9 +23,20 @@ function getStripe() {
   });
 }
 
+function getWebhookSecret(): string {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error(
+      '[Stripe Webhook] STRIPE_WEBHOOK_SECRET environment variable is not set. ' +
+      'Webhook signature verification cannot proceed without it.',
+    );
+  }
+  return secret;
+}
+
 export async function POST(request: NextRequest) {
   const stripe = getStripe();
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+  const webhookSecret = getWebhookSecret();
   try {
     const body = await request.text();
     const signature = request.headers.get('stripe-signature');
@@ -98,6 +109,7 @@ async function fetchOrderByPaymentIntentId(paymentIntentId: string): Promise<Rec
           'Content-Type': 'application/json',
           'x-internal-service': getInternalServiceToken(),
         },
+        signal: AbortSignal.timeout(8000),
       }
     );
 
@@ -133,6 +145,7 @@ async function confirmOrderPayment(orderId: string, paymentIntentId: string): Pr
           'x-internal-service': getInternalServiceToken(),
         },
         body: JSON.stringify({ paymentIntentId }),
+        signal: AbortSignal.timeout(8000),
       }
     );
 
@@ -165,6 +178,7 @@ async function cancelOrder(orderId: string): Promise<boolean> {
           'x-internal-service': getInternalServiceToken(),
         },
         body: JSON.stringify({ status: 'CANCELLED' }),
+        signal: AbortSignal.timeout(8000),
       }
     );
 
@@ -250,6 +264,7 @@ async function refundOrder(orderId: string): Promise<boolean> {
           'x-internal-service': getInternalServiceToken(),
         },
         body: JSON.stringify({ status: 'REFUNDED' }),
+        signal: AbortSignal.timeout(8000),
       }
     );
 

@@ -1,6 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+/** Mask all but the last 4 digits of an IMEI for safe logging. */
+function maskImei(imei?: string): string {
+  if (!imei || imei.length < 4) return '****';
+  return `${'*'.repeat(imei.length - 4)}${imei.slice(-4)}`;
+}
+
 export interface ImeiCheckResult {
   imeiValid: boolean;
   icloudLocked: boolean;
@@ -63,7 +69,7 @@ export class ImeiCheckService {
 
     const apple = this.isAppleBrand(brand);
     this.logger.log(
-      `Running IMEI checks for ${brand ?? 'unknown brand'} (apple=${apple}), IMEI ${imei}`,
+      `Running IMEI checks for ${brand ?? 'unknown brand'} (apple=${apple}), IMEI ${maskImei(imei)}`,
     );
 
     const raw: Record<string, unknown> = {};

@@ -218,13 +218,14 @@ export class UlistingsService {
     return listing;
   }
 
-  async findBySeller(sellerId: string, pagination: PaginationDto): Promise<PaginatedResponse<Listing>> {
+  async findBySeller(sellerId: string, pagination: PaginationDto): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
     const [data, total] = await Promise.all([
       this.prisma.listing.findMany({
         where: { sellerId },
+        select: PUBLIC_SELECT,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
