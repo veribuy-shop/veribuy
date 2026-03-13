@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { RateOrderDto } from './dto/rate-order.dto';
 import Stripe from 'stripe';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
@@ -658,5 +659,110 @@ export class TransactionsService implements OnModuleInit {
     };
 
     await this.invoicesService.generateAndSendInvoice(invoiceData, buyerEmail);
+  }
+
+  // ─── Rating methods ────────────────────────────────────────────────────────
+
+  async rateOrder(orderId: string, buyerId: string, dto: RateOrderDto) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.buyerId !== buyerId) {
+      throw new BadRequestException('Only the buyer can rate this order');
+    }
+
+    if (order.status !== 'COMPLETED') {
+      throw new BadRequestException('Can only rate completed orders');
+    }
+
+    // Check if already rated
+    const existing = await this.prisma.rating.findUnique({ where: { orderId } });
+    if (existing) {
+      throw new BadRequestException('This order has already been rated');
+    }
+
+    const rating = await this.prisma.rating.create({
+      data: {
+        orderId,
+        buyerId,
+        sellerId: order.sellerId,
+        rating: dto.rating,
+        comment: dto.comment ?? null,
+      },
+    });
+
+    // Sync aggregate to user-service — fire-and-forget
+    this.syncSellerRating(order.sellerId).catch((err) => {
+      this.logger.error(`Failed to sync seller rating for ${order.sellerId}`, err?.stack ?? err);
+    });
+
+    return rating;
+  }
+
+  async getOrderRating(orderId: string) {
+    const rating = await this.prisma.rating.findUnique({ where: { orderId } });
+    return rating;
+  }
+
+  async getSellerRatings(sellerId: string) {
+    const ratings = await this.prisma.rating.findMany({
+      where: { sellerId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        orderId: true,
+        rating: true,
+        comment: true,
+        createdAt: true,
+      },
+    });
+
+    const total = ratings.length;
+    const average = total > 0
+      ? ratings.reduce((sum: number, r: { rating: number }) => sum + r.rating, 0) / total
+      : null;
+
+    return { ratings, average, total };
+  }
+
+  /**
+   * Recalculate the seller's average rating and push it to user-service.
+   * Always call as fire-and-forget (.catch(...)) — must not block the rating flow.
+   */
+  private async syncSellerRating(sellerId: string): Promise<void> {
+    const aggregate = await this.prisma.rating.aggregate({
+      where: { sellerId },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
+
+    const averageRating = aggregate._avg.rating
+      ? Math.round(aggregate._avg.rating * 100) / 100
+      : null;
+    const totalRatings = aggregate._count.rating;
+
+    const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3002';
+
+    const response = await fetch(`${USER_SERVICE_URL}/users/${sellerId}/seller-rating`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN!,
+      },
+      body: JSON.stringify({ sellerRating: averageRating, totalRatings }),
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`User service seller-rating update failed: ${response.status} ${err}`);
+    }
+
+    this.logger.log(
+      `Synced seller rating for ${sellerId}: avg=${averageRating}, count=${totalRatings}`,
+    );
   }
 }

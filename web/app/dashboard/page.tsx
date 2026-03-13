@@ -170,6 +170,19 @@ function DashboardContent() {
   const [verifications, setVerifications] = useState<VerificationRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Seller rating from profile
+  const [sellerRating, setSellerRating] = useState<number | null>(null);
+  const [totalSalesCount, setTotalSalesCount] = useState(0);
+
+  // Rating modal state
+  const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingHover, setRatingHover] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingError, setRatingError] = useState('');
+  const [ratedOrders, setRatedOrders] = useState<Set<string>>(new Set());
+
   // Profile state
   const [profileDisplayName, setProfileDisplayName] = useState('');
   const [profileFirstName, setProfileFirstName] = useState('');
@@ -202,11 +215,12 @@ function DashboardContent() {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const [listRes, sellerOrdRes, buyerOrdRes, verRes] = await Promise.all([
+      const [listRes, sellerOrdRes, buyerOrdRes, verRes, profileRes] = await Promise.all([
         authFetch(`/api/listings?sellerId=${user.id}`),
         authFetch(`/api/checkout/orders/seller/${user.id}`),
         authFetch(`/api/checkout/orders/buyer/${user.id}`),
         authFetch('/api/trust-lens?limit=100'),
+        fetch(`/api/users/${user.id}/profile`, { credentials: 'include' }),
       ]);
       if (listRes.ok) {
         const d = await listRes.json();
@@ -224,6 +238,11 @@ function DashboardContent() {
         const d = await verRes.json();
         setVerifications(Array.isArray(d) ? d : (d.data ?? []));
       }
+      if (profileRes.ok) {
+        const p = await profileRes.json();
+        setSellerRating(p.sellerRating ?? null);
+        setTotalSalesCount(p.totalSales ?? 0);
+      }
     } catch (e) {
       console.error('Dashboard fetch error:', e);
     } finally {
@@ -232,6 +251,51 @@ function DashboardContent() {
   }, [user?.id, authFetch]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // ── Rating submission ──
+  const openRatingModal = (orderId: string) => {
+    setRatingOrderId(orderId);
+    setRatingValue(0);
+    setRatingHover(0);
+    setRatingComment('');
+    setRatingError('');
+  };
+
+  const closeRatingModal = () => {
+    setRatingOrderId(null);
+    setRatingValue(0);
+    setRatingHover(0);
+    setRatingComment('');
+    setRatingError('');
+  };
+
+  const handleRatingSubmit = async () => {
+    if (!ratingOrderId || ratingValue < 1) return;
+    setRatingSubmitting(true);
+    setRatingError('');
+    try {
+      const res = await fetch(`/api/checkout/orders/${ratingOrderId}/rate`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating: ratingValue,
+          ...(ratingComment.trim() && { comment: ratingComment.trim() }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to submit rating');
+      }
+      setRatedOrders(prev => new Set(prev).add(ratingOrderId));
+      closeRatingModal();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to submit rating';
+      setRatingError(message);
+    } finally {
+      setRatingSubmitting(false);
+    }
+  };
 
   // ── Profile fetch/save ──
   const fetchProfile = useCallback(async () => {
@@ -431,9 +495,20 @@ function DashboardContent() {
             <span className="text-sm text-[var(--color-text-muted)] font-medium">Seller Rating</span>
           </div>
           <div className="flex items-center gap-2">
-            <p className="text-2xl font-bold text-[var(--color-text)]">4.8</p>
-            <StarRating value={4.8} />
+            {sellerRating != null ? (
+              <>
+                <p className="text-2xl font-bold text-[var(--color-text)]">{sellerRating.toFixed(1)}</p>
+                <StarRating value={sellerRating} />
+              </>
+            ) : (
+              <p className="text-sm text-[var(--color-text-muted)]">No ratings yet</p>
+            )}
           </div>
+          {totalSalesCount > 0 && (
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">
+              {totalSalesCount} rating{totalSalesCount !== 1 ? 's' : ''}
+            </p>
+          )}
         </div>
       </div>
 
@@ -522,6 +597,8 @@ function DashboardContent() {
                 ) : (
                   recentBuyerOrders.map(order => {
                     const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.PENDING;
+                    const isCompleted = order.status === 'COMPLETED';
+                    const isRated = ratedOrders.has(order.id);
                     return (
                       <tr key={order.id} className="hover:bg-[var(--color-surface-alt)]/50">
                         <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">
@@ -542,9 +619,18 @@ function DashboardContent() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
-                            {order.status === 'SHIPPED' ? 'Track' : 'Details'}
-                          </Link>
+                          {isCompleted && !isRated ? (
+                            <button
+                              onClick={() => openRatingModal(order.id)}
+                              className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1"
+                            >
+                              <Star className="w-3 h-3" aria-hidden="true" /> Rate
+                            </button>
+                          ) : (
+                            <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
+                              {order.status === 'SHIPPED' ? 'Track' : isRated ? 'Rated' : 'Details'}
+                            </Link>
+                          )}
                         </td>
                       </tr>
                     );
@@ -683,10 +769,13 @@ function DashboardContent() {
             <tbody className="divide-y divide-[var(--color-border)]/30">
               {buyerOrders.map(order => {
                 const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.PENDING;
+                const isCompleted = order.status === 'COMPLETED';
+                const isRated = ratedOrders.has(order.id);
                 const actionLabel =
                   order.status === 'SHIPPED' ? 'Track Shipment' :
                   order.status === 'DELIVERED' ? 'Confirm Receipt' :
-                  order.status === 'COMPLETED' ? 'Leave Review' : 'View Details';
+                  isCompleted && !isRated ? 'Rate Seller' :
+                  isCompleted && isRated ? 'Rated' : 'View Details';
                 return (
                   <tr key={order.id} className="hover:bg-[var(--color-surface-alt)]/50">
                     <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">
@@ -707,9 +796,18 @@ function DashboardContent() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1">
-                        {actionLabel} <ChevronRight className="w-3 h-3" aria-hidden="true" />
-                      </Link>
+                      {isCompleted && !isRated ? (
+                        <button
+                          onClick={() => openRatingModal(order.id)}
+                          className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1"
+                        >
+                          <Star className="w-3 h-3" aria-hidden="true" /> Rate Seller <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                        </button>
+                      ) : (
+                        <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1">
+                          {actionLabel} <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 );
@@ -1454,6 +1552,102 @@ function DashboardContent() {
           {activeNav === 'settings'   && renderSettings()}
         </main>
       </div>
+
+      {/* ── Rating Modal ── */}
+      {ratingOrderId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={closeRatingModal}
+            aria-hidden="true"
+          />
+          <div className="relative bg-white rounded-xl border border-[var(--color-border)] p-6 w-full max-w-md mx-4 shadow-lg">
+            <button
+              onClick={closeRatingModal}
+              className="absolute top-4 right-4 p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              aria-label="Close rating modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <h3 className="font-bold text-[var(--color-text)] text-lg mb-1">Rate Your Seller</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mb-5">
+              How was your experience with this transaction?
+            </p>
+
+            {ratingError && (
+              <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                {ratingError}
+              </div>
+            )}
+
+            {/* Star selector */}
+            <div className="flex items-center gap-1 mb-4">
+              {[1, 2, 3, 4, 5].map(i => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setRatingValue(i)}
+                  onMouseEnter={() => setRatingHover(i)}
+                  onMouseLeave={() => setRatingHover(0)}
+                  className="p-1 focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] rounded"
+                  aria-label={`Rate ${i} star${i > 1 ? 's' : ''}`}
+                >
+                  <Star
+                    className={cn(
+                      'w-8 h-8 transition-colors',
+                      i <= (ratingHover || ratingValue)
+                        ? 'text-amber-400 fill-amber-400'
+                        : 'text-[var(--color-border)] fill-[var(--color-surface-alt)]',
+                    )}
+                    aria-hidden="true"
+                  />
+                </button>
+              ))}
+              {ratingValue > 0 && (
+                <span className="ml-2 text-sm font-semibold text-[var(--color-text)]">
+                  {ratingValue}/5
+                </span>
+              )}
+            </div>
+
+            {/* Comment */}
+            <div className="mb-5">
+              <label htmlFor="rating-comment" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                Comment <span className="text-[var(--color-text-muted)] font-normal text-xs">(optional)</span>
+              </label>
+              <textarea
+                id="rating-comment"
+                value={ratingComment}
+                onChange={(e) => setRatingComment(e.target.value)}
+                rows={3}
+                maxLength={1000}
+                placeholder="Share your experience..."
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+              />
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{ratingComment.length}/1000 characters</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleRatingSubmit}
+                disabled={ratingValue < 1 || ratingSubmitting}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[var(--color-primary)] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Star className="w-4 h-4" aria-hidden="true" />
+                {ratingSubmitting ? 'Submitting...' : 'Submit Rating'}
+              </button>
+              <button
+                onClick={closeRatingModal}
+                className="px-5 py-2.5 border border-[var(--color-border)] text-sm font-semibold rounded-lg hover:bg-[var(--color-surface-alt)] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

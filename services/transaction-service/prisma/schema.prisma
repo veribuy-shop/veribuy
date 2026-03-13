@@ -138,3 +138,19 @@ enum InvoiceType {
 
   @@schema("transactions")
 }
+
+model Rating {
+  id        String   @id @default(uuid())
+  orderId   String   @unique @map("order_id")
+  buyerId   String   @map("buyer_id")
+  sellerId  String   @map("seller_id")
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([sellerId])
+  @@index([buyerId])
+  @@index([createdAt])
+  @@schema("transactions")
+  @@map("ratings")
+}

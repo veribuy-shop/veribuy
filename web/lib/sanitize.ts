@@ -49,6 +49,9 @@ export interface SafeProfile {
   bio: string | null;
   avatarUrl: string | null;
   phone: string | null;
+  sellerRating: number | null;
+  totalSales: number;
+  totalPurchases: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -223,6 +226,9 @@ export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
     bio: raw.bio ?? null,
     avatarUrl: raw.avatarUrl ?? null,
     phone: raw.phone ?? null,
+    sellerRating: raw.sellerRating != null ? Number(raw.sellerRating) : null,
+    totalSales: Number(raw.totalSales ?? 0),
+    totalPurchases: Number(raw.totalPurchases ?? 0),
     createdAt: raw.createdAt ?? '',
     updatedAt: raw.updatedAt ?? '',
   };
