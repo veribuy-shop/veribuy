@@ -3,19 +3,19 @@ import { requireRole } from '@/lib/api-auth';
 
 // Service health endpoints (direct HTTP, not through gateway)
 const SERVICES = [
-  { name: 'Gateway',              url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000', port: 3000 },
-  { name: 'Auth Service',         url: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',    port: 3001 },
-  { name: 'User Service',         url: process.env.USER_SERVICE_URL || 'http://localhost:3002',    port: 3002 },
-  { name: 'Listing Service',      url: process.env.LISTING_SERVICE_URL || 'http://localhost:3003', port: 3003 },
-  { name: 'Trust Lens Service',   url: process.env.TRUST_LENS_SERVICE_URL || 'http://localhost:3004', port: 3004 },
+  { name: 'Gateway',              url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000' },
+  { name: 'Auth Service',         url: process.env.AUTH_SERVICE_URL || 'http://localhost:3001' },
+  { name: 'User Service',         url: process.env.USER_SERVICE_URL || 'http://localhost:3002' },
+  { name: 'Listing Service',      url: process.env.LISTING_SERVICE_URL || 'http://localhost:3003' },
+  { name: 'Trust Lens Service',   url: process.env.TRUST_LENS_SERVICE_URL || 'http://localhost:3004' },
 
-  { name: 'Evidence Service',     url: process.env.EVIDENCE_SERVICE_URL || 'http://localhost:3006', port: 3006 },
-  { name: 'Transaction Service',  url: process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007', port: 3007 },
-  { name: 'Notification Service', url: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008', port: 3008 },
+  { name: 'Evidence Service',     url: process.env.EVIDENCE_SERVICE_URL || 'http://localhost:3006' },
+  { name: 'Transaction Service',  url: process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007' },
+  { name: 'Notification Service', url: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008' },
 ];
 
 // RabbitMQ management API
-const RABBITMQ_URL = 'http://localhost:15672';
+const RABBITMQ_URL = process.env.RABBITMQ_MANAGEMENT_URL || 'http://localhost:15672';
 const RABBITMQ_USER = process.env.RABBITMQ_USER || 'veribuy';
 const RABBITMQ_PASS = process.env.RABBITMQ_PASSWORD || 'veribuy_rabbit_dev';
 
@@ -24,7 +24,7 @@ interface ServiceHealth {
   status: 'healthy' | 'unhealthy' | 'degraded';
   responseTime: number;
   details: Record<string, unknown>;
-  port: number;
+  url: string;
 }
 
 interface InfraHealth {
@@ -48,23 +48,23 @@ async function checkService(service: typeof SERVICES[number]): Promise<ServiceHe
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      return { name: service.name, status: 'unhealthy', responseTime, details: data, port: service.port };
+      return { name: service.name, status: 'unhealthy', responseTime, details: data, url: service.url };
     }
 
     // Terminus returns { status: 'ok' | 'error', details: { database: { status: 'up'|'down' } } }
     const dbStatus = data?.details?.database?.status;
     if (dbStatus === 'down') {
-      return { name: service.name, status: 'degraded', responseTime, details: data, port: service.port };
+      return { name: service.name, status: 'degraded', responseTime, details: data, url: service.url };
     }
 
-    return { name: service.name, status: 'healthy', responseTime, details: data, port: service.port };
+    return { name: service.name, status: 'healthy', responseTime, details: data, url: service.url };
   } catch {
     return {
       name: service.name,
       status: 'unhealthy',
       responseTime: Date.now() - start,
       details: { error: 'Connection failed or timed out' },
-      port: service.port,
+      url: service.url,
     };
   }
 }
