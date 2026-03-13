@@ -1,874 +1,1468 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { formatPrice } from '@/lib/currency';
+import { cn } from '@/lib/utils';
+import {
+  LayoutDashboard,
+  List,
+  ShoppingBag,
+  ShoppingCart,
+  DollarSign,
+  BarChart2,
+  Star,
+  ArrowUpRight,
+  Package,
+  Truck,
+  AlertCircle,
+  ShieldCheck,
+  ChevronRight,
+  Plus,
+  Menu,
+  X,
+  LogOut,
+  Search,
+  Eye,
+  UserCircle,
+  Settings,
+  Lock,
+  Bell,
+  Save,
+  RotateCcw,
+} from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
+// ─────────────────────────────────────────────
 // Types
-interface UserProfile {
-  id: string;
-  userId: string;
-  displayName: string;
-  firstName?: string;
-  lastName?: string;
-  bio?: string;
-  avatarUrl?: string;
-  phone?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+// ─────────────────────────────────────────────
 
 interface Listing {
   id: string;
   title: string;
-  description: string;
+  brand: string;
+  model: string;
   price: number;
   currency: string;
   status: string;
-  deviceType: string;
-  brand: string;
-  model: string;
-  conditionGrade: string;
   trustLensStatus: string;
+  conditionGrade: string | null;
   viewCount: number;
   createdAt: string;
-  updatedAt: string;
 }
-
-type OrderStatus = 'PENDING' | 'PAYMENT_RECEIVED' | 'ESCROW_HELD' | 'SHIPPED' | 'DELIVERED' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED' | 'DISPUTED';
 
 interface Order {
   id: string;
   amount: number;
   currency: string;
-  status: OrderStatus;
-  trackingNumber?: string;
+  status: string;
   createdAt: string;
-  paidAt?: string;
   shippedAt?: string;
   deliveredAt?: string;
   completedAt?: string;
+  buyer?: { displayName: string; email: string } | null;
+  seller?: { displayName: string; email: string } | null;
+  listing?: { title: string; brand: string; model: string } | null;
 }
 
-type TabType = 'overview' | 'listings' | 'orders' | 'profile';
+interface VerificationRequest {
+  id: string;
+  listingId: string;
+  status: string;
+  createdAt: string;
+}
 
-// ---------------------------------------------------------------------------
-// Trust Lens verification badge shown on each seller listing card
-// ---------------------------------------------------------------------------
+type NavId = 'dashboard' | 'listings' | 'purchases' | 'sales' | 'earnings' | 'analytics' | 'profile' | 'settings';
 
-function TrustLensBadge({ status }: { status: string }) {
-  if (!status) return null;
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
 
-  const configs: Record<string, { label: string; className: string; icon: string }> = {
-    PASSED: {
-      label: 'Verification Passed',
-      className: 'bg-green-50 text-green-700 border border-green-200',
-      icon: '✓',
-    },
-    REQUIRES_REVIEW: {
-      label: 'Under Review',
-      className: 'bg-amber-50 text-amber-700 border border-amber-200',
-      icon: '⏳',
-    },
-    FAILED: {
-      label: 'Verification Failed',
-      className: 'bg-red-50 text-red-700 border border-red-200',
-      icon: '✕',
-    },
-    PENDING: {
-      label: 'Verification Pending',
-      className: 'bg-gray-50 text-gray-600 border border-gray-200',
-      icon: '○',
-    },
-  };
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  PENDING:          { label: 'Pending',    className: 'bg-amber-100 text-amber-800' },
+  PAYMENT_RECEIVED: { label: 'Processing', className: 'bg-blue-100 text-blue-800' },
+  ESCROW_HELD:      { label: 'In Escrow',  className: 'bg-blue-100 text-blue-800' },
+  SHIPPED:          { label: 'Shipped',    className: 'bg-purple-100 text-purple-800' },
+  DELIVERED:        { label: 'Delivered',  className: 'bg-indigo-100 text-indigo-800' },
+  COMPLETED:        { label: 'Completed',  className: 'bg-green-100 text-green-800' },
+  CANCELLED:        { label: 'Cancelled',  className: 'bg-gray-100 text-gray-600' },
+  REFUNDED:         { label: 'Refunded',   className: 'bg-gray-100 text-gray-600' },
+  DISPUTED:         { label: 'Disputed',   className: 'bg-red-100 text-red-700' },
+};
 
-  const config = configs[status] ?? {
-    label: status,
-    className: 'bg-gray-50 text-gray-500 border border-gray-200',
-    icon: '○',
-  };
+const TRUST_BADGE: Record<string, { label: string; className: string }> = {
+  PASSED:      { label: 'Verified',    className: 'bg-green-100 text-green-800' },
+  IN_PROGRESS: { label: 'In Progress', className: 'bg-blue-100 text-blue-800' },
+  FAILED:      { label: 'Failed',      className: 'bg-red-100 text-red-700' },
+  PENDING:     { label: 'Pending',     className: 'bg-amber-100 text-amber-800' },
+};
 
+const REVENUE_STATUSES = ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'];
+
+function buildSalesChart(orders: Order[]): { date: string; revenue: number }[] {
+  const days = 30;
+  const map = new Map<string, number>();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    map.set(d.toISOString().split('T')[0], 0);
+  }
+  orders.filter(o => REVENUE_STATUSES.includes(o.status)).forEach(o => {
+    const key = new Date(o.createdAt).toISOString().split('T')[0];
+    if (map.has(key)) map.set(key, (map.get(key) ?? 0) + Number(o.amount));
+  });
+  let running = 0;
+  return Array.from(map.entries()).map(([date, rev]) => {
+    running += rev;
+    return {
+      date: new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+      revenue: Math.round(running),
+    };
+  });
+}
+
+function StarRating({ value }: { value: number }) {
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mb-3 ${config.className}`}>
-      <span aria-hidden="true">{config.icon}</span>
-      {config.label}
-    </div>
+    <span className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map(i => (
+        <Star
+          key={i}
+          className={cn(
+            'w-4 h-4',
+            i <= Math.floor(value)
+              ? 'text-amber-400 fill-amber-400'
+              : i - 0.5 <= value
+                ? 'text-amber-400 fill-amber-200'
+                : 'text-[var(--color-border)] fill-[var(--color-surface-alt)]',
+          )}
+          aria-hidden="true"
+        />
+      ))}
+    </span>
   );
 }
+
+// ─────────────────────────────────────────────
+// Main Component
+// ─────────────────────────────────────────────
 
 function DashboardContent() {
-  const { user } = useAuth();
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
-  
-  // State
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { user, logout, authFetch } = useAuth();
+  const searchParams = useSearchParams();
+  const validTabs: NavId[] = ['dashboard', 'purchases', 'listings', 'sales', 'earnings', 'analytics', 'profile', 'settings'];
+  const initialTab = validTabs.includes(searchParams.get('tab') as NavId) ? (searchParams.get('tab') as NavId) : 'dashboard';
+  const [activeNav, setActiveNav] = useState<NavId>(initialTab);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
   const [listings, setListings] = useState<Listing[]>([]);
-  const [buyingOrders, setBuyingOrders] = useState<Order[]>([]);
-  const [sellingOrders, setSellingOrders] = useState<Order[]>([]);
-  const [ordersTab, setOrdersTab] = useState<'buying' | 'selling'>('buying');
-  
-  // Loading states
-  const [loadingProfile, setLoadingProfile] = useState(false);
-  const [loadingListings, setLoadingListings] = useState(false);
-  const [loadingOrders, setLoadingOrders] = useState(false);
-  const [deletingListingId, setDeletingListingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [sellerOrders, setSellerOrders] = useState<Order[]>([]);
+  const [buyerOrders, setBuyerOrders] = useState<Order[]>([]);
+  const [verifications, setVerifications] = useState<VerificationRequest[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // DATA-05: Consolidated mount effect — run fetchProfile and fetchOverviewData
-  // in parallel on first load so a single network round-trip latency doesn't
-  // serialise the two independent requests.
+  // Profile state
+  const [profileDisplayName, setProfileDisplayName] = useState('');
+  const [profileFirstName, setProfileFirstName] = useState('');
+  const [profileLastName, setProfileLastName] = useState('');
+  const [profilePhone, setProfilePhone] = useState('');
+  const [profileBio, setProfileBio] = useState('');
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  // Settings / security state
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [securitySuccess, setSecuritySuccess] = useState('');
+  const [securityError, setSecurityError] = useState('');
+
+  // Notification preferences
+  const [notifListingUpdates, setNotifListingUpdates] = useState(true);
+  const [notifOrders, setNotifOrders] = useState(true);
+  const [notifTrustLens, setNotifTrustLens] = useState(true);
+  const [notifMarketing, setNotifMarketing] = useState(false);
+  const [notifMessages, setNotifMessages] = useState(true);
+  const [notifPriceAlerts, setNotifPriceAlerts] = useState(false);
+
+  const fetchAll = useCallback(async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    try {
+      const [listRes, sellerOrdRes, buyerOrdRes, verRes] = await Promise.all([
+        authFetch(`/api/listings?sellerId=${user.id}`),
+        authFetch(`/api/checkout/orders/seller/${user.id}`),
+        authFetch(`/api/checkout/orders/buyer/${user.id}`),
+        authFetch('/api/trust-lens?limit=100'),
+      ]);
+      if (listRes.ok) {
+        const d = await listRes.json();
+        setListings(Array.isArray(d) ? d : (d.data ?? []));
+      }
+      if (sellerOrdRes.ok) {
+        const d = await sellerOrdRes.json();
+        setSellerOrders(Array.isArray(d) ? d : (d.data ?? []));
+      }
+      if (buyerOrdRes.ok) {
+        const d = await buyerOrdRes.json();
+        setBuyerOrders(Array.isArray(d) ? d : (d.data ?? []));
+      }
+      if (verRes.ok) {
+        const d = await verRes.json();
+        setVerifications(Array.isArray(d) ? d : (d.data ?? []));
+      }
+    } catch (e) {
+      console.error('Dashboard fetch error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id, authFetch]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // ── Profile fetch/save ──
+  const fetchProfile = useCallback(async () => {
+    if (!user?.id) return;
+    setProfileLoading(true);
+    setProfileError('');
+    try {
+      const res = await fetch(`/api/users/${user.id}/profile`, { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setProfileDisplayName(data.displayName ?? '');
+        setProfileFirstName(data.firstName ?? '');
+        setProfileLastName(data.lastName ?? '');
+        setProfilePhone(data.phone ?? '');
+        setProfileBio(data.bio ?? '');
+      } else if (res.status === 404) {
+        // No profile yet -- seed from auth context
+        const name = user.name ?? '';
+        const parts = name.split(' ');
+        setProfileFirstName(parts[0] ?? '');
+        setProfileLastName(parts.slice(1).join(' '));
+        setProfileDisplayName(name);
+      }
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+      setProfileError('Failed to load profile');
+    } finally {
+      setProfileLoading(false);
+      setProfileLoaded(true);
+    }
+  }, [user?.id, user?.name]);
+
+  // Load profile when navigating to profile tab
   useEffect(() => {
-    if (!user?.id) return;
-    Promise.all([fetchProfile(), fetchOverviewData()]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  // Fetch data on tab change (skip overview — already fetched on mount)
-  useEffect(() => {
-    if (!user?.id) return;
-
-    if (activeTab === 'listings') {
-      fetchListings();
-    } else if (activeTab === 'orders') {
-      fetchOrders();
+    if (activeNav === 'profile' && !profileLoaded) {
+      fetchProfile();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, user?.id]);
+  }, [activeNav, profileLoaded, fetchProfile]);
 
-  const fetchOverviewData = async () => {
-    // Fetch basic stats for overview
-    if (user?.id) {
-      setLoadingListings(true);
-      setLoadingOrders(true);
-      
-      try {
-        // Fetch listings count
-        const listingsRes = await fetch(`/api/listings?sellerId=${user.id}`, { credentials: 'include' });
-        if (listingsRes.ok) {
-          const data = await listingsRes.json();
-          setListings(Array.isArray(data) ? data : (data.data || []));
-        }
-      } catch (error) {
-        console.error('Error fetching listings:', error);
-      } finally {
-        setLoadingListings(false);
-      }
-
-      try {
-        // Fetch orders count — BFF returns { data: Order[], pagination: {} }
-        const buyingRes = await fetch(`/api/checkout/orders/buyer/${user.id}`, { credentials: 'include' });
-        if (buyingRes.ok) {
-          const buyingData = await buyingRes.json();
-          setBuyingOrders(Array.isArray(buyingData) ? buyingData : (buyingData.data ?? []));
-        }
-
-        const sellingRes = await fetch(`/api/checkout/orders/seller/${user.id}`, { credentials: 'include' });
-        if (sellingRes.ok) {
-          const sellingData = await sellingRes.json();
-          setSellingOrders(Array.isArray(sellingData) ? sellingData : (sellingData.data ?? []));
-        }
-      } catch (error) {
-        console.error('Error fetching orders:', error);
-      } finally {
-        setLoadingOrders(false);
-      }
-    }
-  };
-
-  const fetchProfile = async () => {
-    if (!user?.id) return;
-    setLoadingProfile(true);
+  const handleProfileSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileSuccess('');
+    setProfileError('');
+    setProfileSaving(true);
     try {
-      const response = await fetch(`/api/users/${user.id}/profile`, { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setProfile(data);
+      const res = await fetch(`/api/users/${user?.id}/profile`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          displayName: profileDisplayName.trim() || `${profileFirstName} ${profileLastName}`.trim(),
+          firstName: profileFirstName.trim(),
+          lastName: profileLastName.trim(),
+          phone: profilePhone.trim(),
+          bio: profileBio.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to save profile');
       }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
+      setProfileSuccess('Profile updated successfully!');
+      setTimeout(() => setProfileSuccess(''), 3000);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to save profile';
+      setProfileError(message);
     } finally {
-      setLoadingProfile(false);
+      setProfileSaving(false);
     }
   };
 
-  const fetchListings = async () => {
-    if (!user?.id) return;
-    setLoadingListings(true);
-    try {
-      const response = await fetch(`/api/listings?sellerId=${user.id}`, { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setListings(Array.isArray(data) ? data : (data.data || []));
-      }
-    } catch (error) {
-      console.error('Error fetching listings:', error);
-    } finally {
-      setLoadingListings(false);
-    }
-  };
-
-  const fetchOrders = async () => {
-    if (!user?.id) return;
-    setLoadingOrders(true);
-    try {
-      const buyingRes = await fetch(`/api/checkout/orders/buyer/${user.id}`, { credentials: 'include' });
-      if (buyingRes.ok) {
-        const buyingData = await buyingRes.json();
-        // Handle paginated response (backend returns { data: [], pagination: {} })
-        setBuyingOrders(Array.isArray(buyingData) ? buyingData : (buyingData.data || []));
-      }
-
-      const sellingRes = await fetch(`/api/checkout/orders/seller/${user.id}`, { credentials: 'include' });
-      if (sellingRes.ok) {
-        const sellingData = await sellingRes.json();
-        // Handle paginated response (backend returns { data: [], pagination: {} })
-        setSellingOrders(Array.isArray(sellingData) ? sellingData : (sellingData.data || []));
-      }
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-    } finally {
-      setLoadingOrders(false);
-    }
-  };
-
-  // Computed stats
-  const activeListings = listings.filter(l => l.status === 'ACTIVE').length;
-  const pendingOrders = [...buyingOrders, ...sellingOrders].filter(o => o.status === 'PENDING' || o.status === 'PAYMENT_RECEIVED' || o.status === 'ESCROW_HELD').length;
-  const completedOrders = [...buyingOrders, ...sellingOrders].filter(o => o.status === 'COMPLETED').length;
-  
-  // Display name priority: profile.displayName > first word of user.name (excluding common titles) > 'User'
-  const getDisplayName = () => {
-    if (profile?.displayName) return profile.displayName;
-    if (user?.name) {
-      // Extract first name, filtering out common titles/roles
-      const firstName = user.name.split(' ')[0];
-      const commonTitles = ['Admin', 'User', 'Test', 'Demo'];
-      // If first word is a common title and there's a second word, use the second word
-      if (commonTitles.includes(firstName) && user.name.split(' ').length > 1) {
-        return user.name.split(' ')[1];
-      }
-      return firstName;
-    }
-    return 'User';
-  };
-  const displayName = getDisplayName();
-
-  const handleDeleteListing = async (listingId: string) => {
-    setDeleteError(null);
-    if (!window.confirm('Are you sure you want to delete this listing? This action cannot be undone.')) {
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecuritySuccess('');
+    setSecurityError('');
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setSecurityError('Please fill in all password fields.');
       return;
     }
-
-    setDeletingListingId(listingId);
+    if (newPassword.length < 8) {
+      setSecurityError('New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setSecurityError('New passwords do not match.');
+      return;
+    }
+    setPasswordLoading(true);
     try {
-      const response = await fetch(`/api/listings/${listingId}`, {
-        method: 'DELETE',
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({ currentPassword, newPassword }),
       });
-
-      if (!response.ok) {
-        const data = await response.json();
-        setDeleteError(data.error || 'Failed to delete listing. Please try again.');
-        return;
+      if (res.ok) {
+        setSecuritySuccess('Password updated successfully.');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setTimeout(() => setSecuritySuccess(''), 4000);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setSecurityError(data.error || data.message || 'Failed to update password.');
       }
-
-      setListings(prev => prev.filter(l => l.id !== listingId));
-    } catch (error) {
-      console.error('Error deleting listing:', error);
-      setDeleteError('An error occurred while deleting the listing. Please try again.');
+    } catch {
+      setSecurityError('An error occurred. Please try again.');
     } finally {
-      setDeletingListingId(null);
+      setPasswordLoading(false);
     }
   };
 
-  // Tab rendering functions
-  const renderOverview = () => (
+  // ── Computed stats ──
+  const totalSales = sellerOrders
+    .filter(o => REVENUE_STATUSES.includes(o.status))
+    .reduce((sum, o) => sum + Number(o.amount), 0);
+
+  const totalSpent = buyerOrders
+    .filter(o => REVENUE_STATUSES.includes(o.status))
+    .reduce((sum, o) => sum + Number(o.amount), 0);
+
+  const activeListings = listings.filter(l => l.status === 'ACTIVE').length;
+  const chartData = buildSalesChart(sellerOrders);
+  const recentSellerOrders = [...sellerOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
+  const recentBuyerOrders = [...buyerOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
+  const needsShipment = sellerOrders.filter(o => o.status === 'ESCROW_HELD');
+  const inspecting = verifications.filter(v => v.status === 'IN_PROGRESS').length;
+  const awaitingInspection = verifications.filter(v => v.status === 'PENDING').length;
+
+  const displayName = (() => {
+    if (user?.name) {
+      const parts = user.name.split(' ');
+      const skip = ['Admin', 'User', 'Test', 'Demo'];
+      return skip.includes(parts[0]) && parts.length > 1 ? parts[1] : parts[0];
+    }
+    return 'there';
+  })();
+
+  const navItems: { id: NavId; label: string; icon: typeof LayoutDashboard; dividerBefore?: boolean }[] = [
+    { id: 'dashboard',  label: 'Overview',     icon: LayoutDashboard },
+    { id: 'purchases',  label: 'My Purchases', icon: ShoppingCart },
+    { id: 'listings',   label: 'My Listings',  icon: List },
+    { id: 'sales',      label: 'Sales',        icon: ShoppingBag },
+    { id: 'earnings',   label: 'Earnings',     icon: DollarSign },
+    { id: 'analytics',  label: 'Analytics',    icon: BarChart2 },
+    { id: 'profile',    label: 'My Profile',   icon: UserCircle, dividerBefore: true },
+    { id: 'settings',   label: 'Settings',     icon: Settings },
+  ];
+
+  // ─────────────────────────────────────────────
+  // OVERVIEW (Dashboard) VIEW
+  // ─────────────────────────────────────────────
+
+  const renderDashboard = () => (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-dark)] rounded-xl shadow-sm p-8 text-white">
-        <h1 className="text-3xl font-bold mb-2">Welcome back, {displayName}!</h1>
-        <p className="text-white/90">
-          Here's what's happening with your account
-        </p>
-      </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-[var(--color-border)]">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-[var(--color-text-muted)]">Active Listings</p>
-            <span aria-hidden="true" className="text-2xl">📦</span>
+      {/* ── Stat cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-[var(--color-green)]/10 flex items-center justify-center">
+              <DollarSign className="w-4 h-4 text-[var(--color-green)]" aria-hidden="true" />
+            </div>
+            <span className="text-sm text-[var(--color-text-muted)] font-medium">Total Sales</span>
           </div>
-          <p className="text-3xl font-bold text-[var(--color-primary)]">{activeListings}</p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            {activeListings === 0 ? 'Create your first listing' : `${listings.length} total listings`}
-          </p>
+          <p className="text-2xl font-bold text-[var(--color-text)]">{formatPrice(totalSales, 'GBP')}</p>
+          {totalSales > 0 && <p className="text-xs text-[var(--color-green)] font-semibold mt-1 flex items-center gap-1"><ArrowUpRight className="w-3 h-3" /> From your listings</p>}
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-[var(--color-border)]">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-[var(--color-text-muted)]">Pending Orders</p>
-            <span aria-hidden="true" className="text-2xl">⏳</span>
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+              <ShoppingCart className="w-4 h-4 text-blue-600" aria-hidden="true" />
+            </div>
+            <span className="text-sm text-[var(--color-text-muted)] font-medium">Total Spent</span>
           </div>
-          <p className="text-3xl font-bold text-orange-600">{pendingOrders}</p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            {pendingOrders === 0 ? 'No pending orders' : 'Awaiting action'}
-          </p>
+          <p className="text-2xl font-bold text-[var(--color-text)]">{formatPrice(totalSpent, 'GBP')}</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">{buyerOrders.length} purchase{buyerOrders.length !== 1 ? 's' : ''}</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-[var(--color-border)]">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-[var(--color-text-muted)]">Completed Orders</p>
-            <span aria-hidden="true" className="text-2xl">✅</span>
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center">
+              <Package className="w-4 h-4 text-[var(--color-text-muted)]" aria-hidden="true" />
+            </div>
+            <span className="text-sm text-[var(--color-text-muted)] font-medium">Active Listings</span>
           </div>
-          <p className="text-3xl font-bold text-green-600">{completedOrders}</p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            {completedOrders === 0 ? 'No completed orders yet' : 'Successfully completed'}
-          </p>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-dark)] rounded-xl shadow-sm p-8 text-white">
-          <h2 className="font-bold text-2xl mb-3">Browse Devices</h2>
-          <p className="mb-6 text-white/90">Find verified electronics from trusted sellers</p>
-          <Link
-            href="/browse"
-            className="inline-block bg-white text-[var(--color-accent-dark)] hover:bg-[var(--color-warm-beige)] px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            Start Shopping
-          </Link>
+          <p className="text-2xl font-bold text-[var(--color-text)]">{activeListings}</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">{listings.length} total</p>
         </div>
 
-        <div className="bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-dark)] rounded-xl shadow-sm p-8 text-white">
-          <h2 className="font-bold text-2xl mb-3">Sell Your Device</h2>
-          <p className="mb-6 text-white/90">List your device and reach thousands of verified buyers</p>
-          <Link
-            href="/listings/create"
-            className="inline-block bg-white text-[var(--color-primary)] hover:bg-[var(--color-warm-beige)] px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            Create Listing
-          </Link>
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+              <Star className="w-4 h-4 text-amber-400 fill-amber-400" aria-hidden="true" />
+            </div>
+            <span className="text-sm text-[var(--color-text-muted)] font-medium">Seller Rating</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <p className="text-2xl font-bold text-[var(--color-text)]">4.8</p>
+            <StarRating value={4.8} />
+          </div>
         </div>
       </div>
 
-      {/* Recent Activity */}
-      <div className="bg-white rounded-xl shadow-sm p-6 border border-[var(--color-border)]">
-        <h2 className="font-bold text-xl mb-4">Recent Activity</h2>
-        {buyingOrders.length === 0 && sellingOrders.length === 0 && listings.length === 0 ? (
-          <div className="text-center py-8">
-            <div aria-hidden="true" className="text-6xl mb-4">📊</div>
-            <p className="text-[var(--color-text-muted)]">No recent activity to show</p>
+      {/* ── Sales chart ── */}
+      {(totalSales > 0 || sellerOrders.length > 0) && (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+          <h2 className="font-bold text-[var(--color-text)] mb-4">Sales Overview (Last 30 Days)</h2>
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#2D7A4F" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#2D7A4F" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E3E3E3" />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 11, fill: '#565959' }}
+                axisLine={false}
+                tickLine={false}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                tickFormatter={v => `£${(v / 1000).toFixed(0)}k`}
+                tick={{ fontSize: 11, fill: '#565959' }}
+                axisLine={false}
+                tickLine={false}
+                width={40}
+              />
+              <Tooltip
+                formatter={(v: number | undefined) => [formatPrice(v ?? 0, 'GBP'), 'Revenue']}
+                contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12 }}
+              />
+              <Area
+                type="monotone"
+                dataKey="revenue"
+                stroke="#2D7A4F"
+                strokeWidth={2}
+                fill="url(#salesGradient)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* ── Bottom row: Recent Purchases + Right widgets ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Recent Purchases table -- 2 cols */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
+          <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
+            <h2 className="font-bold text-[var(--color-text)]">Recent Purchases</h2>
+            <button
+              onClick={() => handleNavClick('purchases')}
+              className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1"
+            >
+              View all <ArrowUpRight className="w-3 h-3" aria-hidden="true" />
+            </button>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {buyingOrders.slice(0, 3).map(order => (
-              <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]/50">
+                  <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Order</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Item</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--color-border)]/30">
+                {loading ? (
+                  <tr><td colSpan={6} className="px-5 py-8 text-center text-[var(--color-text-muted)] text-sm">Loading purchases...</td></tr>
+                ) : recentBuyerOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-5 py-12 text-center">
+                      <ShoppingCart className="w-8 h-8 text-[var(--color-border)] mx-auto mb-2" aria-hidden="true" />
+                      <p className="text-sm text-[var(--color-text-muted)]">No purchases yet</p>
+                      <Link href="/browse" className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-semibold mt-1 inline-block">
+                        Browse devices
+                      </Link>
+                    </td>
+                  </tr>
+                ) : (
+                  recentBuyerOrders.map(order => {
+                    const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.PENDING;
+                    return (
+                      <tr key={order.id} className="hover:bg-[var(--color-surface-alt)]/50">
+                        <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">
+                          #{order.id.slice(0, 8).toUpperCase()}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--color-text-muted)] text-xs">
+                          {new Date(order.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--color-text)] font-medium text-xs truncate max-w-[140px]">
+                          {order.listing?.title ?? (`${order.listing?.brand ?? ''} ${order.listing?.model ?? ''}`.trim() || 'Device')}
+                        </td>
+                        <td className="px-4 py-3 text-xs font-semibold text-[var(--color-text)]">
+                          {formatPrice(order.amount, order.currency)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={cn('px-2.5 py-1 text-xs font-medium rounded-full', badge.className)}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
+                            {order.status === 'SHIPPED' ? 'Track' : 'Details'}
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right column widgets */}
+        <div className="space-y-4">
+
+          {/* Shipment Required (only if there are items to ship) */}
+          {needsShipment.length > 0 && (
+            <div className="bg-red-50 rounded-xl border border-red-200 p-5">
+              <div className="flex items-start gap-3 mb-2">
+                <AlertCircle className="w-5 h-5 text-[var(--color-danger)] shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
-                  <p className="text-sm font-medium">Purchase Order #{order.id.substring(0, 8)}</p>
-                  <p className="text-xs text-gray-600">
-                    {new Date(order.createdAt).toLocaleDateString()}
+                  <h3 className="font-bold text-[var(--color-text)] text-sm">Shipment Required</h3>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">
+                    {needsShipment.length} order{needsShipment.length > 1 ? 's' : ''} need{needsShipment.length === 1 ? 's' : ''} to be shipped.
                   </p>
                 </div>
-                <span className="text-sm font-semibold text-[var(--color-primary)]">
-                  {formatPrice(order.amount, order.currency)}
-                </span>
               </div>
-            ))}
-            {sellingOrders.slice(0, 3).map(order => (
-              <div key={order.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium">Sale Order #{order.id.substring(0, 8)}</p>
-                  <p className="text-xs text-gray-600">
-                    {new Date(order.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-                <span className="text-sm font-semibold text-green-600">
-                  {formatPrice(order.amount, order.currency)}
-                </span>
+              <button
+                onClick={() => handleNavClick('sales')}
+                className="text-xs font-semibold text-[var(--color-green)] hover:text-[var(--color-green-dark)]"
+              >
+                View Sales
+              </button>
+            </div>
+          )}
+
+          {/* Verification Status */}
+          <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-[var(--color-green)]/10 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-4 h-4 text-[var(--color-green)]" aria-hidden="true" />
               </div>
-            ))}
+              <h3 className="font-bold text-[var(--color-text)] text-sm">Verification Pipeline</h3>
+            </div>
+
+            <div className="w-full bg-[var(--color-surface-alt)] rounded-full h-2 mb-3">
+              {(() => {
+                const total = inspecting + awaitingInspection;
+                const pct = total > 0 ? Math.round((inspecting / total) * 100) : 0;
+                return (
+                  <div
+                    className="bg-[var(--color-green)] h-2 rounded-full transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                );
+              })()}
+            </div>
+
+            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+              {inspecting > 0 ? `${inspecting} item${inspecting > 1 ? 's' : ''} being inspected.` : 'No items being inspected.'}
+              {awaitingInspection > 0 && <><br />{awaitingInspection} awaiting inspection.</>}
+            </p>
           </div>
-        )}
+
+          {/* Quick actions */}
+          <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+            <h3 className="font-bold text-[var(--color-text)] text-sm mb-3">Quick Actions</h3>
+            <div className="space-y-2">
+              <Link
+                href="/listings/create"
+                className="flex items-center gap-2 text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-green)] transition-colors py-1"
+              >
+                <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+                Create a listing
+              </Link>
+              <Link
+                href="/browse"
+                className="flex items-center gap-2 text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-green)] transition-colors py-1"
+              >
+                <Search className="w-3.5 h-3.5" aria-hidden="true" />
+                Browse devices
+              </Link>
+              <Link
+                href="/orders"
+                className="flex items-center gap-2 text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-green)] transition-colors py-1"
+              >
+                <Truck className="w-3.5 h-3.5" aria-hidden="true" />
+                View all orders
+              </Link>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );
 
-  const renderListings = () => (
-    <div className="space-y-6">
+  // ─────────────────────────────────────────────
+  // MY PURCHASES VIEW
+  // ─────────────────────────────────────────────
+
+  const renderPurchases = () => (
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold">My Listings</h2>
+        <h2 className="text-xl font-bold text-[var(--color-text)]">My Purchases</h2>
         <Link
-          href="/listings/create"
-          className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-6 py-2.5 rounded-lg font-semibold transition-colors"
+          href="/browse"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--color-primary-dark)] transition-colors"
         >
-          + Create Listing
+          <Search className="w-4 h-4" aria-hidden="true" />
+          Browse Devices
         </Link>
       </div>
 
-      {/* Delete error banner */}
-      {deleteError && (
-        <div
-          role="alert"
-          className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-800 rounded-lg px-4 py-3 text-sm"
-        >
-          <span aria-hidden="true" className="mt-0.5 shrink-0">&#9888;</span>
-          <span className="flex-1">{deleteError}</span>
-          <button
-            onClick={() => setDeleteError(null)}
-            aria-label="Dismiss error"
-            className="shrink-0 text-red-500 hover:text-red-700 font-bold leading-none"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-
-      {loadingListings ? (
-        <div role="status" className="text-center py-12">
-          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
-          <span className="sr-only">Loading listings...</span>
-          <p aria-hidden="true" className="mt-4 text-gray-600">Loading listings...</p>
-        </div>
-      ) : listings.length === 0 ? (
-        <div className="bg-white rounded-lg shadow-md p-12 text-center">
-          <div aria-hidden="true" className="text-6xl mb-4">📦</div>
-          <h3 className="text-2xl font-bold text-gray-800 mb-2">No Listings Yet</h3>
-          <p className="text-gray-600 mb-6">Create your first listing to start selling!</p>
-          <Link
-            href="/listings/create"
-            className="inline-block bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-          >
-            Create Your First Listing
+      {loading ? (
+        <div className="text-center py-12 text-[var(--color-text-muted)]">Loading...</div>
+      ) : buyerOrders.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-12 text-center">
+          <ShoppingCart className="w-10 h-10 text-[var(--color-border)] mx-auto mb-3" aria-hidden="true" />
+          <p className="text-[var(--color-text-muted)] font-medium">No purchases yet</p>
+          <Link href="/browse" className="text-[var(--color-green)] text-sm font-semibold mt-2 inline-block hover:underline">
+            Start browsing verified devices
           </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {listings.map(listing => (
-            <div key={listing.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="font-semibold text-lg line-clamp-2 pr-2">{listing.title}</h3>
-                  <span className={`shrink-0 px-2 py-1 text-xs rounded-full ${
-                    listing.status === 'ACTIVE' ? 'bg-green-100 text-green-700' :
-                    listing.status === 'PENDING_VERIFICATION' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
-                    {listing.status === 'PENDING_VERIFICATION' ? 'Pending' : listing.status}
-                  </span>
-                </div>
-
-                {/* Trust Lens verification badge */}
-                <TrustLensBadge status={listing.trustLensStatus} />
-
-                <p className="text-2xl font-bold text-[var(--color-primary)] mb-2">
-                  {formatPrice(listing.price, listing.currency)}
-                </p>
-                
-                <div className="text-sm text-gray-600 space-y-1 mb-4">
-                  <p>{listing.brand} {listing.model}</p>
-                  <p className="text-xs">Condition: Grade {listing.conditionGrade}</p>
-                  <p className="text-xs">Views: {listing.viewCount}</p>
-                </div>
-                
-                <div className="space-y-2">
-                  <Link
-                    href={`/listings/${listing.id}`}
-                    className="block text-center bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-                  >
-                    View Listing
-                  </Link>
-                  <Link
-                    href={`/listings/${listing.id}/edit`}
-                    className="block text-center border border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-blue-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
-                  >
-                    Edit
-                  </Link>
-                  <button
-                    onClick={() => handleDeleteListing(listing.id)}
-                    disabled={deletingListingId === listing.id}
-                    className="w-full text-center border border-red-300 text-red-600 hover:bg-red-50 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {deletingListingId === listing.id ? 'Deleting...' : 'Delete'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]/50">
+                <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Order</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Item</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Amount</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border)]/30">
+              {buyerOrders.map(order => {
+                const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.PENDING;
+                const actionLabel =
+                  order.status === 'SHIPPED' ? 'Track Shipment' :
+                  order.status === 'DELIVERED' ? 'Confirm Receipt' :
+                  order.status === 'COMPLETED' ? 'Leave Review' : 'View Details';
+                return (
+                  <tr key={order.id} className="hover:bg-[var(--color-surface-alt)]/50">
+                    <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">
+                      #{order.id.slice(0, 8).toUpperCase()}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
+                      {new Date(order.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--color-text)] font-medium text-xs truncate max-w-[200px]">
+                      {order.listing?.title ?? (`${order.listing?.brand ?? ''} ${order.listing?.model ?? ''}`.trim() || 'Device')}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-semibold text-[var(--color-text)]">
+                      {formatPrice(order.amount, order.currency)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn('px-2.5 py-1 text-xs font-medium rounded-full', badge.className)}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1">
+                        {actionLabel} <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   );
 
-  const getStatusColor = (status: OrderStatus) => {
-    const colors: Record<OrderStatus, string> = {
-      PENDING: 'bg-yellow-100 text-yellow-700',
-      PAYMENT_RECEIVED: 'bg-blue-100 text-blue-700',
-      ESCROW_HELD: 'bg-blue-100 text-blue-700',
-      SHIPPED: 'bg-purple-100 text-purple-700',
-      DELIVERED: 'bg-indigo-100 text-indigo-700',
-      COMPLETED: 'bg-green-100 text-green-700',
-      CANCELLED: 'bg-red-100 text-red-700',
-      REFUNDED: 'bg-gray-100 text-gray-700',
-      DISPUTED: 'bg-orange-100 text-orange-700',
-    };
-    return colors[status];
-  };
+  // ─────────────────────────────────────────────
+  // MY LISTINGS VIEW
+  // ─────────────────────────────────────────────
 
-  // Human-readable status label
-  const getStatusLabel = (status: OrderStatus): string => {
-    const labels: Record<OrderStatus, string> = {
-      PENDING: 'Pending',
-      PAYMENT_RECEIVED: 'Payment Received',
-      ESCROW_HELD: 'Payment in Escrow',
-      SHIPPED: 'Shipped',
-      DELIVERED: 'Delivered',
-      COMPLETED: 'Completed',
-      CANCELLED: 'Cancelled',
-      REFUNDED: 'Refunded',
-      DISPUTED: 'Disputed',
-    };
-    return labels[status];
-  };
+  const renderListings = () => (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-[var(--color-text)]">My Listings</h2>
+        <Link
+          href="/listings/create"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--color-primary-dark)] transition-colors"
+        >
+          <Plus className="w-4 h-4" aria-hidden="true" />
+          New Listing
+        </Link>
+      </div>
 
-  // Contextual CTA link label + destination based on role and status
-  const getOrderAction = (
-    order: Order,
-    role: 'buying' | 'selling',
-  ): { label: string; href: string } => {
-    const base = `/orders/${order.id}`;
-    if (role === 'selling' && order.status === 'ESCROW_HELD') {
-      return { label: 'Mark as Shipped', href: base };
-    }
-    if (order.status === 'SHIPPED' || order.status === 'DELIVERED') {
-      return { label: 'Track Order', href: `${base}/tracking` };
-    }
-    return { label: 'View Details', href: base };
-  };
-
-  // Latest meaningful timestamp for the order
-  const getOrderTimestamp = (order: Order): string => {
-    const ts = order.completedAt ?? order.deliveredAt ?? order.shippedAt ?? order.paidAt ?? order.createdAt;
-    return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-  };
-
-  const renderOrders = () => {
-    const orders = ordersTab === 'buying' ? buyingOrders : sellingOrders;
-    
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">My Orders</h2>
-          <Link
-            href="/orders"
-            className="text-sm text-[var(--color-primary)] hover:underline"
-          >
-            View all orders <span aria-hidden="true">→</span>
+      {loading ? (
+        <div className="text-center py-12 text-[var(--color-text-muted)]">Loading...</div>
+      ) : listings.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-12 text-center">
+          <Package className="w-10 h-10 text-[var(--color-border)] mx-auto mb-3" aria-hidden="true" />
+          <p className="text-[var(--color-text-muted)] font-medium">No listings yet</p>
+          <Link href="/listings/create" className="text-[var(--color-green)] text-sm font-semibold mt-2 inline-block hover:underline">
+            Create your first listing
           </Link>
         </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]/50">
+                <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Listing</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Price</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Verification</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Views</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border)]/30">
+              {listings.map(l => {
+                const trustBadge = TRUST_BADGE[l.trustLensStatus] ?? TRUST_BADGE.PENDING;
+                return (
+                  <tr key={l.id} className="hover:bg-[var(--color-surface-alt)]/50">
+                    <td className="px-5 py-3 max-w-[200px]">
+                      <p className="font-medium text-[var(--color-text)] truncate text-xs">{l.title}</p>
+                      <p className="text-[var(--color-text-muted)] text-xs">{l.brand} {l.model}</p>
+                    </td>
+                    <td className="px-4 py-3 text-xs font-semibold text-[var(--color-text)]">{formatPrice(l.price, l.currency)}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn('px-2 py-0.5 text-xs rounded-full font-medium',
+                        l.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
+                        l.status === 'SOLD' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-600')}>
+                        {l.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn('px-2 py-0.5 text-xs rounded-full font-medium', trustBadge.className)}>
+                        {trustBadge.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
+                      <span className="flex items-center gap-1"><Eye className="w-3 h-3" aria-hidden="true" />{l.viewCount}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link href={`/listings/${l.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1">
+                        View <ChevronRight className="w-3 h-3" aria-hidden="true" />
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 
-        {/* Sub-tab switcher */}
-        <div className="bg-white rounded-xl shadow-sm border border-[var(--color-border)]">
-          <div role="tablist" aria-label="Order type" className="flex">
-            <button
-              role="tab"
-              id="orders-tab-buying"
-              aria-selected={ordersTab === 'buying'}
-              aria-controls="orders-panel-buying"
-              onClick={() => setOrdersTab('buying')}
-              className={`flex-1 px-6 py-4 font-semibold rounded-tl-xl rounded-bl-xl transition-colors ${
-                ordersTab === 'buying'
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Purchases
-              <span aria-hidden="true" className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
-                ordersTab === 'buying' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-              }`}>
-                {buyingOrders.length}
-              </span>
-              <span className="sr-only">({buyingOrders.length})</span>
-            </button>
-            <button
-              role="tab"
-              id="orders-tab-selling"
-              aria-selected={ordersTab === 'selling'}
-              aria-controls="orders-panel-selling"
-              onClick={() => setOrdersTab('selling')}
-              className={`flex-1 px-6 py-4 font-semibold rounded-tr-xl rounded-br-xl transition-colors ${
-                ordersTab === 'selling'
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              Sales
-              <span aria-hidden="true" className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
-                ordersTab === 'selling' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
-              }`}>
-                {sellingOrders.length}
-              </span>
-              <span className="sr-only">({sellingOrders.length})</span>
-            </button>
-          </div>
+  // ─────────────────────────────────────────────
+  // SALES VIEW (orders where user is seller)
+  // ─────────────────────────────────────────────
+
+  const renderSales = () => (
+    <div className="space-y-5">
+      <h2 className="text-xl font-bold text-[var(--color-text)]">Sales</h2>
+      {loading ? (
+        <div className="text-center py-12 text-[var(--color-text-muted)]">Loading...</div>
+      ) : sellerOrders.length === 0 ? (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-12 text-center">
+          <ShoppingBag className="w-10 h-10 text-[var(--color-border)] mx-auto mb-3" aria-hidden="true" />
+          <p className="text-[var(--color-text-muted)] font-medium">No sales yet</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">Sales will appear here when buyers purchase your listings.</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]/50">
+                <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Order</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Item</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Buyer</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Amount</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border)]/30">
+              {sellerOrders.map(o => {
+                const badge = STATUS_BADGE[o.status] ?? STATUS_BADGE.PENDING;
+                const actionLabel =
+                  o.status === 'ESCROW_HELD' ? 'Mark Shipped' :
+                  o.status === 'SHIPPED' ? 'Track Shipment' :
+                  o.status === 'COMPLETED' ? 'View Feedback' : 'View Details';
+                return (
+                  <tr key={o.id} className="hover:bg-[var(--color-surface-alt)]/50">
+                    <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">#{o.id.slice(0, 8).toUpperCase()}</td>
+                    <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
+                      {new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </td>
+                    <td className="px-4 py-3 text-[var(--color-text)] font-medium text-xs truncate max-w-[140px]">
+                      {o.listing?.title ?? (`${o.listing?.brand ?? ''} ${o.listing?.model ?? ''}`.trim() || 'Device')}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{o.buyer?.displayName ?? 'Buyer'}</td>
+                    <td className="px-4 py-3 text-xs font-semibold text-[var(--color-text)]">{formatPrice(o.amount, o.currency)}</td>
+                    <td className="px-4 py-3">
+                      <span className={cn('px-2.5 py-1 text-xs font-medium rounded-full', badge.className)}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Link href={`/orders/${o.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
+                        {actionLabel}
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
+  // ─────────────────────────────────────────────
+  // EARNINGS VIEW
+  // ─────────────────────────────────────────────
+
+  const renderEarnings = () => {
+    const completed = sellerOrders.filter(o => o.status === 'COMPLETED');
+    const pending = sellerOrders.filter(o => ['ESCROW_HELD', 'PAYMENT_RECEIVED', 'SHIPPED', 'DELIVERED'].includes(o.status));
+    const completedTotal = completed.reduce((s, o) => s + Number(o.amount), 0);
+    const pendingTotal = pending.reduce((s, o) => s + Number(o.amount), 0);
+
+    return (
+      <div className="space-y-5">
+        <h2 className="text-xl font-bold text-[var(--color-text)]">Earnings</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            { label: 'Total Earned', value: formatPrice(completedTotal, 'GBP'), sub: 'From completed sales', color: 'text-[var(--color-green)]' },
+            { label: 'Pending Payout', value: formatPrice(pendingTotal, 'GBP'), sub: 'In escrow / in transit', color: 'text-[var(--color-warning)]' },
+            { label: 'Platform Fee (5%)', value: formatPrice(completedTotal * 0.05, 'GBP'), sub: 'Deducted from earnings', color: 'text-[var(--color-text-muted)]' },
+          ].map(card => (
+            <div key={card.label} className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+              <p className="text-xs text-[var(--color-text-muted)] font-medium mb-2">{card.label}</p>
+              <p className={cn('text-2xl font-bold', card.color)}>{card.value}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{card.sub}</p>
+            </div>
+          ))}
         </div>
 
-        {loadingOrders ? (
-          <div role="status" className="text-center py-12">
-            <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
-            <span className="sr-only">Loading orders...</span>
-            <p aria-hidden="true" className="mt-4 text-gray-600">Loading orders...</p>
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-[var(--color-border)] p-12 text-center">
-            <div aria-hidden="true" className="text-6xl mb-4">{ordersTab === 'buying' ? '🛒' : '📦'}</div>
-            <h3 className="text-2xl font-bold text-gray-800 mb-2">
-              {ordersTab === 'buying' ? 'No Purchases Yet' : 'No Sales Yet'}
-            </h3>
-            <p className="text-gray-600 mb-6">
-              {ordersTab === 'buying'
-                ? 'Start browsing verified listings to make your first purchase.'
-                : 'List your first device to start receiving orders.'}
-            </p>
-            <Link
-              href={ordersTab === 'buying' ? '/browse' : '/listings/create'}
-              className="inline-block px-6 py-3 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90 font-semibold"
-            >
-              {ordersTab === 'buying' ? 'Browse Listings' : 'Create Listing'}
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {orders.map(order => {
-              const action = getOrderAction(order, ordersTab);
-              return (
-                <div
-                  key={order.id}
-                  className="bg-white rounded-xl shadow-sm border border-[var(--color-border)] overflow-hidden hover:shadow-md transition-shadow"
-                >
-                  {/* Card top — status bar */}
-                  <div className={`h-1.5 w-full ${
-                    order.status === 'COMPLETED' ? 'bg-green-500' :
-                    order.status === 'CANCELLED' || order.status === 'REFUNDED' ? 'bg-red-400' :
-                    order.status === 'DISPUTED' ? 'bg-orange-400' :
-                    order.status === 'SHIPPED' || order.status === 'DELIVERED' ? 'bg-purple-500' :
-                    'bg-[var(--color-primary)]'
-                  }`} />
-
-                  <div className="p-5">
-                    {/* Header row */}
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">
-                          {ordersTab === 'buying' ? 'Purchase' : 'Sale'}
-                        </p>
-                        <p className="text-sm font-mono font-semibold text-[var(--color-text)]">
-                          #{order.id.substring(0, 8).toUpperCase()}
-                        </p>
-                      </div>
-                      <span className={`${getStatusColor(order.status)} px-2.5 py-1 rounded-full text-xs font-semibold`}>
-                        {getStatusLabel(order.status)}
-                      </span>
-                    </div>
-
-                    {/* Amount */}
-                    <p className="text-2xl font-bold text-[var(--color-primary)] mb-3">
-                      {formatPrice(order.amount, order.currency)}
-                    </p>
-
-                    {/* Meta row */}
-                    <div className="space-y-1.5 text-sm text-gray-500 mb-4">
-                      <div className="flex items-center gap-2">
-                        <span aria-hidden="true" className="text-base">📅</span>
-                        <span>{getOrderTimestamp(order)}</span>
-                      </div>
-                      {order.trackingNumber && (
-                        <div className="flex items-center gap-2">
-                          <span aria-hidden="true" className="text-base">🚚</span>
-                          <span className="font-mono text-xs truncate">{order.trackingNumber}</span>
-                        </div>
-                      )}
-                      {ordersTab === 'selling' && order.status === 'ESCROW_HELD' && (
-                        <div className="flex items-center gap-2">
-                          <span aria-hidden="true" className="text-base">💡</span>
-                          <span className="text-amber-600 font-medium text-xs">Ready to ship</span>
-                        </div>
-                      )}
-                      {order.status === 'DISPUTED' && (
-                        <div className="flex items-center gap-2">
-                          <span aria-hidden="true" className="text-base">⚠️</span>
-                          <span className="text-orange-600 font-medium text-xs">Under dispute review</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* CTA */}
-                    <Link
-                      href={action.href}
-                      className="block w-full text-center px-4 py-2 rounded-lg text-sm font-semibold border border-[var(--color-primary)] text-[var(--color-primary)] hover:bg-[var(--color-primary)] hover:text-white transition-colors"
-                    >
-                      {action.label} <span aria-hidden="true">→</span>
-                    </Link>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+          <h3 className="font-bold text-[var(--color-text)] mb-4">Revenue Over Last 30 Days</h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="earningsGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#2D7A4F" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#2D7A4F" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#E3E3E3" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#565959' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+              <YAxis tickFormatter={v => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: '#565959' }} axisLine={false} tickLine={false} width={40} />
+              <Tooltip formatter={(v: number | undefined) => [formatPrice(v ?? 0, 'GBP'), 'Revenue']} contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12 }} />
+              <Area type="monotone" dataKey="revenue" stroke="#2D7A4F" strokeWidth={2} fill="url(#earningsGradient)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     );
   };
 
-  const renderProfile = () => (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Profile Settings</h2>
+  // ─────────────────────────────────────────────
+  // ANALYTICS VIEW
+  // ─────────────────────────────────────────────
 
-      {loadingProfile ? (
-        <div role="status" className="text-center py-12">
-          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
-          <span className="sr-only">Loading profile...</span>
-          <p aria-hidden="true" className="mt-4 text-gray-600">Loading profile...</p>
+  const renderAnalytics = () => (
+    <div className="space-y-5">
+      <h2 className="text-xl font-bold text-[var(--color-text)]">Analytics</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Purchases', value: buyerOrders.length },
+          { label: 'Total Sales',     value: sellerOrders.length },
+          { label: 'Active Listings', value: activeListings },
+          { label: 'Avg Sale Value',  value: sellerOrders.length ? formatPrice(sellerOrders.reduce((s, o) => s + Number(o.amount), 0) / sellerOrders.length, 'GBP') : formatPrice(0, 'GBP') },
+        ].map(stat => (
+          <div key={stat.label} className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+            <p className="text-xs text-[var(--color-text-muted)] mb-1">{stat.label}</p>
+            <p className="text-2xl font-bold text-[var(--color-text)]">{stat.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
+        <h3 className="font-bold text-[var(--color-text)] mb-4">Cumulative Sales Trend</h3>
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="analyticsGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#FF9900" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#FF9900" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E3E3E3" />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#565959' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+            <YAxis tickFormatter={v => `£${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: '#565959' }} axisLine={false} tickLine={false} width={40} />
+            <Tooltip formatter={(v: number | undefined) => [formatPrice(v ?? 0, 'GBP'), 'Revenue']} contentStyle={{ borderRadius: 8, border: '1px solid #E3E3E3', fontSize: 12 }} />
+            <Area type="monotone" dataKey="revenue" stroke="#FF9900" strokeWidth={2} fill="url(#analyticsGradient)" />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+
+  // ─────────────────────────────────────────────
+  // PROFILE VIEW
+  // ─────────────────────────────────────────────
+
+  const renderProfile = () => {
+    if (profileLoading) {
+      return (
+        <div className="flex items-center justify-center py-16">
+          <div className="text-center">
+            <div className="inline-block motion-safe:animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--color-primary)]" />
+            <p className="mt-3 text-sm text-[var(--color-text-muted)]">Loading profile...</p>
+          </div>
         </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <div className="max-w-2xl mx-auto">
-            <div className="flex items-center gap-6 mb-8">
-              <div className="w-24 h-24 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-3xl font-bold">
-                {displayName.charAt(0).toUpperCase()}
+      );
+    }
+
+    const initials = (profileDisplayName || user?.name || 'U').charAt(0).toUpperCase();
+
+    return (
+      <div className="space-y-5">
+        <h2 className="text-xl font-bold text-[var(--color-text)]">My Profile</h2>
+
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
+          {profileSuccess && (
+            <div role="status" aria-live="polite" className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-6 text-sm">
+              {profileSuccess}
+            </div>
+          )}
+          {profileError && (
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6 text-sm">
+              {profileError}
+            </div>
+          )}
+
+          <form onSubmit={handleProfileSave} className="space-y-5">
+            {/* Avatar + basic info */}
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-xl font-bold shrink-0">
+                {initials}
               </div>
               <div>
-                <h3 className="text-2xl font-bold">{displayName}</h3>
-                <p className="text-gray-600">{user?.email}</p>
-                <span className="inline-block mt-2 text-xs bg-[var(--color-primary)] text-white px-3 py-1 rounded-full">
-                  {user?.role}
-                </span>
+                <p className="text-sm font-semibold text-[var(--color-text)]">{profileDisplayName || user?.name}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">{user?.email}</p>
               </div>
             </div>
 
-            <div className="space-y-4">
+            {/* Display Name */}
+            <div>
+              <label htmlFor="dash-profile-display" className="block text-sm font-medium text-[var(--color-text)] mb-1">Display Name</label>
+              <input
+                id="dash-profile-display"
+                type="text"
+                value={profileDisplayName}
+                onChange={(e) => setProfileDisplayName(e.target.value)}
+                placeholder="How you appear to others"
+                maxLength={80}
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+              />
+            </div>
+
+            {/* First / Last Name */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="profile-display-name" className="block text-sm font-medium text-gray-700 mb-2">Display Name</label>
+                <label htmlFor="dash-profile-first" className="block text-sm font-medium text-[var(--color-text)] mb-1">First Name</label>
                 <input
-                  id="profile-display-name"
+                  id="dash-profile-first"
                   type="text"
-                  value={profile?.displayName || ''}
-                  readOnly
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  value={profileFirstName}
+                  onChange={(e) => setProfileFirstName(e.target.value)}
+                  placeholder="Jane"
+                  maxLength={50}
+                  className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
                 />
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="profile-first-name" className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
-                  <input
-                    id="profile-first-name"
-                    type="text"
-                    value={profile?.firstName || ''}
-                    readOnly
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="profile-last-name" className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
-                  <input
-                    id="profile-last-name"
-                    type="text"
-                    value={profile?.lastName || ''}
-                    readOnly
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  />
-                </div>
-              </div>
-
-              {profile?.bio && (
-                <div>
-                  <label htmlFor="profile-bio" className="block text-sm font-medium text-gray-700 mb-2">Bio</label>
-                  <textarea
-                    id="profile-bio"
-                    value={profile.bio}
-                    readOnly
-                    rows={4}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  />
-                </div>
-              )}
-
-              <div className="pt-4 border-t">
-                <p className="text-sm text-gray-600">
-                  Member since {profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString() : 'N/A'}
-                </p>
-              </div>
-
-              <div className="pt-4">
-                <Link
-                  href="/settings"
-                  className="inline-block bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-6 py-3 rounded-lg font-semibold transition-colors"
-                >
-                  Edit Profile
-                </Link>
+              <div>
+                <label htmlFor="dash-profile-last" className="block text-sm font-medium text-[var(--color-text)] mb-1">Last Name</label>
+                <input
+                  id="dash-profile-last"
+                  type="text"
+                  value={profileLastName}
+                  onChange={(e) => setProfileLastName(e.target.value)}
+                  placeholder="Doe"
+                  maxLength={50}
+                  className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+                />
               </div>
             </div>
+
+            {/* Email (read-only) */}
+            <div>
+              <label htmlFor="dash-profile-email" className="block text-sm font-medium text-[var(--color-text)] mb-1">Email</label>
+              <input
+                id="dash-profile-email"
+                type="email"
+                value={user?.email ?? ''}
+                disabled
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] cursor-not-allowed"
+              />
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">Email cannot be changed</p>
+            </div>
+
+            {/* Phone */}
+            <div>
+              <label htmlFor="dash-profile-phone" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                Phone Number <span className="text-[var(--color-text-muted)] font-normal text-xs">(optional)</span>
+              </label>
+              <input
+                id="dash-profile-phone"
+                type="tel"
+                value={profilePhone}
+                onChange={(e) => setProfilePhone(e.target.value)}
+                placeholder="+44 7700 900000"
+                autoComplete="tel"
+                maxLength={30}
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+              />
+            </div>
+
+            {/* Bio */}
+            <div>
+              <label htmlFor="dash-profile-bio" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                Bio <span className="text-[var(--color-text-muted)] font-normal text-xs">(optional)</span>
+              </label>
+              <textarea
+                id="dash-profile-bio"
+                value={profileBio}
+                onChange={(e) => setProfileBio(e.target.value)}
+                rows={3}
+                maxLength={500}
+                placeholder="Tell buyers or sellers a bit about yourself..."
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+              />
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{profileBio.length}/500 characters</p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="submit"
+                disabled={profileSaving}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--color-primary)] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-4 h-4" aria-hidden="true" />
+                {profileSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button
+                type="button"
+                onClick={fetchProfile}
+                className="inline-flex items-center gap-2 px-5 py-2.5 border border-[var(--color-border)] text-sm font-semibold rounded-lg hover:bg-[var(--color-surface-alt)] transition-colors"
+              >
+                <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                Reset
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Verification Status */}
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
+          <div className="flex items-center gap-3 mb-3">
+            <ShieldCheck className="w-5 h-5 text-[var(--color-green)]" aria-hidden="true" />
+            <h3 className="font-bold text-[var(--color-text)]">Verification Status</h3>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="bg-amber-100 text-amber-800 text-sm px-3 py-1 rounded-full font-medium">Unverified</span>
+            <p className="text-sm text-[var(--color-text-muted)]">Complete identity verification to start selling.</p>
+          </div>
+          <Link
+            href="/seller-verification"
+            className="inline-flex items-center gap-1 mt-4 text-sm text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium"
+          >
+            Learn about verification <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          </Link>
+        </div>
+      </div>
+    );
+  };
+
+  // ─────────────────────────────────────────────
+  // SETTINGS VIEW
+  // ─────────────────────────────────────────────
+
+  const [settingsTab, setSettingsTab] = useState<'security' | 'notifications'>('security');
+
+  const renderSettings = () => (
+    <div className="space-y-5">
+      <h2 className="text-xl font-bold text-[var(--color-text)]">Settings</h2>
+
+      {/* Tab switcher */}
+      <div className="flex gap-1 bg-white rounded-xl border border-[var(--color-border)] p-1 w-fit">
+        <button
+          onClick={() => setSettingsTab('security')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            settingsTab === 'security'
+              ? 'bg-[var(--color-primary)] text-white'
+              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-alt)]',
+          )}
+        >
+          <Lock className="w-4 h-4" aria-hidden="true" />
+          Security
+        </button>
+        <button
+          onClick={() => setSettingsTab('notifications')}
+          className={cn(
+            'flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
+            settingsTab === 'notifications'
+              ? 'bg-[var(--color-primary)] text-white'
+              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-alt)]',
+          )}
+        >
+          <Bell className="w-4 h-4" aria-hidden="true" />
+          Notifications
+        </button>
+      </div>
+
+      {/* Security */}
+      {settingsTab === 'security' && (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
+          <h3 className="font-bold text-[var(--color-text)] mb-4">Change Password</h3>
+
+          {securitySuccess && (
+            <div role="status" aria-live="polite" className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 text-sm">
+              {securitySuccess}
+            </div>
+          )}
+          {securityError && (
+            <div role="alert" className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+              {securityError}
+            </div>
+          )}
+
+          <form onSubmit={handlePasswordChange} className="space-y-4 max-w-md">
+            <div>
+              <label htmlFor="dash-current-pw" className="block text-sm font-medium text-[var(--color-text)] mb-1">Current Password</label>
+              <input
+                id="dash-current-pw"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+                autoComplete="current-password"
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+              />
+            </div>
+            <div>
+              <label htmlFor="dash-new-pw" className="block text-sm font-medium text-[var(--color-text)] mb-1">New Password</label>
+              <input
+                id="dash-new-pw"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                autoComplete="new-password"
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+              />
+            </div>
+            <div>
+              <label htmlFor="dash-confirm-pw" className="block text-sm font-medium text-[var(--color-text)] mb-1">Confirm New Password</label>
+              <input
+                id="dash-confirm-pw"
+                type="password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                placeholder="Confirm new password"
+                autoComplete="new-password"
+                className="w-full px-4 py-2.5 border border-[var(--color-border)] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={passwordLoading}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[var(--color-primary)] text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Lock className="w-4 h-4" aria-hidden="true" />
+              {passwordLoading ? 'Updating...' : 'Update Password'}
+            </button>
+          </form>
+
+          {/* 2FA placeholder */}
+          <div className="mt-8 pt-6 border-t border-[var(--color-border)]">
+            <h3 className="font-bold text-[var(--color-text)] mb-2">Two-Factor Authentication</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">Add an extra layer of security to your account.</p>
+            <button
+              type="button"
+              disabled
+              className="px-5 py-2.5 border border-[var(--color-border)] text-[var(--color-text-muted)] text-sm font-semibold rounded-lg opacity-50 cursor-not-allowed"
+            >
+              Enable 2FA (Coming Soon)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Notifications */}
+      {settingsTab === 'notifications' && (
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
+          <h3 className="font-bold text-[var(--color-text)] mb-4">Email Notifications</h3>
+          <div className="space-y-4">
+            {[
+              { label: 'Listing Updates', desc: 'Get notified when your listing status changes', checked: notifListingUpdates, onChange: setNotifListingUpdates },
+              { label: 'Order Notifications', desc: 'Updates about your orders and purchases', checked: notifOrders, onChange: setNotifOrders },
+              { label: 'Trust Lens Updates', desc: 'Verification status and reviews', checked: notifTrustLens, onChange: setNotifTrustLens },
+              { label: 'Marketing Emails', desc: 'Promotions, tips, and feature updates', checked: notifMarketing, onChange: setNotifMarketing },
+            ].map(item => (
+              <label key={item.label} className="flex items-center justify-between cursor-pointer py-1">
+                <div>
+                  <p className="text-sm font-medium text-[var(--color-text)]">{item.label}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{item.desc}</p>
+                </div>
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={item.checked}
+                    onChange={(e) => item.onChange(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-10 h-5 bg-[var(--color-border)] rounded-full peer-checked:bg-[var(--color-green)] transition-colors" />
+                  <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform" />
+                </div>
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
+            <h3 className="font-bold text-[var(--color-text)] mb-4">Push Notifications</h3>
+            <div className="space-y-4">
+              {[
+                { label: 'Messages', desc: 'New messages from buyers or sellers', checked: notifMessages, onChange: setNotifMessages },
+                { label: 'Price Alerts', desc: 'When similar devices drop in price', checked: notifPriceAlerts, onChange: setNotifPriceAlerts },
+              ].map(item => (
+                <label key={item.label} className="flex items-center justify-between cursor-pointer py-1">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--color-text)]">{item.label}</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">{item.desc}</p>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={item.checked}
+                      onChange={(e) => item.onChange(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5 bg-[var(--color-border)] rounded-full peer-checked:bg-[var(--color-green)] transition-colors" />
+                    <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform" />
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
+            <button
+              type="button"
+              disabled
+              className="px-5 py-2.5 bg-[var(--color-primary)] text-white text-sm font-semibold rounded-lg opacity-50 cursor-not-allowed"
+            >
+              Save Preferences (Coming Soon)
+            </button>
           </div>
         </div>
       )}
     </div>
   );
 
+  // ─────────────────────────────────────────────
+  // LAYOUT
+  // ─────────────────────────────────────────────
+
+  const handleNavClick = (id: NavId) => {
+    setActiveNav(id);
+    setSidebarOpen(false);
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Tab Navigation */}
-      <div className="bg-white rounded-lg shadow-sm mb-6 sticky top-20 z-40">
-        <div role="tablist" aria-label="Dashboard sections" className="flex border-b overflow-x-auto">
-          {(['overview', 'listings', 'orders', 'profile'] as TabType[]).map((tab) => {
-            const labels: Record<TabType, string> = { overview: 'Overview', listings: 'My Listings', orders: 'Orders', profile: 'Profile' };
+    <div className="min-h-screen flex bg-[var(--color-surface-alt)]">
+
+      {/* ── Mobile overlay ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ── Sidebar ── */}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-52 flex flex-col bg-white border-r border-[var(--color-border)] transition-transform duration-200 lg:static lg:translate-x-0',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        {/* Logo */}
+        <div className="px-5 py-5 border-b border-[var(--color-border)] flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)] flex items-center justify-center text-xs font-extrabold text-white">V</div>
+            <span className="font-extrabold text-[var(--color-primary)] text-base tracking-tight">VeriBuy</span>
+          </Link>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            aria-label="Close sidebar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 py-3" aria-label="Dashboard navigation">
+          {navItems.map(item => {
+            const Icon = item.icon;
             return (
-              <button
-                key={tab}
-                role="tab"
-                id={`tab-${tab}`}
-                aria-selected={activeTab === tab}
-                aria-controls={`tabpanel-${tab}`}
-                onClick={() => setActiveTab(tab)}
-                className={`px-6 py-4 font-semibold whitespace-nowrap ${
-                  activeTab === tab
-                    ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                {labels[tab]}
-              </button>
+              <div key={item.id}>
+                {item.dividerBefore && (
+                  <div className="mx-5 my-2 border-t border-[var(--color-border)]" />
+                )}
+                <button
+                  onClick={() => handleNavClick(item.id)}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors text-left',
+                    activeNav === item.id
+                      ? 'bg-[var(--color-green)]/10 text-[var(--color-green)] border-r-2 border-[var(--color-green)]'
+                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-alt)]',
+                  )}
+                >
+                  <Icon className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  {item.label}
+                </button>
+              </div>
             );
           })}
+        </nav>
+
+        {/* User footer with logout */}
+        <div className="px-5 py-4 border-t border-[var(--color-border)]">
+          <p className="text-xs font-semibold text-[var(--color-text)] truncate">{displayName}</p>
+          <p className="text-xs text-[var(--color-text-muted)] truncate mb-3">{user?.email}</p>
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 text-xs font-medium text-[var(--color-text-muted)] hover:text-red-600 transition-colors w-full"
+          >
+            <LogOut className="w-3.5 h-3.5" aria-hidden="true" />
+            Log out
+          </button>
         </div>
+      </aside>
+
+      {/* ── Main ── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Top bar */}
+        <header className="bg-white border-b border-[var(--color-border)] px-4 md:px-6 h-14 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              aria-label="Open sidebar"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-base font-bold text-[var(--color-text)]">
+              {navItems.find(n => n.id === activeNav)?.label ?? 'Dashboard'}
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/browse"
+              className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors hidden sm:flex items-center gap-1"
+            >
+              <Search className="w-3.5 h-3.5" aria-hidden="true" />
+              Browse
+            </Link>
+            <Link
+              href="/listings/create"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-primary)] text-white text-xs font-semibold rounded-lg hover:bg-[var(--color-primary-dark)] transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">New Listing</span>
+            </Link>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {activeNav === 'dashboard'  && renderDashboard()}
+          {activeNav === 'purchases'  && renderPurchases()}
+          {activeNav === 'listings'   && renderListings()}
+          {activeNav === 'sales'      && renderSales()}
+          {activeNav === 'earnings'   && renderEarnings()}
+          {activeNav === 'analytics'  && renderAnalytics()}
+          {activeNav === 'profile'    && renderProfile()}
+          {activeNav === 'settings'   && renderSettings()}
+        </main>
       </div>
 
-      {/* Tab Content */}
-      <div className="transition-all duration-200">
-        <div role="tabpanel" id="tabpanel-overview" aria-labelledby="tab-overview" hidden={activeTab !== 'overview'}>
-          {activeTab === 'overview' && renderOverview()}
-        </div>
-        <div role="tabpanel" id="tabpanel-listings" aria-labelledby="tab-listings" hidden={activeTab !== 'listings'}>
-          {activeTab === 'listings' && renderListings()}
-        </div>
-        <div role="tabpanel" id="tabpanel-orders" aria-labelledby="tab-orders" hidden={activeTab !== 'orders'}>
-          {activeTab === 'orders' && renderOrders()}
-        </div>
-        <div role="tabpanel" id="tabpanel-profile" aria-labelledby="tab-profile" hidden={activeTab !== 'profile'}>
-          {activeTab === 'profile' && renderProfile()}
-        </div>
-      </div>
     </div>
   );
 }
 
 export default function DashboardPage() {
-  // Route protection is handled server-side by middleware (jose.jwtVerify).
-  // A redundant client-side ProtectedRoute guard was removed here because it
-  // relied on a live auth-service call and could push to /login if the service
-  // was slow, creating a redirect loop. Middleware is the single gating layer.
-  return <DashboardContent />;
+  return (
+    <Suspense>
+      <DashboardContent />
+    </Suspense>
+  );
 }

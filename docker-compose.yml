@@ -229,23 +229,6 @@ services:
       jaeger:
         condition: service_healthy
 
-  # ─── Device Verification Service (Python) ──────────────────
-  device-verification-service:
-    build:
-      context: ./services/device-verification-service
-      dockerfile: Dockerfile
-      network: host
-    container_name: veribuy-device-verification
-    restart: unless-stopped
-    ports:
-      - "${DEVICE_VERIFICATION_SERVICE_PORT:-3005}:3005"
-    env_file: .env
-    environment:
-      PORT: 3005
-    depends_on:
-      redis:
-        condition: service_healthy
-
   # ─── Evidence Service ──────────────────────────────────────
   evidence-service:
     build:

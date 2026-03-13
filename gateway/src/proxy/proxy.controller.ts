@@ -17,7 +17,7 @@ export class ProxyController {
       { prefix: 'users',               target: this.configService.get('USER_SERVICE_URL',                  'http://localhost:3002') },
       { prefix: 'listings',            target: this.configService.get('LISTING_SERVICE_URL',               'http://localhost:3003') },
       { prefix: 'trust-lens',          target: this.configService.get('TRUST_LENS_SERVICE_URL',            'http://localhost:3004') },
-      { prefix: 'device-verification', target: this.configService.get('DEVICE_VERIFICATION_SERVICE_URL',   'http://localhost:3005') },
+
       { prefix: 'evidence',            target: this.configService.get('EVIDENCE_SERVICE_URL',              'http://localhost:3006') },
       { prefix: 'transactions',        target: this.configService.get('TRANSACTION_SERVICE_URL',           'http://localhost:3007') },
       { prefix: 'notifications',       target: this.configService.get('NOTIFICATION_SERVICE_URL',          'http://localhost:3008') },

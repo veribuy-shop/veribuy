@@ -29,7 +29,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="min-h-[80vh] flex items-center justify-center bg-[var(--color-surface-alt)]">
-      <div className="bg-white rounded-xl shadow-sm p-8 w-full max-w-md">
+      <div className="bg-white rounded-xl p-8 w-full max-w-md border border-[var(--color-border)]">
         <h1 className="text-2xl font-bold mb-2 text-center">Forgot password?</h1>
         <p className="text-[var(--color-text-muted)] text-center mb-8 text-sm">
           Enter your email and we&apos;ll send you a reset link.
@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm"
+              className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] text-sm"
               placeholder="you@example.com"
             />
           </div>
@@ -63,7 +63,7 @@ export default function ForgotPasswordPage() {
 
         <div className="mt-6 text-center text-sm text-[var(--color-text-muted)]">
           Remember your password?{' '}
-          <Link href="/login" className="text-[var(--color-primary)] font-semibold hover:underline">
+          <Link href="/login" className="text-[var(--color-green)] font-semibold hover:underline">
             Sign in
           </Link>
         </div>

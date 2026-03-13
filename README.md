@@ -13,7 +13,6 @@ VeriBuy reduces fraud, disputes, and low-trust pricing in the buying and selling
 | User Service | 3002 | NestJS 11 + Prisma 7 |
 | Listing Service | 3003 | NestJS 11 + Prisma 7 |
 | Trust Lens Service | 3004 | NestJS 11 + Prisma 7 |
-| Device Verification | 3005 | FastAPI (Python 3.12) |
 | Evidence Service | 3006 | NestJS 11 + Prisma 7 |
 | Transaction Service | 3007 | NestJS 11 + Prisma 7 |
 | Notification Service | 3008 | NestJS 11 + Prisma 7 |
@@ -75,7 +74,6 @@ veribuy/
 │   ├── user-service/
 │   ├── listing-service/
 │   ├── trust-lens-service/
-│   ├── device-verification-service/
 │   ├── evidence-service/
 │   ├── transaction-service/
 │   └── notification-service/

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { CircleCheck, CircleX, Package, ClipboardList } from 'lucide-react';
+import { formatPrice } from '@/lib/currency';
 
 interface Order {
   id: string;
@@ -46,24 +48,22 @@ interface OrderData {
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'PENDING':
-      return 'bg-yellow-100 text-yellow-800';
+      return 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]';
     case 'PAYMENT_RECEIVED':
     case 'ESCROW_HELD':
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]';
     case 'SHIPPED':
-      return 'bg-purple-100 text-purple-800';
+      return 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]';
     case 'DELIVERED':
-      return 'bg-green-100 text-green-800';
     case 'COMPLETED':
-      return 'bg-green-200 text-green-900';
+      return 'bg-[var(--color-success)]/15 text-[var(--color-success)]';
     case 'DISPUTED':
-      return 'bg-red-100 text-red-800';
+      return 'bg-[var(--color-danger)]/15 text-[var(--color-danger)]';
     case 'REFUNDED':
-      return 'bg-gray-100 text-gray-800';
     case 'CANCELLED':
-      return 'bg-gray-200 text-gray-900';
+      return 'bg-[var(--color-border)] text-[var(--color-text-muted)]';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-[var(--color-border)] text-[var(--color-text-muted)]';
   }
 };
 
@@ -90,14 +90,6 @@ const getStatusText = (status: string) => {
     default:
       return status;
   }
-};
-
-const formatCurrency = (amount: string | number, currency: string) => {
-  const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: currency || 'GBP',
-  }).format(numAmount);
 };
 
 const formatDate = (dateString: string) => {
@@ -179,11 +171,11 @@ export default function OrderConfirmationPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div role="status" className="text-center">
-          <div aria-hidden="true" className="motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)] mx-auto mb-4"></div>
+          <div aria-hidden="true" className="motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)] mx-auto mb-4"></div>
           <span className="sr-only">Loading order details...</span>
-          <p aria-hidden="true" className="text-[var(--color-text-secondary)]">Loading order details...</p>
+          <p aria-hidden="true" className="text-[var(--color-text-muted)]">Loading order details...</p>
         </div>
       </div>
     );
@@ -191,18 +183,18 @@ export default function OrderConfirmationPage() {
 
   if (error || !orderData) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div role="alert" className="text-center max-w-md">
-          <div aria-hidden="true" className="text-6xl mb-4">❌</div>
-          <h1 className="text-2xl font-bold text-[var(--color-text-primary)] mb-2">
+          <CircleX aria-hidden="true" className="w-16 h-16 text-[var(--color-danger)] mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-[var(--color-text)] mb-2">
             Order Not Found
           </h1>
-          <p className="text-[var(--color-text-secondary)] mb-6">
+          <p className="text-[var(--color-text-muted)] mb-6">
             {error || 'We could not find the order you are looking for.'}
           </p>
           <Link
             href="/browse"
-            className="inline-block bg-[var(--color-primary)] text-white px-6 py-3 rounded-lg hover:opacity-90 transition-opacity"
+            className="inline-block bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl hover:opacity-90 transition-opacity"
           >
             Back to Browse
           </Link>
@@ -214,37 +206,37 @@ export default function OrderConfirmationPage() {
   const { order, listing, seller, isSeller } = orderData;
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] py-12">
+    <div className="min-h-screen bg-white py-12">
       <div className="max-w-4xl mx-auto px-4">
         {/* Header */}
         <div className="text-center mb-8">
           {order.status === 'COMPLETED' || order.status === 'DELIVERED' ? (
             <>
-              <div aria-hidden="true" className="text-6xl mb-4">✅</div>
-              <h1 className="text-3xl font-bold text-[var(--color-text-primary)] mb-2">
+              <CircleCheck aria-hidden="true" className="w-16 h-16 text-[var(--color-success)] mx-auto mb-4" />
+              <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">
                 Order Confirmed!
               </h1>
-              <p className="text-[var(--color-text-secondary)]">
+              <p className="text-[var(--color-text-muted)]">
                 Your order has been placed successfully.
               </p>
             </>
           ) : order.status === 'CANCELLED' || order.status === 'REFUNDED' ? (
             <>
-              <div aria-hidden="true" className="text-6xl mb-4">📋</div>
-              <h1 className="text-3xl font-bold text-[var(--color-text-primary)] mb-2">
+              <ClipboardList aria-hidden="true" className="w-16 h-16 text-[var(--color-text-muted)] mx-auto mb-4" />
+              <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">
                 Order Details
               </h1>
-              <p className="text-[var(--color-text-secondary)]">
+              <p className="text-[var(--color-text-muted)]">
                 Order #{order.id.slice(0, 8).toUpperCase()}
               </p>
             </>
           ) : (
             <>
-              <div aria-hidden="true" className="text-6xl mb-4">📦</div>
-              <h1 className="text-3xl font-bold text-[var(--color-text-primary)] mb-2">
+              <Package aria-hidden="true" className="w-16 h-16 text-[var(--color-primary)] mx-auto mb-4" />
+              <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">
                 Order Details
               </h1>
-              <p className="text-[var(--color-text-secondary)]">
+              <p className="text-[var(--color-text-muted)]">
                 Order #{order.id.slice(0, 8).toUpperCase()}
               </p>
             </>
@@ -252,9 +244,9 @@ export default function OrderConfirmationPage() {
         </div>
 
         {/* Order Status */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-[var(--color-text-primary)]">
+            <h2 className="text-xl font-semibold text-[var(--color-text)]">
               Order Status
             </h2>
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}>
@@ -264,17 +256,17 @@ export default function OrderConfirmationPage() {
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
-              <p className="text-[var(--color-text-secondary)] mb-1">Order ID</p>
-              <p className="font-mono text-[var(--color-text-primary)] break-all">{order.id}</p>
+              <p className="text-[var(--color-text-muted)] mb-1">Order ID</p>
+              <p className="font-mono text-[var(--color-text)] break-all">{order.id}</p>
             </div>
             <div>
-              <p className="text-[var(--color-text-secondary)] mb-1">Order Date</p>
-              <p className="text-[var(--color-text-primary)]">{formatDate(order.createdAt)}</p>
+              <p className="text-[var(--color-text-muted)] mb-1">Order Date</p>
+              <p className="text-[var(--color-text)]">{formatDate(order.createdAt)}</p>
             </div>
             {order.paidAt && (
               <div>
-                <p className="text-[var(--color-text-secondary)] mb-1">Payment Date</p>
-                <p className="text-[var(--color-text-primary)]">{formatDate(order.paidAt)}</p>
+                <p className="text-[var(--color-text-muted)] mb-1">Payment Date</p>
+                <p className="text-[var(--color-text)]">{formatDate(order.paidAt)}</p>
               </div>
             )}
           </div>
@@ -282,8 +274,8 @@ export default function OrderConfirmationPage() {
 
         {/* Item Details */}
         {listing && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-4">
+          <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
+            <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">
               Item Details
             </h2>
             <div className="flex gap-4">
@@ -291,18 +283,18 @@ export default function OrderConfirmationPage() {
                 <img
                   src={listing.imageUrls[0]}
                   alt={listing.title}
-                  className="w-24 h-24 object-cover rounded-lg"
+                  className="w-24 h-24 object-cover rounded-xl"
                 />
               )}
               <div className="flex-1">
-                <h3 className="font-semibold text-[var(--color-text-primary)] mb-1">
+                <h3 className="font-semibold text-[var(--color-text)] mb-1">
                   {listing.title}
                 </h3>
-                <p className="text-sm text-[var(--color-text-secondary)] mb-2">
+                <p className="text-sm text-[var(--color-text-muted)] mb-2">
                   {listing.brand} {listing.model}
                 </p>
-                <p className="text-lg font-bold text-[var(--color-primary)]">
-                  {formatCurrency(order.amount, order.currency)}
+                <p className="text-lg font-bold text-[var(--color-text)]">
+                  {formatPrice(order.amount, order.currency)}
                 </p>
               </div>
             </div>
@@ -311,39 +303,39 @@ export default function OrderConfirmationPage() {
 
         {/* Seller Information */}
         {seller && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-4">
+          <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
+            <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">
               Seller Information
             </h2>
-            <div className="text-[var(--color-text-primary)]">
+            <div className="text-[var(--color-text)]">
               <p className="font-semibold mb-1">{seller.displayName}</p>
             </div>
           </div>
         )}
 
         {/* Payment Summary */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-4">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
+          <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">
             Payment Summary
           </h2>
           <div className="space-y-2">
-            <div className="flex justify-between text-[var(--color-text-primary)]">
+            <div className="flex justify-between text-[var(--color-text)]">
               <span>Subtotal</span>
-              <span>{formatCurrency(order.amount, order.currency)}</span>
+              <span>{formatPrice(order.amount, order.currency)}</span>
             </div>
-            <div className="flex justify-between text-[var(--color-text-primary)]">
+            <div className="flex justify-between text-[var(--color-text)]">
               <span>Shipping</span>
               <span>Free</span>
             </div>
-            <div className="border-t pt-2 mt-2">
-              <div className="flex justify-between text-lg font-bold text-[var(--color-text-primary)]">
+            <div className="border-t border-[var(--color-border)] pt-2 mt-2">
+              <div className="flex justify-between text-lg font-bold text-[var(--color-text)]">
                 <span>Total</span>
-                <span>{formatCurrency(order.amount, order.currency)}</span>
+                <span>{formatPrice(order.amount, order.currency)}</span>
               </div>
             </div>
           </div>
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800">
+          <div className="mt-4 p-3 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl">
+            <p className="text-sm text-[var(--color-text)]">
               <strong>Buyer Protection:</strong> Your payment is held securely in escrow until you confirm receipt of the item.
             </p>
           </div>
@@ -351,15 +343,15 @@ export default function OrderConfirmationPage() {
 
         {/* Seller: Mark as Shipped Panel */}
         {isSeller && order.status === 'ESCROW_HELD' && (
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6 border border-blue-200">
-            <h2 className="text-xl font-semibold text-[var(--color-text-primary)] mb-2">
+          <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
+            <h2 className="text-xl font-semibold text-[var(--color-text)] mb-2">
               Ship this Order
             </h2>
-            <p className="text-sm text-[var(--color-text-secondary)] mb-4">
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">
               Once you have dispatched the item, mark it as shipped. The buyer will be notified and can track progress.
             </p>
             {actionError && (
-              <div role="alert" className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div role="alert" className="mb-3 p-3 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-xl text-[var(--color-danger)] text-sm">
                 {actionError}
               </div>
             )}
@@ -374,12 +366,12 @@ export default function OrderConfirmationPage() {
                 value={trackingInput}
                 onChange={(e) => setTrackingInput(e.target.value)}
                 maxLength={100}
-                className="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="flex-1 min-w-0 px-4 py-2 border border-[var(--color-border)] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-green)]"
               />
               <button
                 disabled={actionLoading}
                 onClick={markAsShipped}
-                className="bg-[var(--color-primary)] text-white px-6 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold whitespace-nowrap"
+                className="bg-[var(--color-primary)] text-white px-6 py-2 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold whitespace-nowrap"
               >
                 {actionLoading ? 'Marking as Shipped...' : 'Mark as Shipped'}
               </button>
@@ -391,13 +383,13 @@ export default function OrderConfirmationPage() {
         <div className="flex flex-wrap gap-4 justify-center">
           <Link
             href="/browse"
-            className="px-6 py-3 bg-gray-100 text-[var(--color-text-primary)] rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-6 py-3 bg-[var(--color-surface-alt)] text-[var(--color-text)] rounded-xl hover:bg-[var(--color-border)] transition-colors"
           >
             Continue Shopping
           </Link>
           <Link
             href={`/orders/${order.id}/tracking`}
-            className="px-6 py-3 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90 transition-opacity"
+            className="px-6 py-3 bg-[var(--color-primary)] text-white rounded-xl hover:opacity-90 transition-opacity"
           >
             Track Order
           </Link>

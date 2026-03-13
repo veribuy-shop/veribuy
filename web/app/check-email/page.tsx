@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { Mail } from 'lucide-react';
 
 export default function CheckEmailPage() {
   const [resending, setResending] = useState(false);
@@ -36,23 +37,10 @@ export default function CheckEmailPage() {
 
   return (
     <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-8 text-center">
+      <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
         {/* Icon */}
-        <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
-          <svg
-            className="w-8 h-8 text-[var(--color-primary)]"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-            />
-          </svg>
+        <div className="w-16 h-16 bg-[var(--color-surface-alt)] rounded-full flex items-center justify-center mx-auto mb-6">
+          <Mail className="w-8 h-8 text-[var(--color-text)]" aria-hidden="true" />
         </div>
 
         <h1 className="text-2xl font-bold text-[var(--color-text)] mb-3">Check your email</h1>
@@ -71,7 +59,7 @@ export default function CheckEmailPage() {
             <p
               role="status"
               aria-live="polite"
-              className="text-sm text-green-600 font-medium"
+              className="text-sm text-[var(--color-green)] font-medium"
             >
               Verification email resent! Please check your inbox.
             </p>
@@ -90,7 +78,7 @@ export default function CheckEmailPage() {
                 <p
                   role="alert"
                   aria-live="assertive"
-                  className="mt-3 text-sm text-red-600"
+                  className="mt-3 text-sm text-[var(--color-danger)]"
                 >
                   {errorMessage}
                 </p>
@@ -101,7 +89,7 @@ export default function CheckEmailPage() {
 
         <p className="mt-6 text-sm text-[var(--color-text-muted)]">
           Already verified?{' '}
-          <Link href="/login" className="text-[var(--color-primary)] font-medium hover:underline">
+          <Link href="/login" className="text-[var(--color-green)] font-medium hover:underline">
             Sign in
           </Link>
         </p>

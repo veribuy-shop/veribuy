@@ -4,6 +4,8 @@ import { use, useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
+import { Camera, CircleX } from 'lucide-react';
+import ConfirmModal from '@/components/confirm-modal';
 
 type ConditionGrade = 'A' | 'B' | 'C';
 type ListingStatus = 'ACTIVE' | 'INACTIVE' | 'PENDING_VERIFICATION' | 'SOLD';
@@ -86,6 +88,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   // Evidence / images state
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
+  const [confirmDeleteItem, setConfirmDeleteItem] = useState<EvidenceItem | null>(null);
   const [uploadType, setUploadType] = useState<EvidenceType>('DEVICE_IMAGE');
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -167,10 +170,12 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     }
   };
 
-  const handleDeleteImage = async (itemId: string) => {
-    if (!window.confirm('Delete this image? This cannot be undone.')) return;
+  const handleDeleteImage = async () => {
+    if (!confirmDeleteItem) return;
+    const itemId = confirmDeleteItem.id;
 
     setDeletingItemId(itemId);
+    setConfirmDeleteItem(null);
     try {
       const response = await fetch(`/api/evidence/items/${itemId}`, {
         method: 'DELETE',
@@ -328,11 +333,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center">
         <div className="text-center" role="status">
-          <div className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]" aria-hidden="true"></div>
+          <div className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)]" aria-hidden="true"></div>
           <span className="sr-only">Loading...</span>
-          <p className="mt-4 text-gray-600" aria-hidden="true">Loading listing...</p>
+          <p className="mt-4 text-[var(--color-text-muted)]" aria-hidden="true">Loading listing...</p>
         </div>
       </div>
     );
@@ -340,11 +345,11 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
   if (loadError) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-          <div className="text-6xl mb-4">❌</div>
+      <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
+          <CircleX className="w-12 h-12 text-[var(--color-danger)] mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-[var(--color-text)] mb-4">Cannot Edit Listing</h1>
-          <p className="text-gray-600 mb-6">{loadError}</p>
+          <p className="text-[var(--color-text-muted)] mb-6">{loadError}</p>
           <Link
             href="/dashboard"
             className="inline-block px-6 py-3 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90"
@@ -357,13 +362,13 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] py-8">
+    <div className="min-h-screen bg-[var(--color-surface)] py-8">
       <div className="max-w-2xl mx-auto px-4 space-y-6">
         {/* Breadcrumb */}
-        <div className="text-sm text-gray-600">
-          <Link href="/dashboard" className="hover:text-[var(--color-primary)]">Dashboard</Link>
+        <div className="text-sm text-[var(--color-text-muted)]">
+          <Link href="/dashboard" className="hover:text-[var(--color-green)]">Dashboard</Link>
           {' > '}
-          <Link href={`/listings/${id}`} className="hover:text-[var(--color-primary)]">
+          <Link href={`/listings/${id}`} className="hover:text-[var(--color-green)]">
             {listingTitle || 'Listing'}
           </Link>
           {' > '}
@@ -373,9 +378,9 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
         {/* ------------------------------------------------------------------ */}
         {/* Section 1: Listing details form                                     */}
         {/* ------------------------------------------------------------------ */}
-        <div className="bg-white rounded-lg shadow-md p-8">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-8">
           <h1 className="text-2xl font-bold text-[var(--color-text)] mb-2">Edit Listing</h1>
-          <p className="text-gray-600 mb-8 text-sm">
+          <p className="text-[var(--color-text-muted)] mb-8 text-sm">
             Update your listing details below. Device identifiers (IMEI/Serial) and Trust Lens
             verification status cannot be changed after submission.
           </p>
@@ -383,7 +388,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Title */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
                 Listing Title <span className="text-red-500">*</span>
               </label>
               <input
@@ -393,15 +398,15 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 value={formData.title}
                 onChange={handleChange}
                 maxLength={120}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 placeholder="e.g. Apple iPhone 14 Pro 256GB — Excellent Condition"
               />
-              <p className="text-xs text-gray-400 mt-1">{formData.title.length}/120 characters</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{formData.title.length}/120 characters</p>
             </div>
 
             {/* Description */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
                 Description <span className="text-red-500">*</span>
               </label>
               <textarea
@@ -411,16 +416,16 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 onChange={handleChange}
                 rows={5}
                 maxLength={2000}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+                className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent resize-y"
                 placeholder="Describe the device's condition, included accessories, and any relevant details for the buyer..."
               />
-              <p className="text-xs text-gray-400 mt-1">{formData.description.length}/2000 characters</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{formData.description.length}/2000 characters</p>
             </div>
 
             {/* Price & Currency */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
                   Price <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -431,12 +436,12 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   step="0.01"
                   value={formData.price}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   placeholder="0.00"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
                   Currency <span className="text-red-500">*</span>
                 </label>
                 <select
@@ -444,7 +449,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   required
                   value={formData.currency}
                   onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white"
                 >
                   {CURRENCIES.map(c => (
                     <option key={c.value} value={c.value}>{c.label}</option>
@@ -455,7 +460,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
             {/* Condition Grade */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-2">
                 Condition Grade <span className="text-red-500">*</span>
               </label>
               <div className="space-y-2">
@@ -464,8 +469,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                     key={grade.value}
                     className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors ${
                       formData.conditionGrade === grade.value
-                        ? 'border-[var(--color-primary)] bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
                     }`}
                   >
                     <input
@@ -478,7 +483,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                     />
                     <div>
                       <p className="font-medium text-sm text-[var(--color-text)]">{grade.label}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{grade.description}</p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{grade.description}</p>
                     </div>
                   </label>
                 ))}
@@ -487,20 +492,20 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
             {/* Status */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
                 Listing Status
               </label>
               <select
                 name="status"
                 value={formData.status}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white"
               >
                 {EDITABLE_STATUSES.map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">
                 Listings in PENDING_VERIFICATION or SOLD status cannot be made active here.
               </p>
             </div>
@@ -508,8 +513,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
             {/* Color & Storage */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Color <span className="text-gray-400 font-normal">(optional)</span>
+                <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
+                  Color <span className="text-[var(--color-text-muted)] font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
@@ -517,13 +522,13 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   value={formData.color}
                   onChange={handleChange}
                   maxLength={50}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   placeholder="e.g. Space Black"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Storage Capacity <span className="text-gray-400 font-normal">(optional)</span>
+                <label className="block text-sm font-medium text-[var(--color-text-muted)] mb-1">
+                  Storage Capacity <span className="text-[var(--color-text-muted)] font-normal">(optional)</span>
                 </label>
                 <input
                   type="text"
@@ -531,14 +536,14 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                   value={formData.storageCapacity}
                   onChange={handleChange}
                   maxLength={20}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   placeholder="e.g. 256GB"
                 />
               </div>
             </div>
 
             {saveError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+              <div className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-lg p-4 text-sm text-[var(--color-danger)]">
                 {saveError}
               </div>
             )}
@@ -549,7 +554,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 disabled={saving}
                 className={`flex-1 px-6 py-3 rounded-lg font-semibold text-white transition-colors ${
                   saving
-                    ? 'bg-gray-400 cursor-not-allowed'
+                    ? 'bg-[var(--color-text-muted)] cursor-not-allowed'
                     : 'bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)]'
                 }`}
               >
@@ -557,7 +562,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
               </button>
               <Link
                 href={`/listings/${id}`}
-                className="flex-1 px-6 py-3 rounded-lg font-semibold text-center border border-gray-300 text-gray-700 hover:bg-gray-50 transition-colors"
+                className="flex-1 px-6 py-3 rounded-lg font-semibold text-center border border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] transition-colors"
               >
                 Cancel
               </Link>
@@ -568,18 +573,18 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
         {/* ------------------------------------------------------------------ */}
         {/* Section 2: Image management                                         */}
         {/* ------------------------------------------------------------------ */}
-        <div className="bg-white rounded-lg shadow-md p-8">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-8">
           <h2 className="text-xl font-bold text-[var(--color-text)] mb-1">Photos &amp; Evidence</h2>
-          <p className="text-gray-600 text-sm mb-6">
+          <p className="text-[var(--color-text-muted)] text-sm mb-6">
             Manage your listing photos. Images are grouped by type. Adding clear photos helps buyers
             trust your listing.
           </p>
 
           {/* Existing images */}
           {evidenceItems.length === 0 ? (
-            <div className="text-center py-8 border-2 border-dashed border-gray-200 rounded-lg mb-6">
-              <div className="text-4xl mb-2">📷</div>
-              <p className="text-gray-500 text-sm">No images uploaded yet</p>
+            <div className="text-center py-8 border-2 border-dashed border-[var(--color-border)] rounded-lg mb-6">
+              <Camera className="w-10 h-10 text-[var(--color-text-muted)] mx-auto mb-2" />
+              <p className="text-[var(--color-text-muted)] text-sm">No images uploaded yet</p>
             </div>
           ) : (
             <div className="mb-6 space-y-4">
@@ -589,13 +594,13 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                 if (items.length === 0) return null;
                 return (
                   <div key={type}>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-muted)] mb-2">
                       {EVIDENCE_TYPE_LABELS[type]} ({items.length})
                     </h3>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                       {items.map(item => (
                         <div key={item.id} className="relative group">
-                          <div className="aspect-square rounded-lg overflow-hidden border border-gray-200 bg-gray-50">
+                          <div className="aspect-square rounded-lg overflow-hidden border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
                             <img
                               src={item.fileUrl}
                               alt={item.fileName}
@@ -605,14 +610,14 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                           {/* Delete overlay */}
                           <button
                             type="button"
-                            onClick={() => handleDeleteImage(item.id)}
+                            onClick={() => setConfirmDeleteItem(item)}
                             disabled={deletingItemId === item.id}
                             title="Delete image"
                             className="absolute top-1 right-1 w-6 h-6 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 hover:bg-red-600"
                           >
                             {deletingItemId === item.id ? '…' : '×'}
                           </button>
-                          <p className="mt-1 text-xs text-gray-400 truncate">{item.fileName}</p>
+                          <p className="mt-1 text-xs text-[var(--color-text-muted)] truncate">{item.fileName}</p>
                         </div>
                       ))}
                     </div>
@@ -624,15 +629,15 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
 
           {/* Upload new image */}
           <div className="border-t pt-6">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Upload a new image</h3>
+            <h3 className="text-sm font-semibold text-[var(--color-text-muted)] mb-3">Upload a new image</h3>
 
             <div className="flex gap-3 mb-3">
               <div className="flex-1">
-                <label className="block text-xs text-gray-500 mb-1">Image type</label>
+                <label className="block text-xs text-[var(--color-text-muted)] mb-1">Image type</label>
                 <select
                   value={uploadType}
                   onChange={e => setUploadType(e.target.value as EvidenceType)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  className="w-full px-3 py-2 border border-[var(--color-border)] rounded-md text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white"
                 >
                   {UPLOAD_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.label}</option>
@@ -644,8 +649,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
             <label
               className={`flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${
                 uploading
-                  ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                  : 'border-[var(--color-primary)] hover:bg-blue-50'
+                  ? 'border-[var(--color-border)] bg-[var(--color-surface-alt)] cursor-not-allowed'
+                  : 'border-[var(--color-green)] hover:bg-[var(--color-green)]/5'
               }`}
             >
               <input
@@ -659,34 +664,55 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
               {uploading ? (
                 <div className="text-center">
                   <div role="status" className="inline-flex flex-col items-center">
-                    <div className="inline-block motion-safe:animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--color-primary)] mb-2" aria-hidden="true"></div>
+                    <div className="inline-block motion-safe:animate-spin rounded-full h-6 w-6 border-b-2 border-[var(--color-green)] mb-2" aria-hidden="true"></div>
                     <span className="sr-only">Loading...</span>
                   </div>
-                  <p className="text-sm text-gray-500">Uploading...</p>
+                  <p className="text-sm text-[var(--color-text-muted)]">Uploading...</p>
                 </div>
               ) : (
                 <div className="text-center">
                   <div className="text-2xl mb-1">+</div>
-                  <p className="text-sm text-[var(--color-primary)] font-medium">Click to select image</p>
-                  <p className="text-xs text-gray-400 mt-0.5">JPG, PNG, WebP — max 10MB</p>
+                  <p className="text-sm text-[var(--color-green)] font-medium">Click to select image</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">JPG, PNG, WebP — max 10MB</p>
                 </div>
               )}
             </label>
 
             {uploadError && (
-              <div role="alert" className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+              <div role="alert" className="mt-3 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-lg p-3 text-sm text-[var(--color-danger)]">
                 {uploadError}
               </div>
             )}
 
             {uploadSuccess && (
-              <div role="status" aria-live="polite" className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3 text-sm text-green-700">
+              <div role="status" aria-live="polite" className="mt-3 bg-[var(--color-green)]/10 border border-[var(--color-green)]/30 rounded-lg p-3 text-sm text-[var(--color-green)]">
                 {uploadSuccess}
               </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Delete Image Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!confirmDeleteItem}
+        onClose={() => setConfirmDeleteItem(null)}
+        onConfirm={handleDeleteImage}
+        title="Delete Image"
+        description="Are you sure you want to delete this image? This cannot be undone."
+        confirmLabel="Delete Image"
+        loadingLabel="Deleting..."
+        variant="danger"
+      >
+        {confirmDeleteItem && (
+          <>
+            <p className="text-sm font-medium text-[var(--color-text)]">{confirmDeleteItem.fileName}</p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">
+              {EVIDENCE_TYPE_LABELS[confirmDeleteItem.type]}
+            </p>
+          </>
+        )}
+      </ConfirmModal>
     </div>
   );
 }

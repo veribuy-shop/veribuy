@@ -28,5 +28,3 @@ dev.sh
 dev-local.sh
 test-features.sh
 test-payment-flow.sh
-# Dead device-verification service (not deployed)
-services/device-verification-service/

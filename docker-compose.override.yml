@@ -21,10 +21,6 @@ services:
     volumes:
       - ./services/trust-lens-service/src:/app/src
 
-  device-verification-service:
-    volumes:
-      - ./services/device-verification-service/app:/app/app
-
   evidence-service:
     volumes:
       - ./services/evidence-service/src:/app/src

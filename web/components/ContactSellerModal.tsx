@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { CheckCircle2, X } from 'lucide-react';
 
 interface ContactSellerModalProps {
   isOpen: boolean;
@@ -131,7 +132,7 @@ export default function ContactSellerModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* DATA-07: role=dialog + aria-modal confine the AT reading order inside
@@ -141,18 +142,18 @@ export default function ContactSellerModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="contact-seller-title"
-        className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto border border-[var(--color-border)]"
       >
         {/* Header */}
-        <div className="flex justify-between items-center p-6 border-b">
+        <div className="flex justify-between items-center p-6 border-b border-[var(--color-border)]">
           <h2 id="contact-seller-title" className="text-2xl font-bold text-[var(--color-text)]">Contact Seller</h2>
           <button
             onClick={onClose}
             aria-label="Close contact seller dialog"
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
             disabled={sending}
           >
-            <span aria-hidden="true">×</span>
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -160,28 +161,30 @@ export default function ContactSellerModal({
         <div className="p-6">
           {success ? (
             <div className="text-center py-8">
-              <div className="text-6xl mb-4">✅</div>
-              <h3 className="text-xl font-semibold text-green-600 mb-2">Message Sent!</h3>
-              <p className="text-gray-600">The seller will be notified and can respond to your inquiry.</p>
+              <div className="w-16 h-16 rounded-full bg-[var(--color-green)]/10 flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="w-8 h-8 text-[var(--color-green)]" aria-hidden="true" />
+              </div>
+              <h3 className="text-xl font-semibold text-[var(--color-green)] mb-2">Message Sent!</h3>
+              <p className="text-[var(--color-text-muted)]">The seller will be notified and can respond to your inquiry.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Listing Info */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-sm text-gray-600 mb-1">Regarding:</p>
+              <div className="bg-[var(--color-surface-alt)] rounded-xl p-4">
+                <p className="text-sm text-[var(--color-text-muted)] mb-1">Regarding:</p>
                 <p className="font-medium text-[var(--color-text)]">{listingTitle}</p>
               </div>
 
               {/* Subject */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
                   Subject
                 </label>
                 <input
                   type="text"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   placeholder="What would you like to ask?"
                   disabled={sending}
                 />
@@ -189,26 +192,26 @@ export default function ContactSellerModal({
 
               {/* Message */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
                   Message
                 </label>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   rows={6}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent resize-none"
                   placeholder="Ask about condition, shipping, price, etc..."
                   disabled={sending}
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">
                   Be respectful and provide specific questions
                 </p>
               </div>
 
               {/* Error Display */}
               {error && (
-                <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
+                <div role="alert" className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
                   {error}
                 </div>
               )}
@@ -218,7 +221,7 @@ export default function ContactSellerModal({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+                  className="flex-1 px-6 py-3 border border-[var(--color-border)] text-[var(--color-text-muted)] rounded-xl hover:bg-[var(--color-surface-alt)] transition-colors"
                   disabled={sending}
                 >
                   Cancel
@@ -226,7 +229,7 @@ export default function ContactSellerModal({
                 <button
                   type="submit"
                   disabled={sending || !message.trim()}
-                  className={`flex-1 px-6 py-3 rounded-md font-semibold text-white ${
+                  className={`flex-1 px-6 py-3 rounded-xl font-semibold text-white ${
                     sending || !message.trim()
                       ? 'bg-gray-400 cursor-not-allowed'
                       : 'bg-[var(--color-primary)] hover:opacity-90'

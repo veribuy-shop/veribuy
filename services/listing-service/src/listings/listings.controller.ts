@@ -42,7 +42,7 @@ export class UlistingsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles('SELLER')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async create(@Body() dto: CreateListingDto, @CurrentUser() user: AuthenticatedUser) {
     // Override sellerId from JWT — never trust client-supplied sellerId
     dto.sellerId = user.userId;
@@ -75,7 +75,7 @@ export class UlistingsController {
    * PUT :id/status — authenticated user-facing status update (SELLER transitions own listing)
    */
   @Put(':id/status')
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async updateStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateStatusDto,
@@ -105,6 +105,7 @@ export class UlistingsController {
    * Bypasses state machine so transaction-service can force SOLD/DELISTED.
    */
   @Patch(':id/status')
+  @Public()
   async updateListingStatusInternal(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateStatusDto,
@@ -130,7 +131,7 @@ export class UlistingsController {
   }
 
   @Patch(':id')
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateListingDto,
@@ -162,7 +163,7 @@ export class UlistingsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
     const listing = await this.listingsService.findOneRaw(id);
 

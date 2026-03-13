@@ -80,17 +80,32 @@ export default function PrivacyPage() {
             </ul>
             <p className="mt-4">
               To exercise these rights, contact us at{' '}
-              <a href="mailto:privacy@veribuy.com" className="text-[var(--color-primary)] font-medium">
+              <a href="mailto:privacy@veribuy.com" className="text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
                 privacy@veribuy.com
               </a>
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-bold text-[var(--color-text)] mb-4">6. Cookies and Tracking</h2>
+            <h2 className="text-2xl font-bold text-[var(--color-text)] mb-4">6. Cookies</h2>
             <p>
-              We use cookies and similar technologies to improve your experience, analyze usage patterns, 
-              and personalize content. You can control cookie settings through your browser.
+              We use only strictly necessary cookies required for authentication. No analytics,
+              tracking, or personalisation cookies are used.
+            </p>
+            <ul className="list-disc pl-6 space-y-2 mt-3">
+              <li>
+                <strong>accessToken</strong> — stores your session credentials so you remain logged
+                in. Expires after 15 minutes. HttpOnly, SameSite=Strict.
+              </li>
+              <li>
+                <strong>refreshToken</strong> — used to silently renew your session without
+                requiring you to log in again. Expires after 7 days. HttpOnly, SameSite=Strict.
+              </li>
+            </ul>
+            <p className="mt-3">
+              Because these cookies are strictly necessary for the service to function, they do not
+              require your consent under applicable cookie regulations (PECR / ePrivacy Directive).
+              You can delete them at any time via your browser settings, which will log you out.
             </p>
           </section>
 
@@ -122,7 +137,7 @@ export default function PrivacyPage() {
             <h2 className="text-2xl font-bold text-[var(--color-text)] mb-4">10. Contact Us</h2>
             <p>
               For privacy-related questions or concerns, contact us at{' '}
-              <a href="mailto:privacy@veribuy.com" className="text-[var(--color-primary)] font-medium">
+              <a href="mailto:privacy@veribuy.com" className="text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
                 privacy@veribuy.com
               </a>
             </p>

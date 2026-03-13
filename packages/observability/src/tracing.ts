@@ -3,7 +3,7 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 export interface TracingConfig {
@@ -22,7 +22,7 @@ export function initTracing(config: TracingConfig): NodeSDK {
   } = config;
 
   // Create resource with service information
-  const resource = new Resource({
+  const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
     [ATTR_SERVICE_VERSION]: serviceVersion,
     environment,
@@ -56,7 +56,10 @@ export function initTracing(config: TracingConfig): NodeSDK {
         },
         '@opentelemetry/instrumentation-http': {
           enabled: true,
-          ignoreIncomingPaths: ['/health', '/metrics'], // Don't trace health checks
+          ignoreIncomingRequestHook: (req) => {
+            const path = req.url?.split('?')[0] ?? '';
+            return path === '/health' || path === '/metrics';
+          },
         },
         '@opentelemetry/instrumentation-express': {
           enabled: true,
@@ -67,7 +70,7 @@ export function initTracing(config: TracingConfig): NodeSDK {
         '@opentelemetry/instrumentation-pg': {
           enabled: true,
         },
-        '@opentelemetry/instrumentation-redis-4': {
+        '@opentelemetry/instrumentation-redis': {
           enabled: true,
         },
       }),

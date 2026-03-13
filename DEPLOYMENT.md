@@ -74,7 +74,6 @@ AUTH_SERVICE_PORT=3001
 USER_SERVICE_PORT=3002
 LISTING_SERVICE_PORT=3003
 TRUST_LENS_SERVICE_PORT=3004
-DEVICE_VERIFICATION_SERVICE_PORT=3005
 EVIDENCE_SERVICE_PORT=3006
 TRANSACTION_SERVICE_PORT=3007
 NOTIFICATION_SERVICE_PORT=3008
@@ -88,7 +87,6 @@ AUTH_SERVICE_URL=http://auth-service:3001
 USER_SERVICE_URL=http://user-service:3002
 LISTING_SERVICE_URL=http://listing-service:3003
 TRUST_LENS_SERVICE_URL=http://trust-lens-service:3004
-DEVICE_VERIFICATION_SERVICE_URL=http://device-verification-service:3005
 EVIDENCE_SERVICE_URL=http://evidence-service:3006
 TRANSACTION_SERVICE_URL=http://transaction-service:3007
 NOTIFICATION_SERVICE_URL=http://notification-service:3008
@@ -123,7 +121,6 @@ docker-compose ps
 # veribuy-user                   running   3002/tcp
 # veribuy-listing                running   3003/tcp
 # veribuy-trust-lens             running   3004/tcp
-# veribuy-device-verification    running   3005/tcp
 # veribuy-evidence               running   3006/tcp
 # veribuy-transaction            running   3007/tcp
 # veribuy-notification           running   3008/tcp

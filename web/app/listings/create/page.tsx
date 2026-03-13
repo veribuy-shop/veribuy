@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
+import { Lightbulb, AlertTriangle } from 'lucide-react';
 
 type DeviceType = 'SMARTPHONE' | 'TABLET' | 'SMARTWATCH';
 type ConditionGrade = 'A' | 'B' | 'C';
@@ -355,10 +356,10 @@ export default function CreateListingPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
+      <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
           <h1 className="text-2xl font-bold text-[var(--color-text)] mb-4">Authentication Required</h1>
-          <p className="text-[var(--color-text-secondary)] mb-6">
+          <p className="text-[var(--color-text-muted)] mb-6">
             You need to be logged in to create listings.
           </p>
           <Link
@@ -373,12 +374,12 @@ export default function CreateListingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] py-8">
+    <div className="min-h-screen bg-[var(--color-surface)] py-8">
       <div className="max-w-4xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">Create New Listing</h1>
-          <p className="text-[var(--color-text-secondary)]">
+          <p className="text-[var(--color-text-muted)]">
             List your device and get it verified through Trust Lens for buyer confidence
           </p>
         </div>
@@ -400,21 +401,21 @@ export default function CreateListingPage() {
                     aria-hidden="true"
                     className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold mb-2 ${
                       currentStep >= step.id
-                        ? 'bg-[var(--color-primary)] text-white'
-                        : 'bg-gray-200 text-gray-500'
+                        ? 'bg-[var(--color-green)] text-white'
+                        : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
                     }`}
                   >
                     {step.id}
                   </div>
                   <div className="text-center">
-                    <div className={`text-sm font-medium ${currentStep >= step.id ? 'text-[var(--color-primary)]' : 'text-gray-500'}`}>
+                    <div className={`text-sm font-medium ${currentStep >= step.id ? 'text-[var(--color-green)]' : 'text-[var(--color-text-muted)]'}`}>
                       {step.name}
                     </div>
-                    <div className="text-xs text-gray-400 hidden sm:block">{step.description}</div>
+                    <div className="text-xs text-[var(--color-text-muted)] hidden sm:block">{step.description}</div>
                   </div>
                 </div>
                 {index < STEPS.length - 1 && (
-                  <div aria-hidden="true" className={`h-1 flex-1 mx-2 ${currentStep > step.id ? 'bg-[var(--color-primary)]' : 'bg-gray-200'}`} />
+                  <div aria-hidden="true" className={`h-1 flex-1 mx-2 ${currentStep > step.id ? 'bg-[var(--color-green)]' : 'bg-[var(--color-border)]'}`} />
                 )}
               </div>
             ))}
@@ -427,10 +428,10 @@ export default function CreateListingPage() {
         </div>
 
         {/* Form Content */}
-        <div className="bg-white rounded-lg shadow-md p-8 mb-6">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] p-8 mb-6">
           {error && (
-            <div role="alert" className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
-              <p className="text-sm text-red-600">{error}</p>
+            <div role="alert" className="mb-6 p-4 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-xl">
+              <p className="text-sm text-[var(--color-danger)]">{error}</p>
             </div>
           )}
 
@@ -451,7 +452,7 @@ export default function CreateListingPage() {
                     updateFormData('deviceType', e.target.value as DeviceType);
                     updateFormData('brand', '');
                   }}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 >
                   {DEVICE_TYPES.map(type => (
                     <option key={type.value} value={type.value}>{type.label}</option>
@@ -468,7 +469,7 @@ export default function CreateListingPage() {
                   id="device-brand"
                   value={formData.brand}
                   onChange={(e) => updateFormData('brand', e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 >
                   <option value="">Select a brand</option>
                   {POPULAR_BRANDS[formData.deviceType].map(brand => (
@@ -488,7 +489,7 @@ export default function CreateListingPage() {
                   value={formData.model}
                   onChange={(e) => updateFormData('model', e.target.value)}
                   placeholder="e.g., iPhone 14 Pro Max, Galaxy S23 Ultra"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 />
               </div>
 
@@ -505,9 +506,9 @@ export default function CreateListingPage() {
                   placeholder="e.g., Like New iPhone 14 Pro Max 256GB - Space Black"
                   maxLength={100}
                   aria-describedby="listing-title-hint"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 />
-                <p id="listing-title-hint" className="mt-1 text-xs text-gray-500">{formData.title.length}/100 characters (minimum 10)</p>
+                <p id="listing-title-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">{formData.title.length}/100 characters (minimum 10)</p>
               </div>
 
               <div>
@@ -523,9 +524,9 @@ export default function CreateListingPage() {
                   rows={6}
                   maxLength={2000}
                   aria-describedby="listing-description-hint"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 />
-                <p id="listing-description-hint" className="mt-1 text-xs text-gray-500">{formData.description.length}/2000 characters (minimum 50)</p>
+                <p id="listing-description-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">{formData.description.length}/2000 characters (minimum 50)</p>
               </div>
             </div>
           )}
@@ -547,12 +548,12 @@ export default function CreateListingPage() {
                     onClick={() => updateFormData('conditionGrade', 'A')}
                     className={`p-4 border-2 rounded-lg text-left transition ${
                       formData.conditionGrade === 'A'
-                        ? 'border-[var(--color-primary)] bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
                     }`}
                   >
                     <div className="font-semibold text-lg mb-1">Grade A - Excellent</div>
-                    <div className="text-sm text-gray-600">Like new, minimal signs of use, fully functional</div>
+                    <div className="text-sm text-[var(--color-text-muted)]">Like new, minimal signs of use, fully functional</div>
                   </button>
                   <button
                     type="button"
@@ -560,12 +561,12 @@ export default function CreateListingPage() {
                     onClick={() => updateFormData('conditionGrade', 'B')}
                     className={`p-4 border-2 rounded-lg text-left transition ${
                       formData.conditionGrade === 'B'
-                        ? 'border-[var(--color-primary)] bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
                     }`}
                   >
                     <div className="font-semibold text-lg mb-1">Grade B - Good</div>
-                    <div className="text-sm text-gray-600">Normal wear, minor scratches, fully functional</div>
+                    <div className="text-sm text-[var(--color-text-muted)]">Normal wear, minor scratches, fully functional</div>
                   </button>
                   <button
                     type="button"
@@ -573,12 +574,12 @@ export default function CreateListingPage() {
                     onClick={() => updateFormData('conditionGrade', 'C')}
                     className={`p-4 border-2 rounded-lg text-left transition ${
                       formData.conditionGrade === 'C'
-                        ? 'border-[var(--color-primary)] bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
                     }`}
                   >
                     <div className="font-semibold text-lg mb-1">Grade C - Fair</div>
-                    <div className="text-sm text-gray-600">Visible wear, scratches/dents, fully functional</div>
+                    <div className="text-sm text-[var(--color-text-muted)]">Visible wear, scratches/dents, fully functional</div>
                   </button>
                 </div>
               </fieldset>
@@ -594,7 +595,7 @@ export default function CreateListingPage() {
                   onChange={(e) => updateFormData('cosmeticCondition', e.target.value)}
                   placeholder="Describe any scratches, dents, discoloration, or other cosmetic issues"
                   rows={4}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 />
               </div>
 
@@ -608,7 +609,7 @@ export default function CreateListingPage() {
                   onChange={(e) => updateFormData('functionalIssues', e.target.value)}
                   placeholder="List any functional problems (e.g., battery life, buttons, connectivity). Leave empty if none."
                   rows={4}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 />
               </div>
 
@@ -625,8 +626,8 @@ export default function CreateListingPage() {
                       onClick={() => toggleAccessory(accessory)}
                       className={`px-4 py-2 border-2 rounded-md text-sm transition ${
                         formData.accessories.includes(accessory)
-                          ? 'border-[var(--color-primary)] bg-blue-50 text-[var(--color-primary)]'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                          ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 text-[var(--color-green)]'
+                          : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-text-muted)]/30'
                       }`}
                     >
                       {accessory}
@@ -657,7 +658,7 @@ export default function CreateListingPage() {
                       placeholder="0.00"
                       step="0.01"
                       min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                      className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                     />
                   </div>
                   <label htmlFor="listing-currency" className="sr-only">Currency</label>
@@ -665,23 +666,23 @@ export default function CreateListingPage() {
                     id="listing-currency"
                     value={formData.currency}
                     onChange={(e) => updateFormData('currency', e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                    className="px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   >
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
                     <option value="GBP">GBP</option>
                   </select>
                 </div>
-                <p className="mt-2 text-sm text-gray-500">
+                <p className="mt-2 text-sm text-[var(--color-text-muted)]">
                   Set a competitive price. Trust Lens verification helps you command higher prices.
                 </p>
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg p-4">
                 <h3 className="font-semibold text-[var(--color-text)] mb-2">
-                  <span aria-hidden="true">💡</span> Pricing Tips
+                  <Lightbulb className="w-4 h-4 inline mr-1" aria-hidden="true" /> Pricing Tips
                 </h3>
-                <ul className="text-sm text-gray-700 space-y-1">
+                <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
                   <li>• Verified listings with Trust Lens approval sell 30% faster on average</li>
                   <li>• Grade A devices typically sell for 15-20% more than Grade B</li>
                   <li>• Include accessories to justify premium pricing</li>
@@ -695,15 +696,15 @@ export default function CreateListingPage() {
           {currentStep === 4 && (
             <div className="space-y-6">
               <h2 className="text-xl font-semibold text-[var(--color-text)] mb-2">Trust Lens Verification</h2>
-              <p className="text-sm text-gray-600 mb-6">
+              <p className="text-sm text-[var(--color-text-muted)] mb-6">
                 Provide device identifiers and evidence images for verification. This helps build buyer trust and reduces disputes.
               </p>
 
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+              <div className="bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 rounded-lg p-4 mb-6">
                 <h3 className="font-semibold text-[var(--color-text)] mb-2">
-                  <span aria-hidden="true">⚠️</span> Verification Requirements
+                  <AlertTriangle className="w-4 h-4 inline mr-1" aria-hidden="true" /> Verification Requirements
                 </h3>
-                <ul className="text-sm text-gray-700 space-y-1">
+                <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
                   <li>• IMEI or Serial Number (required for all devices)</li>
                   <li>• At least 3 high-quality device images (various angles)</li>
                   <li>• At least 1 screen/display image (powered on)</li>
@@ -726,9 +727,9 @@ export default function CreateListingPage() {
                     placeholder="15 digits"
                     maxLength={15}
                     aria-describedby="device-imei-hint"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                    className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   />
-                  <p id="device-imei-hint" className="mt-1 text-xs text-gray-500">Dial *#06# on the device to find IMEI</p>
+                  <p id="device-imei-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">Dial *#06# on the device to find IMEI</p>
                 </div>
 
                 <div>
@@ -742,9 +743,9 @@ export default function CreateListingPage() {
                     onChange={(e) => updateFormData('serialNumber', e.target.value)}
                     placeholder="Device serial number"
                     aria-describedby="device-serial-hint"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                    className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   />
-                  <p id="device-serial-hint" className="mt-1 text-xs text-gray-500">Found in Settings → About</p>
+                  <p id="device-serial-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">Found in Settings → About</p>
                 </div>
               </div>
 
@@ -759,10 +760,10 @@ export default function CreateListingPage() {
                   accept="image/*"
                   multiple
                   onChange={(e) => handleFileChange('deviceImages', e.target.files)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   aria-describedby="device-images-hint"
                 />
-                <p id="device-images-hint" className="mt-1 text-xs text-gray-500">
+                <p id="device-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
                   Upload clear images from multiple angles (front, back, sides).{' '}
                   <span aria-live="polite">{formData.deviceImages.length} file(s) selected.</span>
                 </p>
@@ -773,9 +774,9 @@ export default function CreateListingPage() {
                         <img
                           src={deviceImageURLs[idx]}
                           alt={`Device image ${idx + 1}: ${file.name}`}
-                          className="w-full h-24 object-cover rounded border border-gray-200"
+                          className="w-full h-24 object-cover rounded border border-[var(--color-border)]"
                         />
-                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate rounded-b">
+                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate rounded-b">
                           {file.name}
                         </div>
                       </div>
@@ -795,10 +796,10 @@ export default function CreateListingPage() {
                   accept="image/*"
                   multiple
                   onChange={(e) => handleFileChange('screenImages', e.target.files)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   aria-describedby="screen-images-hint"
                 />
-                <p id="screen-images-hint" className="mt-1 text-xs text-gray-500">
+                <p id="screen-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
                   Show the screen powered on.{' '}
                   <span aria-live="polite">{formData.screenImages.length} file(s) selected.</span>
                 </p>
@@ -809,9 +810,9 @@ export default function CreateListingPage() {
                         <img
                           src={screenImageURLs[idx]}
                           alt={`Screen image ${idx + 1}: ${file.name}`}
-                          className="w-full h-24 object-cover rounded border border-gray-200"
+                          className="w-full h-24 object-cover rounded border border-[var(--color-border)]"
                         />
-                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate rounded-b">
+                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate rounded-b">
                           {file.name}
                         </div>
                       </div>
@@ -830,10 +831,10 @@ export default function CreateListingPage() {
                   accept="image/*"
                   multiple
                   onChange={(e) => handleFileChange('bodyImages', e.target.files)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   aria-describedby="body-images-hint"
                 />
-                <p id="body-images-hint" className="mt-1 text-xs text-gray-500">
+                <p id="body-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
                   Show any scratches, dents, or wear.{' '}
                   <span aria-live="polite">{formData.bodyImages.length} file(s) selected.</span>
                 </p>
@@ -844,9 +845,9 @@ export default function CreateListingPage() {
                         <img
                           src={bodyImageURLs[idx]}
                           alt={`Body image ${idx + 1}: ${file.name}`}
-                          className="w-full h-24 object-cover rounded border border-gray-200"
+                          className="w-full h-24 object-cover rounded border border-[var(--color-border)]"
                         />
-                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate rounded-b">
+                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate rounded-b">
                           {file.name}
                         </div>
                       </div>
@@ -865,10 +866,10 @@ export default function CreateListingPage() {
                   accept="image/*"
                   multiple
                   onChange={(e) => handleFileChange('settingsScreenshot', e.target.files)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   aria-describedby="settings-screenshot-hint"
                 />
-                <p id="settings-screenshot-hint" className="mt-1 text-xs text-gray-500">
+                <p id="settings-screenshot-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
                   Screenshot of Settings → About showing device info.{' '}
                   <span aria-live="polite">{formData.settingsScreenshot.length} file(s) selected.</span>
                 </p>
@@ -879,9 +880,9 @@ export default function CreateListingPage() {
                         <img
                           src={settingsImageURLs[idx]}
                           alt={`Settings screenshot ${idx + 1}: ${file.name}`}
-                          className="w-full h-24 object-cover rounded border border-gray-200"
+                          className="w-full h-24 object-cover rounded border border-[var(--color-border)]"
                         />
-                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate rounded-b">
+                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate rounded-b">
                           {file.name}
                         </div>
                       </div>
@@ -899,7 +900,7 @@ export default function CreateListingPage() {
             type="button"
             onClick={handlePrevious}
             disabled={currentStep === 1}
-            className="px-6 py-3 border border-gray-300 rounded-md text-[var(--color-text)] hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 border border-[var(--color-border)] rounded-md text-[var(--color-text)] hover:bg-[var(--color-surface-alt)] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Previous
           </button>
@@ -926,7 +927,7 @@ export default function CreateListingPage() {
           )}
         </div>
 
-        <p className="text-center text-sm text-gray-500 mt-4">
+        <p className="text-center text-sm text-[var(--color-text-muted)] mt-4">
           Your listing will be reviewed by our Trust Lens team before going live
         </p>
       </div>

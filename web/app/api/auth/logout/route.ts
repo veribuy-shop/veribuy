@@ -30,8 +30,8 @@ export async function POST(request: NextRequest) {
     );
 
     // Always clear authentication cookies regardless of revocation outcome
-    response.cookies.delete('accessToken');
-    response.cookies.delete('refreshToken');
+    response.cookies.delete({ name: 'accessToken', path: '/' });
+    response.cookies.delete({ name: 'refreshToken', path: '/' });
 
     return response;
   } catch (error) {

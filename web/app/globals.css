@@ -1,35 +1,40 @@
 @import "tailwindcss";
 
 @theme {
-  /* Primary - Terracotta */
-  --color-primary: #E07A5F;
-  --color-primary-dark: #C7654A;
-  --color-primary-light: #F09A82;
+  /* Primary - Dark Navy */
+  --color-primary: #232F3E;
+  --color-primary-dark: #131A22;
+  --color-primary-light: #37475A;
 
-  /* Accent - Sage Green */
-  --color-accent: #81B29A;
-  --color-accent-dark: #6A9B82;
-  --color-accent-light: #A4CDB8;
+  /* Accent - Amber/Orange (CTA) */
+  --color-accent: #FF9900;
+  --color-accent-dark: #E68900;
+  --color-accent-light: #FFB84D;
 
-  /* Neutrals - Warm tones */
-  --color-warm-beige: #F4F1DE;
-  --color-warm-brown: #8B6F47;
-  --color-warm-tan: #D4C5A9;
+  /* Green - Trust / Verified */
+  --color-green: #2D7A4F;
+  --color-green-dark: #1F5C3A;
+  --color-green-light: #4CAF73;
+
+  /* Neutrals */
+  --color-warm-beige: #F5F5F0;
+  --color-warm-brown: #555555;
+  --color-warm-tan: #AAAAAA;
 
   /* Surfaces */
-  --color-surface: #FFFBF5;
-  --color-surface-alt: #F4F1DE;
-  --color-border: #E8DCCF;
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F5F5F0;
+  --color-border: #E3E3E3;
 
   /* Text */
-  --color-text: #3D3522;
-  --color-text-muted: #8B7E6A;
+  --color-text: #0F1111;
+  --color-text-muted: #565959;
 
   /* Semantic colors */
-  --color-success: #81B29A;
-  --color-warning: #F2B07C;
-  --color-danger: #D4775E;
-  --color-trust-badge: #81B29A;
+  --color-success: #2D7A4F;
+  --color-warning: #FF9900;
+  --color-danger: #CC0C39;
+  --color-trust-badge: #2D7A4F;
 
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }

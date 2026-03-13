@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
+import { Package } from 'lucide-react';
 
 type OrderStatus = 'PENDING' | 'PAYMENT_RECEIVED' | 'ESCROW_HELD' | 'SHIPPED' | 'DELIVERED' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED' | 'DISPUTED';
 
@@ -89,28 +90,28 @@ export default function OrdersPage() {
 
   const getStatusColor = (status: OrderStatus) => {
     const colors: Record<OrderStatus, string> = {
-      PENDING: 'bg-yellow-100 text-yellow-700',
-      PAYMENT_RECEIVED: 'bg-blue-100 text-blue-700',
-      ESCROW_HELD: 'bg-blue-100 text-blue-700',
-      SHIPPED: 'bg-purple-100 text-purple-700',
-      DELIVERED: 'bg-indigo-100 text-indigo-700',
-      COMPLETED: 'bg-green-100 text-green-700',
-      CANCELLED: 'bg-red-100 text-red-700',
-      REFUNDED: 'bg-gray-100 text-gray-700',
-      DISPUTED: 'bg-orange-100 text-orange-700',
+      PENDING: 'bg-[var(--color-warning)]/15 text-[var(--color-warning)]',
+      PAYMENT_RECEIVED: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
+      ESCROW_HELD: 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]',
+      SHIPPED: 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]',
+      DELIVERED: 'bg-[var(--color-success)]/15 text-[var(--color-success)]',
+      COMPLETED: 'bg-[var(--color-success)]/15 text-[var(--color-success)]',
+      CANCELLED: 'bg-[var(--color-border)] text-[var(--color-text-muted)]',
+      REFUNDED: 'bg-[var(--color-border)] text-[var(--color-text-muted)]',
+      DISPUTED: 'bg-[var(--color-danger)]/15 text-[var(--color-danger)]',
     };
-    return colors[status] ?? 'bg-gray-100 text-gray-700';
+    return colors[status] ?? 'bg-[var(--color-border)] text-[var(--color-text-muted)]';
   };
 
   const OrderCard = ({ order, isSeller }: { order: Order; isSeller: boolean }) => (
     <Link
       href={`/orders/${order.id}`}
-      className="block bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow"
+      className="block bg-white rounded-xl border border-[var(--color-border)] p-6 hover:border-[var(--color-green)] transition-colors"
     >
       <div className="flex justify-between items-start mb-4">
         <div>
-          <p className="text-sm text-gray-600">Order #{order.id.substring(0, 8)}</p>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-sm text-[var(--color-text-muted)]">Order #{order.id.substring(0, 8)}</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
             {new Date(order.createdAt).toLocaleDateString()}
           </p>
         </div>
@@ -121,35 +122,35 @@ export default function OrdersPage() {
 
       <div className="space-y-2">
         <div className="flex justify-between">
-          <span className="text-sm text-gray-600">Amount:</span>
-          <span className="font-semibold text-[var(--color-primary)]">
+          <span className="text-sm text-[var(--color-text-muted)]">Amount:</span>
+          <span className="text-[var(--color-text)] font-semibold">
             {formatPrice(order.amount, order.currency)}
           </span>
         </div>
 
         {order.trackingNumber && (
           <div className="flex justify-between">
-            <span className="text-sm text-gray-600">Tracking:</span>
+            <span className="text-sm text-[var(--color-text-muted)]">Tracking:</span>
             <span className="font-mono text-xs">{order.trackingNumber}</span>
           </div>
         )}
 
         {isSeller && (
-          <div className="mt-4 pt-4 border-t">
-            <p className="text-xs text-gray-600">You are selling this item</p>
+          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <p className="text-xs text-[var(--color-text-muted)]">You are selling this item</p>
           </div>
         )}
 
         {!isSeller && (
-          <div className="mt-4 pt-4 border-t">
-            <p className="text-xs text-gray-600">You purchased this item</p>
+          <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+            <p className="text-xs text-[var(--color-text-muted)]">You purchased this item</p>
           </div>
         )}
       </div>
 
       <div className="mt-4">
-        <span className="text-sm text-[var(--color-primary)] hover:underline">
-          View Details <span aria-hidden="true">→</span>
+        <span className="text-sm text-[var(--color-green)] hover:text-[var(--color-green-dark)]">
+          View Details <span aria-hidden="true">&rarr;</span>
         </span>
       </div>
     </Link>
@@ -157,11 +158,11 @@ export default function OrdersPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div role="status" className="text-center">
-          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
+          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)]"></div>
           <span className="sr-only">Loading orders...</span>
-          <p aria-hidden="true" className="mt-4 text-gray-600">Loading orders...</p>
+          <p aria-hidden="true" className="mt-4 text-[var(--color-text-muted)]">Loading orders...</p>
         </div>
       </div>
     );
@@ -170,20 +171,20 @@ export default function OrdersPage() {
   const orders = activeTab === 'buying' ? buyingOrders : sellingOrders;
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] py-8">
+    <div className="min-h-screen bg-white py-8">
       <div className="max-w-6xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">My Orders</h1>
-          <p className="text-gray-600">Manage your purchases and sales</p>
+          <p className="text-[var(--color-text-muted)]">Manage your purchases and sales</p>
         </div>
 
         {/* Tabs */}
-        <div className="bg-white rounded-lg shadow-md mb-6">
+        <div className="bg-white rounded-xl border border-[var(--color-border)] mb-6">
           <div
             role="tablist"
             aria-label="Order type"
-            className="flex border-b"
+            className="flex border-b border-[var(--color-border)]"
           >
             <button
               role="tab"
@@ -193,8 +194,8 @@ export default function OrdersPage() {
               onClick={() => setActiveTab('buying')}
               className={`flex-1 px-6 py-4 font-semibold ${
                 activeTab === 'buying'
-                  ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
-                  : 'text-gray-600 hover:text-gray-800'
+                  ? 'text-[var(--color-green)] border-b-2 border-[var(--color-green)]'
+                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
               }`}
             >
               Buying{' '}
@@ -209,8 +210,8 @@ export default function OrdersPage() {
               onClick={() => setActiveTab('selling')}
               className={`flex-1 px-6 py-4 font-semibold ${
                 activeTab === 'selling'
-                  ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
-                  : 'text-gray-600 hover:text-gray-800'
+                  ? 'text-[var(--color-green)] border-b-2 border-[var(--color-green)]'
+                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
               }`}
             >
               Selling{' '}
@@ -222,8 +223,8 @@ export default function OrdersPage() {
 
         {/* Error Display */}
         {error && (
-          <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-700">{error}</p>
+          <div role="alert" className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-lg p-4 mb-6">
+            <p className="text-[var(--color-danger)]">{error}</p>
           </div>
         )}
 
@@ -234,19 +235,21 @@ export default function OrdersPage() {
           aria-labelledby={`tab-${activeTab}`}
         >
           {orders.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-md p-12 text-center">
-              <div aria-hidden="true" className="text-6xl mb-4">📦</div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            <div className="bg-white rounded-xl border border-[var(--color-border)] p-12 text-center">
+              <div aria-hidden="true" className="flex justify-center mb-4">
+                <Package className="h-16 w-16 text-[var(--color-text-muted)]" />
+              </div>
+              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-2">
                 {activeTab === 'buying' ? 'No Purchases Yet' : 'No Sales Yet'}
               </h2>
-              <p className="text-gray-600 mb-6">
+              <p className="text-[var(--color-text-muted)] mb-6">
                 {activeTab === 'buying'
                   ? 'Start browsing verified listings to make your first purchase!'
                   : 'List your first device to start selling!'}
               </p>
               <Link
                 href={activeTab === 'buying' ? '/browse' : '/dashboard'}
-                className="inline-block px-6 py-3 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90"
+                className="inline-block px-6 py-3 bg-[var(--color-accent)] text-white rounded-lg hover:bg-[var(--color-accent-dark)] transition-colors font-semibold"
               >
                 {activeTab === 'buying' ? 'Browse Listings' : 'Create Listing'}
               </Link>

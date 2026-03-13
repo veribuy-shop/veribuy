@@ -27,10 +27,10 @@ export class NotificationsService {
       content: string;
     },
     emailContext?: {
-      senderName: string;
-      recipientEmail: string;
-      recipientName: string;
-      listingTitle: string;
+      senderName?: string;
+      recipientEmail?: string;
+      recipientName?: string;
+      listingTitle?: string;
     },
   ) {
     const message = await this.prisma.message.create({
@@ -49,13 +49,13 @@ export class NotificationsService {
     );
 
     // Fire email notification (fire-and-forget — never block the response)
-    if (emailContext) {
+    if (emailContext?.recipientEmail) {
       this.email
         .sendContactSellerEmail({
           sellerEmail: emailContext.recipientEmail,
-          sellerName: emailContext.recipientName,
-          buyerName: emailContext.senderName,
-          listingTitle: emailContext.listingTitle,
+          sellerName: emailContext.recipientName ?? '',
+          buyerName: emailContext.senderName ?? '',
+          listingTitle: emailContext.listingTitle ?? '',
           subject: data.subject || 'New message',
           message: data.content,
           listingId: data.listingId || '',

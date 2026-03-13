@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
+import { CircleCheck, CircleX } from 'lucide-react';
 
 // SEC-15: Fail loudly if the Stripe publishable key is absent rather than
 // silently passing an empty string, which would produce confusing Stripe errors.
@@ -199,9 +200,9 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
   if (succeeded) {
     return (
       <div className="text-center py-12">
-        <div aria-hidden="true" className="text-6xl mb-4">✅</div>
-        <h2 className="text-2xl font-bold text-green-600 mb-2">Payment Successful!</h2>
-        <p className="text-gray-600">Redirecting to order confirmation...</p>
+        <CircleCheck aria-hidden="true" className="inline-block h-16 w-16 text-[var(--color-success)] mb-4" />
+        <h2 className="text-2xl font-bold text-[var(--color-success)] mb-2">Payment Successful!</h2>
+        <p className="text-[var(--color-text-muted)]">Redirecting to order confirmation...</p>
       </div>
     );
   }
@@ -209,12 +210,12 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Shipping Address */}
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
         <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Shipping Address</h2>
 
         <div className="space-y-4">
           <div>
-            <label htmlFor="shipping-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <label htmlFor="shipping-name" className="block text-sm font-medium text-[var(--color-text)] mb-1">Full Name</label>
             <input
               id="shipping-name"
               type="text"
@@ -225,18 +226,18 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
               onChange={handleInputChange}
               aria-describedby={validationErrors.name ? 'error-name' : undefined}
               aria-invalid={!!validationErrors.name}
-              className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                validationErrors.name ? 'border-red-500' : 'border-gray-300'
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                validationErrors.name ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
               }`}
               placeholder="Jane Smith"
             />
             {validationErrors.name && (
-              <p id="error-name" className="mt-1 text-sm text-red-600">{validationErrors.name}</p>
+              <p id="error-name" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.name}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="shipping-line1" className="block text-sm font-medium text-gray-700 mb-1">Address Line 1</label>
+            <label htmlFor="shipping-line1" className="block text-sm font-medium text-[var(--color-text)] mb-1">Address Line 1</label>
             <input
               id="shipping-line1"
               type="text"
@@ -247,18 +248,18 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
               onChange={handleInputChange}
               aria-describedby={validationErrors.line1 ? 'error-line1' : undefined}
               aria-invalid={!!validationErrors.line1}
-              className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                validationErrors.line1 ? 'border-red-500' : 'border-gray-300'
+              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                validationErrors.line1 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
               }`}
               placeholder="1 Example Street"
             />
             {validationErrors.line1 && (
-              <p id="error-line1" className="mt-1 text-sm text-red-600">{validationErrors.line1}</p>
+              <p id="error-line1" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.line1}</p>
             )}
           </div>
 
           <div>
-            <label htmlFor="shipping-line2" className="block text-sm font-medium text-gray-700 mb-1">Address Line 2 (Optional)</label>
+            <label htmlFor="shipping-line2" className="block text-sm font-medium text-[var(--color-text)] mb-1">Address Line 2 (Optional)</label>
             <input
               id="shipping-line2"
               type="text"
@@ -266,14 +267,14 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
               autoComplete="address-line2"
               value={shippingAddress.line2}
               onChange={handleInputChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
               placeholder="Flat 4B"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="shipping-city" className="block text-sm font-medium text-gray-700 mb-1">City</label>
+              <label htmlFor="shipping-city" className="block text-sm font-medium text-[var(--color-text)] mb-1">City</label>
               <input
                 id="shipping-city"
                 type="text"
@@ -284,18 +285,18 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
                 onChange={handleInputChange}
                 aria-describedby={validationErrors.city ? 'error-city' : undefined}
                 aria-invalid={!!validationErrors.city}
-                className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  validationErrors.city ? 'border-red-500' : 'border-gray-300'
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                  validationErrors.city ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
                 }`}
                 placeholder="London"
               />
               {validationErrors.city && (
-                <p id="error-city" className="mt-1 text-sm text-red-600">{validationErrors.city}</p>
+                <p id="error-city" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.city}</p>
               )}
             </div>
 
             <div>
-              <label htmlFor="shipping-state" className="block text-sm font-medium text-gray-700 mb-1">County / State</label>
+              <label htmlFor="shipping-state" className="block text-sm font-medium text-[var(--color-text)] mb-1">County / State</label>
               <input
                 id="shipping-state"
                 type="text"
@@ -306,20 +307,20 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
                 onChange={handleInputChange}
                 aria-describedby={validationErrors.state ? 'error-state' : undefined}
                 aria-invalid={!!validationErrors.state}
-                className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  validationErrors.state ? 'border-red-500' : 'border-gray-300'
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                  validationErrors.state ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
                 }`}
                 placeholder="Greater London"
               />
               {validationErrors.state && (
-                <p id="error-state" className="mt-1 text-sm text-red-600">{validationErrors.state}</p>
+                <p id="error-state" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.state}</p>
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="shipping-postal" className="block text-sm font-medium text-gray-700 mb-1">Postal Code</label>
+              <label htmlFor="shipping-postal" className="block text-sm font-medium text-[var(--color-text)] mb-1">Postal Code</label>
               <input
                 id="shipping-postal"
                 type="text"
@@ -330,18 +331,18 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
                 onChange={handleInputChange}
                 aria-describedby={validationErrors.postal_code ? 'error-postal' : undefined}
                 aria-invalid={!!validationErrors.postal_code}
-                className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                  validationErrors.postal_code ? 'border-red-500' : 'border-gray-300'
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                  validationErrors.postal_code ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
                 }`}
                 placeholder="SW1A 1AA"
               />
               {validationErrors.postal_code && (
-                <p id="error-postal" className="mt-1 text-sm text-red-600">{validationErrors.postal_code}</p>
+                <p id="error-postal" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.postal_code}</p>
               )}
             </div>
 
             <div>
-              <label htmlFor="shipping-country" className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+              <label htmlFor="shipping-country" className="block text-sm font-medium text-[var(--color-text)] mb-1">Country</label>
               <select
                 id="shipping-country"
                 name="country"
@@ -351,8 +352,8 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
                 onChange={handleCountryChange}
                 aria-describedby={validationErrors.country ? 'error-country' : undefined}
                 aria-invalid={!!validationErrors.country}
-                className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white ${
-                  validationErrors.country ? 'border-red-500' : 'border-gray-300'
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white ${
+                  validationErrors.country ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
                 }`}
               >
                 <option value="GB">United Kingdom</option>
@@ -410,7 +411,7 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
                 <option value="ID">Indonesia</option>
               </select>
               {validationErrors.country && (
-                <p id="error-country" className="mt-1 text-sm text-red-600">{validationErrors.country}</p>
+                <p id="error-country" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.country}</p>
               )}
             </div>
           </div>
@@ -418,13 +419,14 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
       </div>
 
       {/* Payment Information */}
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
         <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Payment Information</h2>
 
-        <div className="border border-gray-300 rounded-md p-4">
+        <div className="border border-[var(--color-border)] rounded-lg p-4">
           <PaymentElement
             options={{
               layout: 'tabs',
+              wallets: { applePay: 'never', googlePay: 'never', link: 'never' },
             }}
           />
         </div>
@@ -432,7 +434,7 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
 
       {/* Error Display */}
       {error && (
-        <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
+        <div role="alert" className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-lg p-4 text-sm text-[var(--color-danger)]">
           {error}
         </div>
       )}
@@ -441,9 +443,9 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
       <button
         type="submit"
         disabled={!stripe || processing}
-        className={`w-full px-6 py-3 rounded-md font-semibold text-white ${
+        className={`w-full px-6 py-3 rounded-lg font-semibold text-white ${
           !stripe || processing
-            ? 'bg-gray-400 cursor-not-allowed'
+            ? 'bg-[var(--color-border)] cursor-not-allowed'
             : 'bg-[var(--color-accent)] hover:opacity-90'
         }`}
       >
@@ -465,6 +467,9 @@ function CheckoutPageContent() {
 
   const listingId = searchParams.get('listingId');
 
+  // Guard against double order creation (React 18 Strict Mode runs effects twice)
+  const initRef = useRef(false);
+
   useEffect(() => {
     if (!user) {
       router.push(`/login?redirect=/checkout?listingId=${listingId}`);
@@ -476,6 +481,9 @@ function CheckoutPageContent() {
       setLoading(false);
       return;
     }
+
+    if (initRef.current) return;
+    initRef.current = true;
 
     initCheckout();
   }, [listingId, user?.id]); // PERF-07: depend on user?.id (primitive) not user object to avoid stale-closure re-runs
@@ -535,11 +543,11 @@ function CheckoutPageContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div role="status" className="text-center">
-          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
+          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)]"></div>
           <span className="sr-only">Loading checkout...</span>
-          <p aria-hidden="true" className="mt-4 text-gray-600">Loading checkout...</p>
+          <p aria-hidden="true" className="mt-4 text-[var(--color-text-muted)]">Loading checkout...</p>
         </div>
       </div>
     );
@@ -547,14 +555,14 @@ function CheckoutPageContent() {
 
   if (error || !listing || !pendingOrder) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center px-4">
-        <div role="alert" className="max-w-md w-full bg-white rounded-lg shadow-md p-8 text-center">
-          <div aria-hidden="true" className="text-6xl mb-4">❌</div>
+      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+        <div role="alert" className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
+          <CircleX aria-hidden="true" className="inline-block h-16 w-16 text-[var(--color-danger)] mb-4" />
           <h1 className="text-2xl font-bold text-[var(--color-text)] mb-4">Checkout Error</h1>
-          <p className="text-gray-600 mb-6">{error || 'Unable to load checkout'}</p>
+          <p className="text-[var(--color-text-muted)] mb-6">{error || 'Unable to load checkout'}</p>
           <Link
             href="/browse"
-            className="inline-block px-6 py-3 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90"
+            className="inline-block px-6 py-3 bg-[var(--color-accent)] text-white rounded-lg hover:opacity-90"
           >
             Back to Browse
           </Link>
@@ -564,15 +572,15 @@ function CheckoutPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] py-8">
+    <div className="min-h-screen bg-white py-8">
       <div className="max-w-4xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
           <Link
             href={`/listings/${listing.id}`}
-            className="text-sm text-[var(--color-primary)] hover:underline mb-2 inline-block"
+            className="text-sm text-[var(--color-green)] hover:text-[var(--color-green-dark)] mb-2 inline-block"
           >
-            <span aria-hidden="true">←</span> Back to Listing
+            <span aria-hidden="true">&larr;</span> Back to Listing
           </Link>
           <h1 className="text-3xl font-bold text-[var(--color-text)]">Checkout</h1>
         </div>
@@ -595,44 +603,44 @@ function CheckoutPageContent() {
 
           {/* Order Summary */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-md p-6 sticky top-4">
+            <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 sticky top-4">
               <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Order Summary</h2>
 
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Item:</span>
+                  <span className="text-[var(--color-text-muted)]">Item:</span>
                   <span className="font-medium text-[var(--color-text)]">{listing.title}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Brand:</span>
+                  <span className="text-[var(--color-text-muted)]">Brand:</span>
                   <span className="font-medium text-[var(--color-text)]">{listing.brand}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Model:</span>
+                  <span className="text-[var(--color-text-muted)]">Model:</span>
                   <span className="font-medium text-[var(--color-text)]">{listing.model}</span>
                 </div>
               </div>
 
               <div className="border-t pt-4 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="text-[var(--color-text-muted)]">Subtotal:</span>
                   <span className="font-medium">{formatPrice(listing.price, listing.currency)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Shipping:</span>
-                  <span className="font-medium text-green-600">FREE</span>
+                  <span className="text-[var(--color-text-muted)]">Shipping:</span>
+                  <span className="font-medium text-[var(--color-success)]">FREE</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
                   <span>Total:</span>
-                  <span className="text-[var(--color-primary)]">
+                  <span className="text-[var(--color-text)]">
                     {formatPrice(listing.price, listing.currency)}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+              <div className="mt-6 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg p-4 text-sm text-[var(--color-text)]">
                 <strong>Buyer Protection</strong>
-                <p className="mt-1">Your payment is held in escrow until you confirm receipt of the device.</p>
+                <p className="mt-1 text-[var(--color-text-muted)]">Your payment is held in escrow until you confirm receipt of the device.</p>
               </div>
             </div>
           </div>
@@ -645,11 +653,11 @@ function CheckoutPageContent() {
 export default function CheckoutPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div role="status" className="text-center">
-          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
+          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)]"></div>
           <span className="sr-only">Loading checkout...</span>
-          <p aria-hidden="true" className="mt-4 text-gray-600">Loading checkout...</p>
+          <p aria-hidden="true" className="mt-4 text-[var(--color-text-muted)]">Loading checkout...</p>
         </div>
       </div>
     }>

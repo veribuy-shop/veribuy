@@ -65,6 +65,17 @@ export async function GET(request: NextRequest) {
             path: '/',
           });
 
+          // Rotate refresh token if the backend issued a new one
+          if (refreshData.refreshToken) {
+            nextResponse.cookies.set('refreshToken', refreshData.refreshToken, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'strict',
+              maxAge: 7 * 24 * 60 * 60, // 7 days
+              path: '/',
+            });
+          }
+
           return nextResponse;
         }
       }
@@ -75,8 +86,8 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
 
-      errorResponse.cookies.delete('accessToken');
-      errorResponse.cookies.delete('refreshToken');
+      errorResponse.cookies.delete({ name: 'accessToken', path: '/' });
+      errorResponse.cookies.delete({ name: 'refreshToken', path: '/' });
 
       return errorResponse;
     }

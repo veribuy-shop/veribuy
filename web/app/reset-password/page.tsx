@@ -6,9 +6,9 @@ export default function ResetPasswordPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-8 text-center">
+          <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
             <div
-              className="w-12 h-12 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin mx-auto mb-6"
+              className="w-12 h-12 border-4 border-[var(--color-green)] border-t-transparent rounded-full animate-spin mx-auto mb-6"
               role="status"
               aria-label="Loading"
             />

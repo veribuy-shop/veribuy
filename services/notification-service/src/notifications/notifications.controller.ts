@@ -95,8 +95,7 @@ export class NotificationsController {
         subject: dto.subject,
         content: dto.content,
       },
-      // emailContext is optional — only sent by the contact-seller flow via the web BFF
-      (dto as any).emailContext,
+      dto.emailContext,
     );
   }
 
