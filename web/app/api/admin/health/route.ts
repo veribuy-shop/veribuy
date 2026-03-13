@@ -3,7 +3,7 @@ import { requireRole } from '@/lib/api-auth';
 
 // Service health endpoints (direct HTTP, not through gateway)
 const SERVICES = [
-  { name: 'Gateway',              url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000' },
+  { name: 'Gateway',              url: process.env.GATEWAY_SERVICE_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000' },
   { name: 'Auth Service',         url: process.env.AUTH_SERVICE_URL || 'http://localhost:3001' },
   { name: 'User Service',         url: process.env.USER_SERVICE_URL || 'http://localhost:3002' },
   { name: 'Listing Service',      url: process.env.LISTING_SERVICE_URL || 'http://localhost:3003' },
