@@ -22,7 +22,7 @@ export class TrustLensController {
   }
 
   @Get(':listingId')
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async findOne(
     @Param('listingId', ParseUUIDPipe) listingId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -39,7 +39,7 @@ export class TrustLensController {
   }
 
   @Post()
-  @Roles('SELLER')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   create(
     @Body() dto: CreateVerificationRequestDto,
     @CurrentUser() user: AuthenticatedUser,

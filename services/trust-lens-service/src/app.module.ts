@@ -16,11 +16,13 @@ import { ImeiCheckModule } from './imei-check/imei-check.module';
       isGlobal: true,
       envFilePath: ['.env', '../../.env'],
     }),
-    // Rate limiting: 10 requests per minute per IP
+    // Rate limiting: 100 requests per minute per IP
+    // (BFF server-to-server calls share a single source IP, so the limit must
+    // accommodate multiple concurrent frontend users)
     ThrottlerModule.forRoot([
       {
         ttl: 60000,
-        limit: 10,
+        limit: 100,
       },
     ]),
     TerminusModule,

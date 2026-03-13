@@ -104,6 +104,7 @@ export const config = {
     '/profile/:path*',
     '/settings/:path*',
     '/orders/:path*',
+    '/my-listings',
     '/my-listings/:path*',
 
     // Admin routes

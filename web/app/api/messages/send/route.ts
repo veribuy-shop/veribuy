@@ -74,12 +74,14 @@ export async function POST(req: NextRequest) {
           }
         : undefined;
 
-    // Forward request to notification service with server-derived senderId
+    // Forward request to notification service — senderId is NOT included in
+    // the body because the notification controller derives it from the JWT
+    // via @CurrentUser(). The global ValidationPipe (forbidNonWhitelisted)
+    // would reject unknown properties.
     const response = await fetch(`${NOTIFICATION_SERVICE_URL}/notifications/messages`, {
       method: 'POST',
       headers: createAuthHeaders(authResult.token),
       body: JSON.stringify({
-        senderId,
         recipientId,
         listingId,
         subject,

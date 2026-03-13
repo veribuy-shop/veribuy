@@ -41,6 +41,10 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
+    // Dev-mode bypass: AUTO_VERIFY_EMAIL=true skips email verification entirely
+    const autoVerify =
+      this.configService.get<string>('AUTO_VERIFY_EMAIL')?.toLowerCase() === 'true';
+
     // Generate a raw verification token; store its SHA-256 hash in the DB
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -53,8 +57,13 @@ export class AuthService {
           name: dto.name,
           email: dto.email,
           passwordHash,
-          emailVerificationToken: tokenHash,
-          emailVerificationExpiry: tokenExpiry,
+          isEmailVerified: autoVerify,
+          ...(autoVerify
+            ? {}
+            : {
+                emailVerificationToken: tokenHash,
+                emailVerificationExpiry: tokenExpiry,
+              }),
         },
         select: {
           id: true,
@@ -71,12 +80,18 @@ export class AuthService {
       throw err;
     }
 
-    // Fire verification email (fire-and-forget — never block registration)
-    this.notification
-      .sendVerificationEmail(user.email, user.name, rawToken)
-      .catch((err) =>
-        this.logger.error(`Failed to send verification email to ${user.email}: ${err?.message}`),
+    if (autoVerify) {
+      this.logger.warn(
+        `AUTO_VERIFY_EMAIL is enabled — user ${user.email} was auto-verified (dev mode)`,
       );
+    } else {
+      // Fire verification email (fire-and-forget — never block registration)
+      this.notification
+        .sendVerificationEmail(user.email, user.name, rawToken)
+        .catch((err) =>
+          this.logger.error(`Failed to send verification email to ${user.email}: ${err?.message}`),
+        );
+    }
 
     const tokens = await this.generateTokens(user.id, user.role);
 
@@ -87,6 +102,7 @@ export class AuthService {
         email: user.email,
         role: user.role,
       },
+      autoVerified: autoVerify,
       ...tokens,
     };
   }

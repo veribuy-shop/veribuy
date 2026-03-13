@@ -15,105 +15,111 @@ const userDb = new UserClient();
 const listingDb = new ListingClient();
 
 async function main() {
-  console.log('🌱 Starting database seed...\n');
+  console.log('Starting database seed...\n');
 
   // Clean existing data (optional - comment out if you want to keep existing data)
-  console.log('🧹 Cleaning existing data...');
+  console.log('Cleaning existing data...');
   await listingDb.listing.deleteMany();
   await userDb.profile.deleteMany();
   await authDb.refreshToken.deleteMany();
   await authDb.user.deleteMany();
-  console.log('✓ Cleaned\n');
+  console.log('Cleaned\n');
 
   // Create users
-  console.log('👥 Creating users...');
+  console.log('Creating users...');
   
   const hashedPassword = await bcrypt.hash('password123', 12);
   
   const seller1 = await authDb.user.create({
     data: {
       id: '772e1203-53ba-49ae-ab7e-61ef09b779ec',
+      name: 'John Seller',
       email: 'john.seller@veribuy.com',
       passwordHash: hashedPassword,
       role: 'SELLER',
-      emailVerified: true,
+      isEmailVerified: true,
     },
   });
 
   const seller2 = await authDb.user.create({
     data: {
       id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+      name: 'Jane Tech',
       email: 'jane.tech@veribuy.com',
       passwordHash: hashedPassword,
       role: 'SELLER',
-      emailVerified: true,
+      isEmailVerified: true,
     },
   });
 
   const buyer1 = await authDb.user.create({
     data: {
       id: 'b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e',
+      name: 'Mike Buyer',
       email: 'mike.buyer@veribuy.com',
       passwordHash: hashedPassword,
       role: 'BUYER',
-      emailVerified: true,
+      isEmailVerified: true,
     },
   });
 
-  console.log(`✓ Created ${seller1.email}`);
-  console.log(`✓ Created ${seller2.email}`);
-  console.log(`✓ Created ${buyer1.email}\n`);
+  console.log(`Created ${seller1.email}`);
+  console.log(`Created ${seller2.email}`);
+  console.log(`Created ${buyer1.email}\n`);
 
   // Create user profiles
-  console.log('📝 Creating user profiles...');
+  console.log('Creating user profiles...');
   
   await userDb.profile.create({
     data: {
       userId: seller1.id,
+      displayName: 'John Seller',
       firstName: 'John',
       lastName: 'Seller',
-      phoneNumber: '+1-555-0101',
+      phone: '+1-555-0101',
     },
   });
 
   await userDb.profile.create({
     data: {
       userId: seller2.id,
+      displayName: 'Jane Tech',
       firstName: 'Jane',
       lastName: 'Tech',
-      phoneNumber: '+1-555-0102',
+      phone: '+1-555-0102',
     },
   });
 
   await userDb.profile.create({
     data: {
       userId: buyer1.id,
+      displayName: 'Mike Buyer',
       firstName: 'Mike',
       lastName: 'Buyer',
-      phoneNumber: '+1-555-0103',
+      phone: '+1-555-0103',
     },
   });
 
-  console.log('✓ Created profiles\n');
+  console.log('Created profiles\n');
 
   // Create sample listings
-  console.log('📱 Creating sample listings...');
+  console.log('Creating sample listings...');
 
   const listings = [
     {
       sellerId: seller1.id,
       title: 'iPhone 15 Pro Max - 256GB - Natural Titanium',
       description: 'Like new iPhone 15 Pro Max with all original accessories. Perfect condition, no scratches. Includes original box, charger, and case.',
-      deviceType: 'SMARTPHONE',
+      deviceType: 'SMARTPHONE' as const,
       brand: 'Apple',
       model: 'iPhone 15 Pro Max',
       price: 1099.99,
       currency: 'GBP',
-      conditionGrade: 'EXCELLENT',
-      status: 'ACTIVE',
+      conditionGrade: 'A' as const,
+      status: 'ACTIVE' as const,
       imei: '359211234567890',
       serialNumber: 'F17ABC123456',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 42,
       publishedAt: new Date(),
     },
@@ -121,15 +127,15 @@ async function main() {
       sellerId: seller1.id,
       title: 'MacBook Pro 14" M3 - 16GB RAM - 512GB SSD',
       description: 'Barely used MacBook Pro 14" with M3 chip. Perfect for developers and creators. Battery health at 100%. Comes with original charger.',
-      deviceType: 'LAPTOP',
+      deviceType: 'LAPTOP' as const,
       brand: 'Apple',
       model: 'MacBook Pro 14"',
       price: 1899.00,
       currency: 'GBP',
-      conditionGrade: 'LIKE_NEW',
-      status: 'ACTIVE',
+      conditionGrade: 'A' as const,
+      status: 'ACTIVE' as const,
       serialNumber: 'C02ABC123456',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 28,
       publishedAt: new Date(),
     },
@@ -137,16 +143,16 @@ async function main() {
       sellerId: seller2.id,
       title: 'Samsung Galaxy S24 Ultra - 512GB - Titanium Black',
       description: 'Flagship Samsung Galaxy S24 Ultra. Unlocked for all carriers. Includes S Pen and protective case. Minor wear on edges.',
-      deviceType: 'SMARTPHONE',
+      deviceType: 'SMARTPHONE' as const,
       brand: 'Samsung',
       model: 'Galaxy S24 Ultra',
       price: 949.99,
       currency: 'GBP',
-      conditionGrade: 'GOOD',
-      status: 'ACTIVE',
+      conditionGrade: 'B' as const,
+      status: 'ACTIVE' as const,
       imei: '359212345678901',
       serialNumber: 'R58DEF789012',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 35,
       publishedAt: new Date(),
     },
@@ -154,15 +160,15 @@ async function main() {
       sellerId: seller2.id,
       title: 'iPad Pro 12.9" M2 - 256GB - Space Gray',
       description: 'Professional tablet with Magic Keyboard and Apple Pencil (2nd gen) included. Screen is pristine, no scratches.',
-      deviceType: 'TABLET',
+      deviceType: 'TABLET' as const,
       brand: 'Apple',
       model: 'iPad Pro 12.9"',
       price: 899.00,
       currency: 'GBP',
-      conditionGrade: 'EXCELLENT',
-      status: 'ACTIVE',
+      conditionGrade: 'A' as const,
+      status: 'ACTIVE' as const,
       serialNumber: 'DMPABC456789',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 19,
       publishedAt: new Date(),
     },
@@ -170,16 +176,16 @@ async function main() {
       sellerId: seller1.id,
       title: 'Google Pixel 8 Pro - 256GB - Obsidian',
       description: 'Unlocked Google Pixel 8 Pro with amazing camera. Android updates guaranteed. Mint condition with original packaging.',
-      deviceType: 'SMARTPHONE',
+      deviceType: 'SMARTPHONE' as const,
       brand: 'Google',
       model: 'Pixel 8 Pro',
       price: 749.99,
       currency: 'GBP',
-      conditionGrade: 'LIKE_NEW',
-      status: 'ACTIVE',
+      conditionGrade: 'A' as const,
+      status: 'ACTIVE' as const,
       imei: '359213456789012',
       serialNumber: 'G9S4GHI345678',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 15,
       publishedAt: new Date(),
     },
@@ -187,31 +193,31 @@ async function main() {
       sellerId: seller2.id,
       title: 'Dell XPS 15 - i7-13700H - 32GB RAM - 1TB SSD',
       description: 'Powerful laptop for professionals. OLED 4K display, NVIDIA RTX 4050. Used for light work, excellent condition.',
-      deviceType: 'LAPTOP',
+      deviceType: 'LAPTOP' as const,
       brand: 'Dell',
       model: 'XPS 15',
       price: 1599.00,
       currency: 'GBP',
-      conditionGrade: 'GOOD',
-      status: 'ACTIVE',
+      conditionGrade: 'B' as const,
+      status: 'ACTIVE' as const,
       serialNumber: 'JKL7890MNO12',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 22,
       publishedAt: new Date(),
     },
     {
       sellerId: seller1.id,
-      title: 'AirPods Pro (2nd Generation) - USB-C',
-      description: 'Latest AirPods Pro with USB-C charging case. Perfect noise cancellation. All ear tips included.',
-      deviceType: 'WEARABLE',
+      title: 'Apple Watch Ultra 2 - 49mm - Titanium',
+      description: 'Latest Apple Watch Ultra 2 with titanium case. Perfect for outdoor activities. All bands included.',
+      deviceType: 'SMARTWATCH' as const,
       brand: 'Apple',
-      model: 'AirPods Pro',
-      price: 199.99,
+      model: 'Watch Ultra 2',
+      price: 699.99,
       currency: 'GBP',
-      conditionGrade: 'EXCELLENT',
-      status: 'ACTIVE',
+      conditionGrade: 'A' as const,
+      status: 'ACTIVE' as const,
       serialNumber: 'APPABC123XYZ',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 48,
       publishedAt: new Date(),
     },
@@ -219,15 +225,15 @@ async function main() {
       sellerId: seller2.id,
       title: 'Sony PlayStation 5 - Disc Edition',
       description: 'PS5 console with two DualSense controllers and 3 AAA games. Barely used, like new condition.',
-      deviceType: 'GAMING_CONSOLE',
+      deviceType: 'GAMING_CONSOLE' as const,
       brand: 'Sony',
       model: 'PlayStation 5',
       price: 449.99,
       currency: 'GBP',
-      conditionGrade: 'LIKE_NEW',
-      status: 'ACTIVE',
+      conditionGrade: 'A' as const,
+      status: 'ACTIVE' as const,
       serialNumber: 'PS5XYZ789ABC',
-      trustLensStatus: 'PASSED',
+      trustLensStatus: 'PASSED' as const,
       viewCount: 67,
       publishedAt: new Date(),
     },
@@ -235,11 +241,11 @@ async function main() {
 
   for (const listing of listings) {
     const created = await listingDb.listing.create({ data: listing });
-    console.log(`✓ Created: ${created.title}`);
+    console.log(`Created: ${created.title}`);
   }
 
-  console.log(`\n✅ Seed completed! Created ${listings.length} listings.\n`);
-  console.log('📧 Test credentials:');
+  console.log(`\nSeed completed! Created ${listings.length} listings.\n`);
+  console.log('Test credentials:');
   console.log('   Seller 1: john.seller@veribuy.com / password123');
   console.log('   Seller 2: jane.tech@veribuy.com / password123');
   console.log('   Buyer 1:  mike.buyer@veribuy.com / password123\n');
@@ -247,7 +253,7 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('❌ Seed failed:', e);
+    console.error('Seed failed:', e);
     process.exit(1);
   })
   .finally(async () => {

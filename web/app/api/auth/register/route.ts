@@ -28,7 +28,10 @@ export async function POST(request: NextRequest) {
     const data = await response.json();
 
     // Return only sanitized user fields — no tokens in response body
-    const nextResponse = NextResponse.json({ user: sanitizeAuthUser(data.user) }, { status: 201 });
+    const nextResponse = NextResponse.json(
+      { user: sanitizeAuthUser(data.user), autoVerified: !!data.autoVerified },
+      { status: 201 },
+    );
 
     // Set HttpOnly cookies for tokens (secure, not accessible via JavaScript)
     nextResponse.cookies.set('accessToken', data.accessToken, {

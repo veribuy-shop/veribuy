@@ -85,19 +85,6 @@ export interface IIdentifierValidation {
   blacklisted?: boolean;
 }
 
-export interface IDeviceVerificationResult {
-  verificationId: string;
-  imei?: string;
-  serialNumber?: string;
-  imeiValid: boolean;
-  icloudLocked: boolean;
-  reportedStolen: boolean;
-  blacklisted: boolean;
-  carrier?: string;
-  deviceModel?: string;
-  verifiedAt: Date;
-}
-
 export interface IEvidencePack {
   id: string;
   listingId: string;

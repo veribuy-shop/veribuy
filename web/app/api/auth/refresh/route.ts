@@ -34,8 +34,8 @@ export async function POST(request: NextRequest) {
         { message: 'Session expired. Please log in again.' },
         { status: 401 }
       );
-      errorResponse.cookies.delete('accessToken');
-      errorResponse.cookies.delete('refreshToken');
+      errorResponse.cookies.delete({ name: 'accessToken', path: '/' });
+      errorResponse.cookies.delete({ name: 'refreshToken', path: '/' });
       return errorResponse;
     }
 

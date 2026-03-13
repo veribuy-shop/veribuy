@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { CircleCheck, CircleX } from 'lucide-react';
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -20,17 +21,9 @@ export default function ResetPasswordInner() {
   if (!token) {
     return (
       <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-8 text-center">
-          <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg
-              className="w-8 h-8 text-red-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+        <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
+          <div className="w-16 h-16 bg-[var(--color-danger)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CircleX className="w-8 h-8 text-[var(--color-danger)]" aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-bold text-[var(--color-text)] mb-3">Invalid link</h1>
           <p className="text-[var(--color-text-muted)] mb-6">
@@ -88,19 +81,11 @@ export default function ResetPasswordInner() {
 
   return (
     <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-[var(--color-border)] p-8 text-center">
+      <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
         {status === 'success' ? (
           <>
-            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg
-                className="w-8 h-8 text-green-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+            <div className="w-16 h-16 bg-[var(--color-green)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CircleCheck className="w-8 h-8 text-[var(--color-green)]" aria-hidden="true" />
             </div>
             <h1 className="text-2xl font-bold text-[var(--color-text)] mb-3">Password reset!</h1>
             <p className="text-[var(--color-text-muted)] mb-6">
@@ -124,7 +109,7 @@ export default function ResetPasswordInner() {
               {status === 'error' && (
                 <div
                   role="alert"
-                  className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm text-left"
+                  className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 text-[var(--color-danger)] px-4 py-3 rounded-lg mb-4 text-sm text-left"
                 >
                   {errorMessage}
                 </div>
@@ -144,7 +129,7 @@ export default function ResetPasswordInner() {
                   required
                   minLength={8}
                   autoComplete="new-password"
-                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm"
+                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] text-sm"
                   placeholder="At least 8 characters"
                 />
               </div>
@@ -159,7 +144,7 @@ export default function ResetPasswordInner() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   autoComplete="new-password"
-                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] text-sm"
+                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] text-sm"
                   placeholder="••••••••"
                 />
               </div>
@@ -174,7 +159,7 @@ export default function ResetPasswordInner() {
             </form>
 
             <div className="mt-6 text-center text-sm text-[var(--color-text-muted)]">
-              <Link href="/forgot-password" className="text-[var(--color-primary)] font-medium hover:underline">
+              <Link href="/forgot-password" className="text-[var(--color-green)] font-medium hover:underline">
                 Request a new link
               </Link>
             </div>

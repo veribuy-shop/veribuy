@@ -109,7 +109,7 @@ export default function TermsPage() {
             <h2 className="text-2xl font-bold text-[var(--color-text)] mb-4">10. Contact</h2>
             <p>
               For questions about these Terms of Service, contact us at{' '}
-              <a href="mailto:legal@veribuy.com" className="text-[var(--color-primary)] font-medium">
+              <a href="mailto:legal@veribuy.com" className="text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
                 legal@veribuy.com
               </a>
             </p>

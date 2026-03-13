@@ -45,7 +45,7 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Post('orders')
-  @Roles('BUYER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   createOrder(@Body() createOrderDto: CreateOrderDto, @CurrentUser() user: AuthenticatedUser) {
     if (createOrderDto.buyerId !== user.userId && user.role !== 'ADMIN') {
       throw new ForbiddenException('You can only create orders for yourself');
@@ -54,7 +54,7 @@ export class TransactionsController {
   }
 
   @Post('orders/:orderId/confirm-payment')
-  @Roles('BUYER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async confirmPayment(
     @Param('orderId', ParseUUIDPipe) orderId: string,
     @Body('paymentIntentId') paymentIntentId: string,
@@ -137,7 +137,7 @@ export class TransactionsController {
   }
 
   @Get('orders/buyer/:buyerId')
-  @Roles('BUYER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   getOrdersByBuyer(
     @Param('buyerId', ParseUUIDPipe) buyerId: string,
     @Query() pagination: PaginationDto,
@@ -150,7 +150,7 @@ export class TransactionsController {
   }
 
   @Get('orders/seller/:sellerId')
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   getOrdersBySeller(
     @Param('sellerId', ParseUUIDPipe) sellerId: string,
     @Query() pagination: PaginationDto,

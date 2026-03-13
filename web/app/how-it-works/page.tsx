@@ -1,5 +1,13 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import {
+  ShieldCheck,
+  UserCheck,
+  Search,
+  Camera,
+  Star,
+  Check,
+} from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'How Trust Lens Works - VeriBuy',
@@ -11,78 +19,98 @@ export default function HowItWorksPage() {
     {
       number: '1',
       title: 'Seller Verification',
-      icon: '✓',
+      icon: <UserCheck className="w-8 h-8 md:w-10 md:h-10 text-white" />,
       description: 'Before listing any device, sellers must complete identity verification. We verify government-issued ID and contact information to ensure accountability.',
       details: [
         'Government ID verification',
         'Email and phone confirmation',
         'Background checks for high-value sellers',
-        'Ongoing reputation monitoring'
-      ]
+        'Ongoing reputation monitoring',
+      ],
     },
     {
       number: '2',
       title: 'Device Authentication',
-      icon: '🔍',
+      icon: <Search className="w-8 h-8 md:w-10 md:h-10 text-white" />,
       description: 'Every device undergoes rigorous authentication checks to verify it\'s genuine and not stolen or blacklisted.',
       details: [
         'IMEI/serial number validation',
         'Stolen device database checks',
         'Carrier blacklist verification',
         'iCloud lock status (for Apple devices)',
-        'Warranty status validation'
-      ]
+        'Warranty status validation',
+      ],
     },
     {
       number: '3',
       title: 'Evidence Capture',
-      icon: '📸',
+      icon: <Camera className="w-8 h-8 md:w-10 md:h-10 text-white" />,
       description: 'Sellers capture timestamped photos and videos of the device from multiple angles, creating an immutable evidence pack.',
       details: [
         'Minimum 10 photos from all angles',
         'Video showing device functionality',
         'Screen-on photos showing no defects',
         'Close-ups of any scratches or damage',
-        'All media is timestamped and stored securely'
-      ]
+        'All media is timestamped and stored securely',
+      ],
     },
     {
       number: '4',
       title: 'Condition Grading',
-      icon: '⭐',
+      icon: <Star className="w-8 h-8 md:w-10 md:h-10 text-white" />,
       description: 'Devices are graded A, B, or C based on a standardized assessment of cosmetic and functional condition.',
       details: [
         'Grade A: Excellent - Like new or minimal wear',
         'Grade B: Good - Light scratches, fully functional',
         'Grade C: Fair - Visible wear, fully functional',
         'AI-assisted grading for consistency',
-        'Manual review by our team'
-      ]
-    }
+        'Manual review by our team',
+      ],
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-[var(--color-surface)]">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-accent)] text-white py-12 md:py-20">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <div className="text-5xl md:text-6xl mb-6">🛡️</div>
-          <h1 className="text-3xl md:text-5xl font-bold mb-4">How Trust Lens Works</h1>
-          <p className="text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
+    <div className="min-h-screen bg-white">
+      {/* Hero */}
+      <section
+        aria-labelledby="how-hero-heading"
+        className="relative overflow-hidden text-white"
+        style={{ background: 'linear-gradient(135deg, #5C7A3E 0%, #4A6B35 30%, #8B7355 70%, #6B5A3E 100%)' }}
+      >
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{ background: 'radial-gradient(ellipse at 60% 40%, #F5C842 0%, transparent 60%)' }}
+          aria-hidden="true"
+        />
+        <div className="relative max-w-4xl mx-auto px-4 py-16 md:py-24 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-white/15 backdrop-blur-sm border border-white/25 mb-6">
+            <ShieldCheck className="w-8 h-8 md:w-10 md:h-10 text-white" aria-hidden="true" />
+          </div>
+          <h1
+            id="how-hero-heading"
+            className="text-3xl md:text-5xl font-extrabold leading-tight tracking-tight mb-4"
+          >
+            How Trust Lens Works
+          </h1>
+          <p className="text-base md:text-lg text-white/80 max-w-2xl mx-auto">
             Our 4-step verification process ensures every device is authentic, accurately described, and ready for sale
           </p>
         </div>
-      </div>
+      </section>
 
       {/* Steps */}
-      <div className="max-w-5xl mx-auto px-4 py-12 md:py-16">
-        <div className="space-y-12 md:space-y-16">
+      <section
+        aria-labelledby="steps-heading"
+        className="max-w-5xl mx-auto px-4 py-14 md:py-16"
+      >
+        <h2 id="steps-heading" className="sr-only">Verification Steps</h2>
+        <div className="space-y-8 md:space-y-12">
           {steps.map((step, index) => (
-            <div key={index} className="bg-white rounded-2xl p-6 md:p-10 shadow-sm border border-[var(--color-border)]">
+            <div key={index} className="bg-white rounded-xl p-6 md:p-10 border border-[var(--color-border)]">
               <div className="flex flex-col md:flex-row gap-6 md:gap-8">
                 {/* Icon */}
                 <div className="flex-shrink-0">
-                  <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-[var(--color-accent)] to-[var(--color-accent-dark)] text-white rounded-2xl flex items-center justify-center text-3xl md:text-4xl shadow-lg">
+                  <div className="w-16 h-16 md:w-20 md:h-20 bg-[var(--color-accent)] rounded-2xl flex items-center justify-center">
                     {step.icon}
                   </div>
                 </div>
@@ -94,16 +122,16 @@ export default function HowItWorksPage() {
                       Step {step.number}
                     </span>
                   </div>
-                  <h2 className="text-2xl md:text-3xl font-bold text-[var(--color-text)] mb-4">
+                  <h3 className="text-2xl md:text-3xl font-bold text-[var(--color-text)] mb-4">
                     {step.title}
-                  </h2>
+                  </h3>
                   <p className="text-base md:text-lg text-[var(--color-text-muted)] mb-6 leading-relaxed">
                     {step.description}
                   </p>
                   <ul className="space-y-2">
                     {step.details.map((detail, i) => (
                       <li key={i} className="flex items-start gap-3">
-                        <span className="text-[var(--color-accent)] mt-1">✓</span>
+                        <Check className="w-4 h-4 mt-1 text-[var(--color-accent)] flex-shrink-0" aria-hidden="true" />
                         <span className="text-[var(--color-text-muted)]">{detail}</span>
                       </li>
                     ))}
@@ -115,29 +143,29 @@ export default function HowItWorksPage() {
         </div>
 
         {/* CTA */}
-        <div className="mt-12 md:mt-16 text-center bg-gradient-to-r from-[var(--color-accent)] to-[var(--color-accent-dark)] rounded-2xl p-8 md:p-12 text-white">
-          <h2 className="text-2xl md:text-3xl font-bold mb-3">
+        <div className="mt-12 md:mt-16 bg-[var(--color-primary)] rounded-2xl p-8 md:p-12 text-white text-center">
+          <h3 className="text-2xl md:text-3xl font-bold mb-3">
             Ready to Buy or Sell with Confidence?
-          </h2>
-          <p className="text-lg text-white/90 mb-6">
+          </h3>
+          <p className="text-base text-white/75 mb-8">
             Every device on VeriBuy is Trust Lens verified
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="/browse"
-              className="bg-white text-[var(--color-accent-dark)] hover:bg-[var(--color-warm-beige)] px-8 py-3 rounded-lg font-semibold transition-colors"
+              className="bg-[var(--color-accent)] hover:bg-[var(--color-accent-dark)] text-[var(--color-primary-dark)] px-8 py-3.5 rounded-lg font-bold text-base transition-colors shadow-md"
             >
               Browse Devices
             </Link>
             <Link
               href="/sell"
-              className="border-2 border-white text-white hover:bg-white hover:text-[var(--color-accent-dark)] px-8 py-3 rounded-lg font-semibold transition-colors"
+              className="border border-white/40 hover:border-white text-white px-8 py-3.5 rounded-lg font-semibold text-base transition-colors"
             >
               Start Selling
             </Link>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -4,6 +4,9 @@ import { use, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { formatPrice } from '@/lib/currency';
+import { cn } from '@/lib/utils';
+import { Clock } from 'lucide-react';
 
 interface EvidenceItem {
   id: string;
@@ -218,11 +221,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center" role="status">
+      <div className="min-h-screen bg-[var(--color-surface-alt)] flex items-center justify-center" role="status">
         <div className="text-center">
           <div className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]" aria-hidden="true"></div>
           <span className="sr-only">Loading...</span>
-          <p className="mt-4 text-[var(--color-text-secondary)]">Loading verification data...</p>
+          <p className="mt-4 text-[var(--color-text-muted)]">Loading verification data...</p>
         </div>
       </div>
     );
@@ -230,9 +233,9 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   if (error && !listing && !verification) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--color-surface-alt)] flex items-center justify-center">
         <div className="text-center max-w-md px-4" role="alert">
-          <p className="text-red-600 mb-4">{error}</p>
+          <p className="text-[var(--color-danger)] mb-4">{error}</p>
           <Link href="/admin?tab=verification" className="inline-block px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90">
             Back to Verification Queue
           </Link>
@@ -243,11 +246,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   if (listingNotFound) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--color-surface-alt)] flex items-center justify-center">
         <div className="text-center max-w-md px-4" role="alert">
           <div className="text-5xl mb-4" aria-hidden="true">404</div>
           <h1 className="text-xl font-semibold text-[var(--color-text)] mb-2">Listing not found</h1>
-          <p className="text-[var(--color-text-secondary)] mb-6">
+          <p className="text-[var(--color-text-muted)] mb-6">
             The listing you&apos;re trying to review does not exist or has been removed.
           </p>
           <Link href="/admin?tab=verification" className="inline-block px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90">
@@ -260,18 +263,18 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   if (verificationNotFound) {
     return (
-      <div className="min-h-screen bg-[var(--color-background)] flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--color-surface-alt)] flex items-center justify-center">
         <div className="text-center max-w-md px-4" role="status">
-          <div className="text-4xl mb-4" aria-hidden="true">⏳</div>
+          <Clock className="w-10 h-10 text-[var(--color-accent)] mx-auto mb-4" aria-hidden="true" />
           <h1 className="text-xl font-semibold text-[var(--color-text)] mb-2">No verification request yet</h1>
-          <p className="text-[var(--color-text-secondary)] mb-2">
+          <p className="text-[var(--color-text-muted)] mb-2">
             {listing ? (
               <>The listing <strong>{listing.title}</strong> has not submitted a verification request yet.</>
             ) : (
               'This listing has not submitted a verification request yet.'
             )}
           </p>
-          <p className="text-sm text-[var(--color-text-secondary)] mb-6">
+          <p className="text-sm text-[var(--color-text-muted)] mb-6">
             Sellers must submit a Trust Lens verification request before an admin can review it.
           </p>
           <Link href="/admin?tab=verification" className="inline-block px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90">
@@ -289,7 +292,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const integrityFlags = ['CLEAN', 'IMEI_MISMATCH', 'ICLOUD_LOCKED', 'REPORTED_STOLEN', 'BLACKLISTED', 'SERIAL_MISMATCH'];
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] py-8">
+    <div className="min-h-screen bg-[var(--color-surface-alt)] py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
@@ -298,20 +301,20 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               ← Back to Verification Queue
             </Link>
             <h1 className="text-3xl font-bold text-[var(--color-text)]">Review Listing</h1>
-            <p className="text-[var(--color-text-secondary)]">{listing.title}</p>
+            <p className="text-[var(--color-text-muted)]">{listing.title}</p>
           </div>
           <div className="flex gap-3">
             <button
               onClick={handleReject}
               disabled={submitting}
-              className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50"
+              className="px-6 py-2 bg-[var(--color-danger)] text-white rounded-md hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? 'Processing...' : 'Reject'}
             </button>
             <button
               onClick={handleApprove}
               disabled={submitting}
-              className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50"
+              className="px-6 py-2 bg-[var(--color-green)] text-white rounded-md hover:opacity-90 disabled:opacity-50"
             >
               {submitting ? 'Processing...' : 'Approve'}
             </button>
@@ -320,16 +323,16 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
         {/* Inline error banner */}
         {error && (
-          <div className="mb-6 flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+          <div className="mb-6 flex items-start gap-3 bg-[var(--color-danger)]/5 border border-[var(--color-danger)]/20 text-[var(--color-danger)] px-4 py-3 rounded-xl">
             <span className="flex-1 text-sm">{error}</span>
-            <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700 text-lg leading-none">&times;</button>
+            <button onClick={() => setError(null)} className="text-[var(--color-danger)] hover:opacity-70 text-lg leading-none">&times;</button>
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column: Images */}
           <div>
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
               <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Evidence Images</h2>
               
               {selectedImage && (
@@ -337,7 +340,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                   <img
                     src={selectedImage}
                     alt="Selected evidence"
-                    className="w-full h-96 object-contain bg-gray-100 rounded-lg"
+                    className="w-full h-96 object-contain bg-[var(--color-surface-alt)] rounded-xl"
                   />
                 </div>
               )}
@@ -350,9 +353,10 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                     onClick={() => setSelectedImage(item.fileUrl)}
                     aria-label={`View image: ${item.fileName}`}
                     aria-pressed={selectedImage === item.fileUrl}
-                    className={`cursor-pointer border-2 rounded-md overflow-hidden focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] ${
-                      selectedImage === item.fileUrl ? 'border-[var(--color-primary)]' : 'border-gray-200'
-                    }`}
+                    className={cn(
+                      'cursor-pointer border-2 rounded-md overflow-hidden focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]',
+                      selectedImage === item.fileUrl ? 'border-[var(--color-primary)]' : 'border-[var(--color-border)]'
+                    )}
                   >
                     <img
                       src={item.fileUrl}
@@ -364,18 +368,18 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               </div>
 
               {evidence.length === 0 && (
-                <p className="text-[var(--color-text-secondary)] text-center py-8">No evidence images uploaded</p>
+                <p className="text-[var(--color-text-muted)] text-center py-8">No evidence images uploaded</p>
               )}
             </div>
 
             {/* Evidence Checklist */}
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
               <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Evidence Checklist</h2>
               <div className="space-y-2">
                 {verification.evidenceChecklist.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md">
+                  <div key={item.id} className="flex items-center justify-between p-3 bg-[var(--color-surface-alt)] rounded-md">
                     <span className="text-sm text-[var(--color-text)]">{item.description}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${item.fulfilled ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    <span className={cn('text-xs px-2 py-1 rounded', item.fulfilled ? 'bg-[var(--color-green)]/10 text-[var(--color-green)]' : 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]')}>
                       {item.fulfilled ? 'Fulfilled' : 'Pending'}
                     </span>
                   </div>
@@ -387,35 +391,35 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
           {/* Right Column: Listing Details & Review Form */}
           <div className="space-y-6">
             {/* Listing Details */}
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
               <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Listing Details</h2>
               <div className="space-y-3">
                 <div>
-                  <span className="text-sm text-[var(--color-text-secondary)]">Device</span>
+                  <span className="text-sm text-[var(--color-text-muted)]">Device</span>
                   <p className="font-medium text-[var(--color-text)]">{listing.brand} {listing.model}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-[var(--color-text-secondary)]">Price</span>
-                  <p className="font-medium text-[var(--color-text)]">{listing.currency} {typeof listing.price === 'string' ? parseFloat(listing.price).toLocaleString() : listing.price.toLocaleString()}</p>
+                  <span className="text-sm text-[var(--color-text-muted)]">Price</span>
+                  <p className="font-medium text-[var(--color-text)]">{formatPrice(typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price, listing.currency)}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-[var(--color-text-secondary)]">Condition Grade</span>
+                  <span className="text-sm text-[var(--color-text-muted)]">Condition Grade</span>
                   <p className="font-medium text-[var(--color-text)]">Grade {listing.conditionGrade}</p>
                 </div>
                 {listing.imei && (
                   <div>
-                    <span className="text-sm text-[var(--color-text-secondary)]">IMEI</span>
+                    <span className="text-sm text-[var(--color-text-muted)]">IMEI</span>
                     <p className="font-medium text-[var(--color-text)] font-mono">{listing.imei}</p>
                   </div>
                 )}
                 {listing.serialNumber && (
                   <div>
-                    <span className="text-sm text-[var(--color-text-secondary)]">Serial Number</span>
+                    <span className="text-sm text-[var(--color-text-muted)]">Serial Number</span>
                     <p className="font-medium text-[var(--color-text)] font-mono">{listing.serialNumber}</p>
                   </div>
                 )}
                 <div>
-                  <span className="text-sm text-[var(--color-text-secondary)]">Description</span>
+                  <span className="text-sm text-[var(--color-text-muted)]">Description</span>
                   <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{listing.description}</p>
                 </div>
               </div>
@@ -423,7 +427,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
             {/* Identifier Validation / IMEI Check Results */}
             {verification.identifierValidation && (
-              <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
                 <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">IMEI Check Results</h2>
 
                 {(() => {
@@ -435,10 +439,10 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                   const deviceInfo = s3?.object as Record<string, any> | null;
 
                   const statusBadge = (ok: boolean | null, trueLabel: string, falseLabel: string, trueIsGood = true) => {
-                    if (ok === null) return <span className="text-xs px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">N/A</span>;
+                    if (ok === null) return <span className="text-xs px-2 py-0.5 bg-[var(--color-surface-alt)] text-[var(--color-text-muted)] rounded-full">N/A</span>;
                     const isGood = trueIsGood ? ok : !ok;
                     return (
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isGood ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      <span className={cn('text-xs px-2 py-0.5 rounded-full font-medium', isGood ? 'bg-[var(--color-green)]/10 text-[var(--color-green)]' : 'bg-[var(--color-danger)]/10 text-[var(--color-danger)]')}>
                         {ok ? trueLabel : falseLabel}
                       </span>
                     );
@@ -451,41 +455,41 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                       {/* Device identifiers */}
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
-                          <p className="text-[var(--color-text-secondary)] text-xs mb-0.5">IMEI</p>
+                          <p className="text-[var(--color-text-muted)] text-xs mb-0.5">IMEI</p>
                           <p className="font-mono font-medium">{iv.imei || '—'}</p>
                         </div>
                         <div>
-                          <p className="text-[var(--color-text-secondary)] text-xs mb-0.5">Serial Number</p>
+                          <p className="text-[var(--color-text-muted)] text-xs mb-0.5">Serial Number</p>
                           <p className="font-mono font-medium">{iv.serialNumber || '—'}</p>
                         </div>
                       </div>
 
                       {/* Apple device info from service 3 */}
                       {deviceInfo && (
-                        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-                          <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Apple Device Info</p>
+                        <div className="bg-[var(--color-green)]/5 border border-[var(--color-green)]/20 rounded-xl p-4">
+                          <p className="text-xs font-semibold text-[var(--color-green)] uppercase tracking-wide mb-2">Apple Device Info</p>
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                             {deviceInfo.modelName && (
                               <div>
-                                <span className="text-gray-500 text-xs">Model</span>
+                                <span className="text-[var(--color-text-muted)] text-xs">Model</span>
                                 <p className="font-medium">{String(deviceInfo.modelName)}</p>
                               </div>
                             )}
                             {deviceInfo.color && (
                               <div>
-                                <span className="text-gray-500 text-xs">Color</span>
+                                <span className="text-[var(--color-text-muted)] text-xs">Color</span>
                                 <p className="font-medium">{String(deviceInfo.color)}</p>
                               </div>
                             )}
                             {deviceInfo.storage && (
                               <div>
-                                <span className="text-gray-500 text-xs">Storage</span>
+                                <span className="text-[var(--color-text-muted)] text-xs">Storage</span>
                                 <p className="font-medium">{String(deviceInfo.storage)}</p>
                               </div>
                             )}
                             {deviceInfo.region && (
                               <div>
-                                <span className="text-gray-500 text-xs">Region</span>
+                                <span className="text-[var(--color-text-muted)] text-xs">Region</span>
                                 <p className="font-medium">{String(deviceInfo.region)}</p>
                               </div>
                             )}
@@ -494,7 +498,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                       )}
 
                       {/* Check status flags */}
-                      <div className="border rounded-lg divide-y text-sm">
+                      <div className="border border-[var(--color-border)] rounded-xl divide-y divide-[var(--color-border)]/30 text-sm">
                         <div className="flex items-center justify-between px-4 py-2.5">
                           <span className="text-[var(--color-text)]">IMEI Valid</span>
                           {statusBadge(iv.imeiValid, 'Valid', 'Invalid')}
@@ -519,7 +523,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
                       {/* API error notes if any */}
                       {raw?.errors && Array.isArray(raw.errors) && (raw.errors as string[]).length > 0 && (
-                        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-800">
+                        <div className="bg-[var(--color-accent)]/5 border border-[var(--color-accent)]/20 rounded-xl p-3 text-xs text-[var(--color-accent)]">
                           <p className="font-medium mb-1">API Notes</p>
                           <ul className="list-disc list-inside space-y-0.5">
                             {(raw.errors as string[]).map((e, i) => <li key={i}>{e}</li>)}
@@ -529,11 +533,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
                       {/* Checks that were actually run */}
                       {checksRun && checksRun.length > 0 && (
-                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs">
-                          <p className="font-medium text-gray-600 mb-1.5">Checks performed</p>
+                        <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl p-3 text-xs">
+                          <p className="font-medium text-[var(--color-text-muted)] mb-1.5">Checks performed</p>
                           <div className="flex flex-wrap gap-1.5">
                             {checksRun.map((check) => (
-                              <span key={check} className="px-2 py-0.5 bg-white border border-gray-200 rounded-full text-gray-700 font-mono">
+                              <span key={check} className="px-2 py-0.5 bg-white border border-[var(--color-border)] rounded-full text-[var(--color-text)] font-mono">
                                 {check.replace(/_/g, ' ')}
                               </span>
                             ))}
@@ -542,7 +546,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                       )}
 
                       {iv.verifiedAt && (
-                        <p className="text-xs text-[var(--color-text-secondary)]">
+                        <p className="text-xs text-[var(--color-text-muted)]">
                           Checked: {new Date(iv.verifiedAt).toLocaleString()}
                         </p>
                       )}
@@ -553,7 +557,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             )}
 
             {/* Review Form */}
-            <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
               <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Review Assessment</h2>
               
               <div className="mb-4">
@@ -584,7 +588,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                   onChange={(e) => setReviewNotes(e.target.value)}
                   rows={6}
                   placeholder="Add notes about your review decision..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-md focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 />
               </div>
             </div>

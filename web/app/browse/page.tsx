@@ -3,6 +3,14 @@
 import { useState, useEffect, useId, useRef } from 'react';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
+import {
+  Smartphone,
+  Tablet,
+  Watch,
+  Package,
+  Search,
+  SlidersHorizontal,
+} from 'lucide-react';
 
 type DeviceType = 'SMARTPHONE' | 'TABLET' | 'SMARTWATCH';
 type ConditionGrade = 'A' | 'B' | 'C';
@@ -24,10 +32,10 @@ interface Listing {
   imageUrl?: string;
 }
 
-const DEVICE_ICONS: Record<DeviceType, { icon: string; bg: string; label: string }> = {
-  SMARTPHONE: { icon: '📱', bg: 'from-blue-50 to-blue-100',     label: 'Smartphone' },
-  TABLET:     { icon: '⬜', bg: 'from-indigo-50 to-indigo-100', label: 'Tablet' },
-  SMARTWATCH: { icon: '⌚', bg: 'from-purple-50 to-purple-100', label: 'Smartwatch' },
+const DEVICE_ICONS: Record<DeviceType, { icon: React.ReactNode; bg: string; label: string }> = {
+  SMARTPHONE: { icon: <Smartphone className="w-10 h-10 text-[var(--color-text-muted)]" />, bg: 'bg-[var(--color-surface-alt)]', label: 'Smartphone' },
+  TABLET:     { icon: <Tablet className="w-10 h-10 text-[var(--color-text-muted)]" />,     bg: 'bg-[var(--color-surface-alt)]', label: 'Tablet' },
+  SMARTWATCH: { icon: <Watch className="w-10 h-10 text-[var(--color-text-muted)]" />,      bg: 'bg-[var(--color-surface-alt)]', label: 'Smartwatch' },
 };
 
 const DEVICE_TYPES: { value: DeviceType; label: string }[] = [
@@ -37,7 +45,7 @@ const DEVICE_TYPES: { value: DeviceType; label: string }[] = [
 ];
 
 /** Fallback icon config for device types no longer offered (legacy data). */
-const DEVICE_ICON_FALLBACK = { icon: '📦', bg: 'from-gray-50 to-gray-100', label: 'Device' };
+const DEVICE_ICON_FALLBACK = { icon: <Package className="w-10 h-10 text-[var(--color-text-muted)]" />, bg: 'bg-[var(--color-surface-alt)]', label: 'Device' };
 const getDeviceIcon = (type: string) =>
   DEVICE_ICONS[type as DeviceType] ?? DEVICE_ICON_FALLBACK;
 
@@ -164,7 +172,7 @@ export default function BrowsePage() {
 
       // SEC-14 / PERF-03: The N+1 per-listing evidence fetch has been removed.
       // The listing API should include imageUrl directly on the listing object.
-      // If imageUrl is missing, the card gracefully falls back to a device-type emoji.
+      // If imageUrl is missing, the card gracefully falls back to a device-type icon.
       setListings(rawListings);
 
       // PERF-10: Extract totalPages from the pagination envelope when present
@@ -200,11 +208,10 @@ export default function BrowsePage() {
 
   const getTrustBadge = (status: TrustLensStatus) => {
     if (status === 'PASSED') {
-      return <span className="bg-green-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">Verified</span>;
+      return <span className="bg-[var(--color-success)] text-white text-xs px-2 py-0.5 rounded-full font-medium">Verified</span>;
     }
     if (status === 'IN_PROGRESS' || status === 'REQUIRES_REVIEW') {
-      // bg-yellow-600 meets WCAG AA contrast on white text (4.5:1)
-      return <span className="bg-yellow-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">Under Review</span>;
+      return <span className="bg-[var(--color-accent)] text-[var(--color-text)] text-xs px-2 py-0.5 rounded-full font-medium">Under Review</span>;
     }
     return null;
   };
@@ -212,15 +219,14 @@ export default function BrowsePage() {
   const getConditionBadge = (grade?: ConditionGrade) => {
     if (!grade) return null;
     
-    const colors = {
-      A: 'bg-blue-500',
-      B: 'bg-green-500',
-      // bg-yellow-600 meets WCAG AA contrast on white text
-      C: 'bg-yellow-600',
+    const config: Record<ConditionGrade, { bg: string; text: string }> = {
+      A: { bg: 'bg-[var(--color-primary)]', text: 'text-white' },
+      B: { bg: 'bg-[var(--color-green)]', text: 'text-white' },
+      C: { bg: 'bg-[var(--color-accent)]', text: 'text-[var(--color-text)]' },
     };
 
     return (
-      <span className={`${colors[grade]} text-white text-xs px-2 py-0.5 rounded-full font-medium`}>
+      <span className={`${config[grade].bg} ${config[grade].text} text-xs px-2 py-0.5 rounded-full font-medium`}>
         Grade {grade}
       </span>
     );
@@ -238,19 +244,19 @@ export default function BrowsePage() {
           onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
           placeholder="Search devices..."
           autoComplete="off"
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+          className="w-full px-3 py-2 border border-[var(--color-border)] rounded-md text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
         />
       </div>
 
       {/* Category */}
       <div>
         <h3 className="font-semibold text-sm mb-2" id="category-filter-heading">Category</h3>
-        <ul className="space-y-1 text-sm text-[var(--color-text-secondary)]" aria-labelledby="category-filter-heading">
+        <ul className="space-y-1 text-sm text-[var(--color-text-muted)]" aria-labelledby="category-filter-heading">
           <li>
             <button
               onClick={() => setFilters(prev => ({ ...prev, deviceType: '' }))}
               aria-pressed={!filters.deviceType}
-              className={`hover:text-[var(--color-text)] ${!filters.deviceType ? 'font-semibold text-[var(--color-primary)]' : ''}`}
+              className={`hover:text-[var(--color-text)] ${!filters.deviceType ? 'font-semibold text-[var(--color-green)]' : ''}`}
             >
               All Devices
             </button>
@@ -260,7 +266,7 @@ export default function BrowsePage() {
               <button
                 onClick={() => setFilters(prev => ({ ...prev, deviceType: type.value }))}
                 aria-pressed={filters.deviceType === type.value}
-                className={`hover:text-[var(--color-text)] ${filters.deviceType === type.value ? 'font-semibold text-[var(--color-primary)]' : ''}`}
+                className={`hover:text-[var(--color-text)] ${filters.deviceType === type.value ? 'font-semibold text-[var(--color-green)]' : ''}`}
               >
                 {type.label}
               </button>
@@ -322,7 +328,7 @@ export default function BrowsePage() {
               min={0}
               value={filters.minPrice}
               onChange={(e) => setFilters(prev => ({ ...prev, minPrice: e.target.value }))}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+              className="w-full px-2 py-1 border border-[var(--color-border)] rounded text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
             />
           </div>
           <div className="flex-1">
@@ -334,7 +340,7 @@ export default function BrowsePage() {
               min={0}
               value={filters.maxPrice}
               onChange={(e) => setFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
-              className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+              className="w-full px-2 py-1 border border-[var(--color-border)] rounded text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
             />
           </div>
         </div>
@@ -350,7 +356,7 @@ export default function BrowsePage() {
           minPrice: '',
           maxPrice: '',
         })}
-        className="w-full px-4 py-2 text-sm text-[var(--color-primary)] border border-[var(--color-primary)] rounded-md hover:bg-blue-50"
+        className="w-full px-4 py-2 text-sm text-[var(--color-green)] border border-[var(--color-green)] rounded-md hover:bg-[var(--color-green)]/10"
       >
         Clear All Filters
       </button>
@@ -365,11 +371,9 @@ export default function BrowsePage() {
           onClick={() => setFiltersOpen(!filtersOpen)}
           aria-expanded={filtersOpen}
           aria-controls={filterPanelId}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+          className="flex items-center gap-2 px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium hover:bg-[var(--color-surface-alt)]"
         >
-          <svg aria-hidden="true" className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
-          </svg>
+          <SlidersHorizontal aria-hidden="true" className="w-4 h-4" />
           {filtersOpen ? 'Hide Filters' : 'Show Filters'}
         </button>
       </div>
@@ -393,7 +397,7 @@ export default function BrowsePage() {
                 ? DEVICE_TYPES.find(t => t.value === filters.deviceType)?.label 
                 : 'All Devices'}
               {sortedListings.length > 0 && (
-                <span className="ml-2 text-base text-gray-500 font-normal">
+                <span className="ml-2 text-base text-[var(--color-text-muted)] font-normal">
                   ({sortedListings.length} {sortedListings.length === 1 ? 'listing' : 'listings'})
                 </span>
               )}
@@ -404,7 +408,7 @@ export default function BrowsePage() {
                 id={sortId}
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+                className="px-3 py-2 border border-[var(--color-border)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
               >
                 <option value="newest">Newest First</option>
                 <option value="price-asc">Price: Low to High</option>
@@ -415,18 +419,18 @@ export default function BrowsePage() {
 
           {loading && (
             <div role="status" className="text-center py-12">
-              <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-primary)]"></div>
+              <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)]"></div>
               <span className="sr-only">Loading listings...</span>
-              <p aria-hidden="true" className="mt-4 text-gray-600">Loading listings...</p>
+              <p aria-hidden="true" className="mt-4 text-[var(--color-text-muted)]">Loading listings...</p>
             </div>
           )}
 
           {error && (
-            <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-              <p className="text-red-600">{error}</p>
+            <div role="alert" className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-lg p-4 text-center">
+              <p className="text-[var(--color-danger)]">{error}</p>
               <button
                 onClick={fetchListings}
-                className="mt-3 px-4 py-2 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90"
+                className="mt-3 px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90"
               >
                 Retry
               </button>
@@ -435,14 +439,20 @@ export default function BrowsePage() {
 
           {!loading && !error && sortedListings.length === 0 && (
             <div className="text-center py-12">
-              <div aria-hidden="true" className="text-6xl mb-4">
-                {filters.deviceType ? getDeviceIcon(filters.deviceType).icon : '🔍'}
+              <div aria-hidden="true" className="mb-4 flex justify-center">
+                {filters.deviceType ? (
+                  <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--color-surface-alt)]">
+                    {getDeviceIcon(filters.deviceType).icon}
+                  </span>
+                ) : (
+                  <Search className="w-16 h-16 text-[var(--color-text-muted)]" />
+                )}
               </div>
               <h3 className="text-xl font-semibold text-[var(--color-text)] mb-2">No listings found</h3>
-              <p className="text-gray-600 mb-6">Try adjusting your filters or check back later</p>
+              <p className="text-[var(--color-text-muted)] mb-6">Try adjusting your filters or check back later</p>
               <Link
                 href="/listings/create"
-                className="inline-block px-6 py-3 bg-[var(--color-primary)] text-white rounded-md hover:opacity-90"
+                className="inline-block px-6 py-3 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90"
               >
                 Create First Listing
               </Link>
@@ -455,10 +465,10 @@ export default function BrowsePage() {
                 <li key={listing.id}>
                   <Link
                     href={`/listings/${listing.id}`}
-                    className="block bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow border border-gray-200 h-full"
+                    className="block bg-white rounded-xl overflow-hidden transition-shadow border border-[var(--color-border)] hover:border-[var(--color-green)] hover:shadow-md h-full"
                   >
                     {listing.imageUrl ? (
-                      <div className="h-48 overflow-hidden bg-gray-100">
+                      <div className="h-48 overflow-hidden bg-[var(--color-surface-alt)]">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={listing.imageUrl}
@@ -468,10 +478,10 @@ export default function BrowsePage() {
                         />
                       </div>
                     ) : (
-                      <div className={`bg-gradient-to-br ${getDeviceIcon(listing.deviceType).bg} h-48 flex items-center justify-center`}>
+                      <div className={`${getDeviceIcon(listing.deviceType).bg} h-48 flex items-center justify-center`}>
                         <div className="text-center">
-                          <div aria-hidden="true" className="text-5xl mb-1">{getDeviceIcon(listing.deviceType).icon}</div>
-                          <p className="text-xs text-gray-400 font-medium">
+                          <div aria-hidden="true" className="mb-1 flex justify-center">{getDeviceIcon(listing.deviceType).icon}</div>
+                          <p className="text-xs text-[var(--color-text-muted)] font-medium">
                             {getDeviceIcon(listing.deviceType).label}
                           </p>
                         </div>
@@ -485,14 +495,14 @@ export default function BrowsePage() {
                       <h3 className="font-semibold text-sm mb-1 text-[var(--color-text)] line-clamp-2">
                         {listing.title}
                       </h3>
-                      <p className="text-xs text-gray-500 mb-2">
+                      <p className="text-xs text-[var(--color-text-muted)] mb-2">
                         {listing.brand} {listing.model}
                       </p>
                       <div className="flex justify-between items-center">
-                        <p className="text-lg font-bold text-[var(--color-primary)]">
+                        <p className="text-lg font-bold text-[var(--color-text)]">
                           {formatPrice(listing.price, listing.currency)}
                         </p>
-                        <span className="text-sm text-[var(--color-primary)] hover:underline" aria-hidden="true">
+                        <span className="text-sm text-[var(--color-green)] hover:text-[var(--color-green-dark)] hover:underline" aria-hidden="true">
                           View Details →
                         </span>
                       </div>
@@ -513,12 +523,12 @@ export default function BrowsePage() {
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page <= 1}
                 aria-label="Previous page"
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-4 py-2 border border-[var(--color-border)] rounded-md text-sm font-medium hover:bg-[var(--color-surface-alt)] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <span aria-hidden="true">←</span> Previous
               </button>
 
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-[var(--color-text-muted)]">
                 Page {page} of {totalPages}
               </span>
 
@@ -526,7 +536,7 @@ export default function BrowsePage() {
                 onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
                 aria-label="Next page"
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-4 py-2 border border-[var(--color-border)] rounded-md text-sm font-medium hover:bg-[var(--color-surface-alt)] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Next <span aria-hidden="true">→</span>
               </button>

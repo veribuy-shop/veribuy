@@ -86,7 +86,7 @@ export class EvidenceController {
    */
   @Post('packs')
   @HttpCode(HttpStatus.CREATED)
-  @Roles('SELLER')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async createEvidencePack(
     @Body() dto: CreateEvidencePackDto,
     @CurrentUser() user: AuthenticatedUser,
@@ -104,7 +104,7 @@ export class EvidenceController {
   @Post('upload')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE_BYTES } }))
   @HttpCode(HttpStatus.CREATED)
-  @Roles('SELLER')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async uploadEvidence(
     @Body() dto: UploadEvidenceDto,
     @UploadedFile() file: Express.Multer.File,
@@ -161,7 +161,7 @@ export class EvidenceController {
    * Get evidence pack by pack ID.
    */
   @Get('packs/:packId')
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async getEvidencePack(
     @Param('packId', ParseUUIDPipe) packId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -177,7 +177,7 @@ export class EvidenceController {
    * Get all evidence packs for a seller.
    */
   @Get('seller/:sellerId')
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async getSellerEvidencePacks(
     @Param('sellerId', ParseUUIDPipe) sellerId: string,
     @Query() pagination: PaginationDto,
@@ -195,7 +195,7 @@ export class EvidenceController {
    */
   @Delete('items/:itemId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Roles('SELLER', 'ADMIN')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
   async deleteEvidenceItem(
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @CurrentUser() user: AuthenticatedUser,

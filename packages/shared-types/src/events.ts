@@ -16,12 +16,6 @@ export enum EventPattern {
   TRUST_LENS_REVIEW_COMPLETED = 'trust_lens.review.completed',
   TRUST_LENS_REVIEW_FAILED = 'trust_lens.review.failed',
 
-  // Device verification events
-  DEVICE_VERIFICATION_REQUESTED = 'device.verification.requested',
-  DEVICE_VERIFICATION_COMPLETED = 'device.verification.completed',
-  DEVICE_VERIFICATION_FAILED = 'device.verification.failed',
-  DEVICE_IMEI_MISMATCH = 'device.imei.mismatch',
-
   // Evidence events
   EVIDENCE_UPLOADED = 'evidence.uploaded',
   EVIDENCE_PACK_COMPLETE = 'evidence.pack.complete',
@@ -73,17 +67,6 @@ export interface ListingApprovedEvent extends BaseEvent {
     sellerId: string;
     conditionGrade: string;
     trustScore: number;
-  };
-}
-
-export interface DeviceVerificationCompletedEvent extends BaseEvent {
-  pattern: EventPattern.DEVICE_VERIFICATION_COMPLETED;
-  data: {
-    verificationId: string;
-    listingId: string;
-    imeiValid: boolean;
-    icloudLocked: boolean;
-    reportedStolen: boolean;
   };
 }
 
