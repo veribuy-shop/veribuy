@@ -22,12 +22,21 @@ COPY packages ./packages
 COPY gateway ./gateway
 # Build shared packages first
 WORKDIR /app
-RUN pnpm --filter @veribuy/logger run build || true
+RUN pnpm --filter @veribuy/logger run build
 # Build the gateway
 WORKDIR /app/gateway
 RUN pnpm build
 
-# Production stage
+# Development stage (use --target=development to select)
+FROM base AS development
+COPY --from=deps /app .
+COPY packages ./packages
+COPY gateway ./gateway
+WORKDIR /app/gateway
+EXPOSE 3000
+CMD ["pnpm", "run", "dev"]
+
+# Production stage (default — last stage)
 FROM base AS production
 ENV NODE_ENV=production
 WORKDIR /app
@@ -45,12 +54,3 @@ COPY --from=build /app/gateway/dist ./gateway/dist
 WORKDIR /app/gateway
 EXPOSE 3000
 CMD ["node", "dist/main"]
-
-# Development stage (default)
-FROM base AS development
-COPY --from=deps /app .
-COPY packages ./packages
-COPY gateway ./gateway
-WORKDIR /app/gateway
-EXPOSE 3000
-CMD ["pnpm", "run", "dev"]

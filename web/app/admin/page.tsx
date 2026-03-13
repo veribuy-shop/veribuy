@@ -136,7 +136,7 @@ interface ServiceHealth {
   status: 'healthy' | 'unhealthy' | 'degraded';
   responseTime: number;
   details: Record<string, unknown>;
-  port: number;
+  url: string;
 }
 
 interface InfraHealth {
@@ -677,13 +677,7 @@ function DashboardTab({
     u.name?.toLowerCase().includes('fraud') ||
     u.name?.toLowerCase().includes('bulk') ||
     u.email?.toLowerCase().includes('spam')
-  ).slice(0, 3);
-
-  const mockFlaggedAccounts = flaggedUsers.length > 0 ? flaggedUsers.map(u => ({ name: u.name || u.email, id: u.id })) : [
-    { name: 'SuspiciousLogin123', id: '1' },
-    { name: 'BulkSeller_FraudCheck', id: '2' },
-    { name: 'MultiAccount_Detector', id: '3' },
-  ];
+  ).slice(0, 3).map(u => ({ name: u.name || u.email, id: u.id }));
 
   const pendingCount   = verifications.filter(v => v.status === 'PENDING' || v.status === 'REQUIRES_REVIEW').length;
   const urgentCount    = verifications.filter(v => v.status === 'REQUIRES_REVIEW').length;
@@ -701,18 +695,22 @@ function DashboardTab({
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
           <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Total GMV:</p>
           <p className="text-3xl font-bold text-[var(--color-text)]">
-            {formatPrice(stats?.totalRevenue ? stats.totalRevenue / 0.05 : 4500250, 'GBP')}
+            {formatPrice(stats?.totalRevenue ? stats.totalRevenue / 0.05 : 0, 'GBP')}
           </p>
-          <p className="text-xs text-[var(--color-green)] font-semibold mt-1">↑ 5.2%</p>
+          {stats?.totalRevenue ? (
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">Based on 5% platform fee</p>
+          ) : (
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">No transactions yet</p>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
-          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">New Users:</p>
-          <p className="text-3xl font-bold text-[var(--color-text)]">{(stats?.totalUsers ?? 3150).toLocaleString()}</p>
-          <p className="text-xs text-[var(--color-green)] font-semibold mt-1">+{todayUsers || 220} today</p>
+          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Total Users:</p>
+          <p className="text-3xl font-bold text-[var(--color-text)]">{(stats?.totalUsers ?? 0).toLocaleString()}</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">+{todayUsers} today</p>
         </div>
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
           <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Pending Verifications:</p>
-          <p className="text-3xl font-bold text-[var(--color-text)]">{pendingCount || stats?.pendingVerification || 85}</p>
+          <p className="text-3xl font-bold text-[var(--color-text)]">{pendingCount || stats?.pendingVerification || 0}</p>
           {urgentCount > 0 && (
             <p className="text-xs text-[var(--color-danger)] font-semibold mt-1">Urgent: {urgentCount}</p>
           )}
@@ -734,10 +732,10 @@ function DashboardTab({
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]/50">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Device ID ↓</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Request ID</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Received Date</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Seller</th>
-                <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Model</th>
+                <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Listing ID</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Status</th>
                 <th className="px-5 py-3 text-left text-xs font-semibold text-[var(--color-text-muted)]">Grading Action</th>
               </tr>
@@ -748,22 +746,22 @@ function DashboardTab({
                   <td colSpan={6} className="px-5 py-8 text-center text-[var(--color-text-muted)] text-sm">No verification requests</td>
                 </tr>
               ) : (
-                queueItems.map((v, i) => {
+                queueItems.map((v) => {
                   const badge = verificationStatusBadge(v.status);
-                  const isFirst = i === 0 && v.status === 'PENDING';
+                  const isPending = v.status === 'PENDING' || v.status === 'REQUIRES_REVIEW';
                   return (
                     <tr key={v.id} className="hover:bg-[var(--color-surface-alt)]/50">
                       <td className="px-5 py-3 font-mono text-xs text-[var(--color-text)]">
-                        D-{String(9821 - i).padStart(4, '0')}
+                        {v.id.slice(0, 8)}
                       </td>
                       <td className="px-5 py-3 text-[var(--color-text-muted)]">
                         {new Date(v.createdAt).toISOString().split('T')[0]}
                       </td>
                       <td className="px-5 py-3 text-[var(--color-text)] font-medium">
-                        {v.sellerId ? `Seller…${v.sellerId.slice(-4)}` : 'TechProSellers'}
+                        {v.sellerId ? `Seller...${v.sellerId.slice(-4)}` : 'Unknown'}
                       </td>
-                      <td className="px-5 py-3 text-[var(--color-text-muted)]">
-                        {v.listingId ? 'iPhone 14 Pro' : 'Samsung S23 Ultra'}
+                      <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">
+                        {v.listingId ? v.listingId.slice(0, 8) : 'N/A'}
                       </td>
                       <td className="px-5 py-3">
                         <span className={cn('px-2.5 py-1 text-xs font-medium rounded-full', badge.className)}>
@@ -771,7 +769,7 @@ function DashboardTab({
                         </span>
                       </td>
                       <td className="px-5 py-3">
-                        {isFirst ? (
+                        {isPending ? (
                           <Link
                             href={`/admin/review/${v.listingId}`}
                             className="px-3 py-1.5 bg-[var(--color-primary)] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
@@ -810,19 +808,23 @@ function DashboardTab({
           <div className="p-5">
             <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">Flagged Accounts</p>
             <div className="space-y-3">
-              {mockFlaggedAccounts.map(acct => (
-                <div key={acct.id} className="flex items-center justify-between">
-                  <span className="text-sm text-[var(--color-text)] font-medium">{acct.name}</span>
-                  <div className="flex gap-2">
-                    <button className="px-3 py-1 bg-[var(--color-primary)] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity">
-                      Review
-                    </button>
-                    <button className="px-3 py-1 border border-red-300 text-[var(--color-danger)] text-xs font-medium rounded hover:bg-red-50 transition-colors">
-                      Ban
-                    </button>
+              {flaggedUsers.length === 0 ? (
+                <p className="text-sm text-[var(--color-text-muted)] py-2">No flagged accounts detected.</p>
+              ) : (
+                flaggedUsers.map(acct => (
+                  <div key={acct.id} className="flex items-center justify-between">
+                    <span className="text-sm text-[var(--color-text)] font-medium">{acct.name}</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onTabChange('users')}
+                        className="px-3 py-1 bg-[var(--color-primary)] text-white text-xs font-bold rounded hover:opacity-90 transition-opacity"
+                      >
+                        Review
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -1115,7 +1117,7 @@ function SystemHealthTab() {
                     <span className={cn('w-2.5 h-2.5 rounded-full', statusDot(svc.status))} />
                     <span className="text-sm font-semibold text-[var(--color-text)]">{svc.name}</span>
                   </div>
-                  <span className="text-xs text-[var(--color-text-muted)] font-mono">:{svc.port}</span>
+                  <span className="text-xs text-[var(--color-text-muted)] font-mono">{(() => { try { return new URL(svc.url).host; } catch { return svc.url; } })()}</span>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
