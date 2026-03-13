@@ -16,6 +16,7 @@ import * as crypto from 'crypto';
 import { TransactionsService } from './transactions.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { RateOrderDto } from './dto/rate-order.dto';
 import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, PaginationDto, Public } from '@veribuy/common';
 
 interface AuthenticatedUser {
@@ -179,5 +180,34 @@ export class TransactionsController {
   @Roles('ADMIN')
   refundOrder(@Param('orderId', ParseUUIDPipe) orderId: string) {
     return this.transactionsService.refundOrder(orderId);
+  }
+
+  @Post('orders/:orderId/rate')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  async rateOrder(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() rateOrderDto: RateOrderDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transactionsService.rateOrder(orderId, user.userId, rateOrderDto);
+  }
+
+  @Get('orders/:orderId/rating')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  async getOrderRating(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const order = await this.transactionsService.getOrder(orderId);
+    if (user.role !== 'ADMIN' && order.buyerId !== user.userId && order.sellerId !== user.userId) {
+      throw new ForbiddenException('You can only view ratings for orders you are involved in');
+    }
+    return this.transactionsService.getOrderRating(orderId);
+  }
+
+  @Get('sellers/:sellerId/ratings')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  getSellerRatings(@Param('sellerId', ParseUUIDPipe) sellerId: string) {
+    return this.transactionsService.getSellerRatings(sellerId);
   }
 }

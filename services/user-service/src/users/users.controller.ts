@@ -19,6 +19,7 @@ import { UsersService } from './users.service';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateVerificationStatusDto } from './dto/update-verification-status.dto';
+import { UpdateSellerRatingDto } from './dto/update-seller-rating.dto';
 import { JwtAuthGuard, RolesGuard, CurrentUser, Roles, Public } from '@veribuy/common';
 
 interface AuthenticatedUser {
@@ -85,6 +86,23 @@ export class UsersController {
   ) {
     this.verifyInternalToken(internalToken);
     await this.usersService.updateVerificationStatus(userId, body.verificationStatus);
+  }
+
+  /**
+   * Internal endpoint — called by transaction-service after a buyer rates an order.
+   * Updates the cached seller rating aggregate on the profile.
+   * Protected by timing-safe INTERNAL_SERVICE_TOKEN check (no JWT).
+   */
+  @Patch(':userId/seller-rating')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async updateSellerRating(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Headers('x-internal-service') internalToken: string,
+    @Body() body: UpdateSellerRatingDto,
+  ) {
+    this.verifyInternalToken(internalToken);
+    await this.usersService.updateSellerRating(userId, body.sellerRating, body.totalRatings);
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────────

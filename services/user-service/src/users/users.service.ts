@@ -19,6 +19,9 @@ const PROFILE_SELECT = {
   bio: true,
   avatarUrl: true,
   phone: true,
+  sellerRating: true,
+  totalSales: true,
+  totalPurchases: true,
   createdAt: true,
   updatedAt: true,
   address: {
@@ -169,6 +172,40 @@ export class UsersService {
 
     this.logger.log(
       `Updated verificationStatus to ${verificationStatus} for user ${userId}`,
+    );
+  }
+
+  async updateSellerRating(
+    userId: string,
+    sellerRating: number | null,
+    totalRatings: number,
+  ) {
+    try {
+      await this.prisma.profile.update({
+        where: { userId },
+        data: {
+          sellerRating,
+          totalSales: totalRatings,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2025') {
+        throw new NotFoundException('Profile not found');
+      }
+      throw err;
+    }
+
+    // Invalidate cache so the next read reflects the new rating
+    try {
+      await this.redis.del(`profile:${userId}`);
+    } catch (err) {
+      this.logger.warn(
+        `Redis DEL failed after sellerRating update for profile:${userId}: ${(err as Error).message}`,
+      );
+    }
+
+    this.logger.log(
+      `Updated sellerRating to ${sellerRating} (${totalRatings} ratings) for user ${userId}`,
     );
   }
 }
