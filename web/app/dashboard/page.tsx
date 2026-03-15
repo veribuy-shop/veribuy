@@ -173,6 +173,7 @@ function DashboardContent() {
   // Seller rating from profile
   const [sellerRating, setSellerRating] = useState<number | null>(null);
   const [totalSalesCount, setTotalSalesCount] = useState(0);
+  const [verificationStatus, setVerificationStatus] = useState<string>('UNVERIFIED');
 
   // Rating modal state
   const [ratingOrderId, setRatingOrderId] = useState<string | null>(null);
@@ -242,6 +243,7 @@ function DashboardContent() {
         const p = await profileRes.json();
         setSellerRating(p.sellerRating ?? null);
         setTotalSalesCount(p.totalSales ?? 0);
+        setVerificationStatus(p.verificationStatus ?? 'UNVERIFIED');
       }
     } catch (e) {
       console.error('Dashboard fetch error:', e);
@@ -1222,15 +1224,41 @@ function DashboardContent() {
             <h3 className="font-bold text-[var(--color-text)]">Verification Status</h3>
           </div>
           <div className="flex items-center gap-3">
-            <span className="bg-amber-100 text-amber-800 text-sm px-3 py-1 rounded-full font-medium">Unverified</span>
-            <p className="text-sm text-[var(--color-text-muted)]">Complete identity verification to start selling.</p>
+            {verificationStatus === 'VERIFIED' ? (
+              <>
+                <span className="bg-green-100 text-green-800 text-sm px-3 py-1 rounded-full font-medium">Verified</span>
+                <p className="text-sm text-[var(--color-text-muted)]">Your seller status is verified through Trust Lens checks. You can sell on VeriBuy.</p>
+              </>
+            ) : verificationStatus === 'PENDING' ? (
+              <>
+                <span className="bg-blue-100 text-blue-800 text-sm px-3 py-1 rounded-full font-medium">Pending</span>
+                <p className="text-sm text-[var(--color-text-muted)]">Your verification is being reviewed.</p>
+              </>
+            ) : verificationStatus === 'REJECTED' ? (
+              <>
+                <span className="bg-red-100 text-red-700 text-sm px-3 py-1 rounded-full font-medium">Rejected</span>
+                <p className="text-sm text-[var(--color-text-muted)]">Verification was rejected due to multiple failed listing reviews.</p>
+              </>
+            ) : verificationStatus === 'SUSPENDED' ? (
+              <>
+                <span className="bg-red-100 text-red-700 text-sm px-3 py-1 rounded-full font-medium">Suspended</span>
+                <p className="text-sm text-[var(--color-text-muted)]">Your account has been suspended. Please contact support.</p>
+              </>
+            ) : (
+              <>
+                <span className="bg-amber-100 text-amber-800 text-sm px-3 py-1 rounded-full font-medium">Unverified</span>
+                <p className="text-sm text-[var(--color-text-muted)]">Create a listing with an IMEI to start the verification process.</p>
+              </>
+            )}
           </div>
-          <Link
-            href="/seller-verification"
-            className="inline-flex items-center gap-1 mt-4 text-sm text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium"
-          >
-            Learn about verification <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
-          </Link>
+          {(verificationStatus === 'UNVERIFIED' || verificationStatus === 'REJECTED') && (
+            <Link
+              href="/seller-verification"
+              className="inline-flex items-center gap-1 mt-4 text-sm text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium"
+            >
+              Learn about verification <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+            </Link>
+          )}
         </div>
       </div>
     );

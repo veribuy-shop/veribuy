@@ -15,6 +15,9 @@ export interface InvoiceOrderData {
   listingDescription: string | null;
   listingCategory: string | null;
   amount: string | number;
+  shippingFee: string | number | null;
+  shippingService: string | null;
+  totalAmount: string | number;
   currency: string;
   status: string;
   shippingAddress: unknown;
@@ -90,10 +93,12 @@ export class InvoicesService {
           buyerId: order.buyerId,
           sellerId: order.sellerId,
           amount: order.amount as any,
+          shippingFee: order.shippingFee as any ?? null,
+          totalAmount: order.totalAmount as any ?? order.amount as any,
           // REG-04: Store VAT breakdown (0% until VeriBuy is VAT-registered)
           vatRate: 0,
           vatAmount: 0,
-          netAmount: order.amount as any,
+          netAmount: order.totalAmount as any ?? order.amount as any,
           currency: order.currency,
           pdfUrl: pdfUrl ?? null,
         },
@@ -226,10 +231,19 @@ export class InvoicesService {
       doc.on('error', reject);
 
       const shortId = order.id.substring(0, 8);
-      const amountFormatted = new Intl.NumberFormat('en-GB', {
-        style: 'currency',
-        currency: order.currency,
-      }).format(Number(order.amount));
+      const fmtCurrency = (val: string | number) =>
+        new Intl.NumberFormat('en-GB', { style: 'currency', currency: order.currency }).format(Number(val));
+
+      const amountFormatted = fmtCurrency(order.amount);
+      const shippingFee = order.shippingFee ? Number(order.shippingFee) : 0;
+      const shippingFormatted = shippingFee > 0 ? fmtCurrency(shippingFee) : null;
+      const totalFormatted = fmtCurrency(order.totalAmount ?? order.amount);
+
+      const shippingLabel = order.shippingService === 'TRACKED_24'
+        ? 'Royal Mail Tracked 24'
+        : order.shippingService === 'TRACKED_48'
+          ? 'Royal Mail Tracked 48'
+          : 'Shipping';
 
       const docTypeLabel = invoiceType === 'CREDIT_NOTE' ? 'CREDIT NOTE' : 'INVOICE';
       const refLabel = invoiceType === 'CREDIT_NOTE' ? 'Credit Note No' : 'Invoice No';
@@ -326,19 +340,36 @@ export class InvoicesService {
         .fillColor('#000000')
         .text(amountFormatted, 400, 250, { align: 'right' });
 
-      doc.moveTo(50, itemY + 10).lineTo(545, itemY + 10).strokeColor('#dddddd').stroke();
+      // ---- Shipping line (if applicable) ----
+      let lineY = itemY + 10;
+      if (shippingFormatted) {
+        doc.moveTo(50, lineY).lineTo(545, lineY).strokeColor('#dddddd').stroke();
+        lineY += 10;
+
+        doc
+          .fontSize(10)
+          .font('Helvetica')
+          .fillColor('#000000')
+          .text(shippingLabel, 50, lineY)
+          .font('Helvetica-Bold')
+          .text(shippingFormatted, 400, lineY, { align: 'right' });
+
+        lineY += 20;
+      }
+
+      doc.moveTo(50, lineY).lineTo(545, lineY).strokeColor('#dddddd').stroke();
 
       // ---- Total ----
       doc
         .fontSize(12)
         .font('Helvetica-Bold')
-        .text('Total', 300, itemY + 20)
-        .text(amountFormatted, 400, itemY + 20, { align: 'right' });
+        .text('Total', 300, lineY + 10)
+        .text(totalFormatted, 400, lineY + 10, { align: 'right' });
 
       // ---- Shipping address ----
       if (order.shippingAddress) {
         const addr = order.shippingAddress as Record<string, string>;
-        const addrY = itemY + 55;
+        const addrY = lineY + 45;
 
         doc
           .fontSize(11)
@@ -378,16 +409,31 @@ export class InvoicesService {
     invoiceType: string,
   ): string {
     const shortId = order.id.substring(0, 8);
-    const amountFormatted = new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: order.currency,
-    }).format(Number(order.amount));
+    const fmtCurrency = (val: string | number) =>
+      new Intl.NumberFormat('en-GB', { style: 'currency', currency: order.currency }).format(Number(val));
+
+    const amountFormatted = fmtCurrency(order.amount);
+    const shippingFee = order.shippingFee ? Number(order.shippingFee) : 0;
+    const totalFormatted = fmtCurrency(order.totalAmount ?? order.amount);
+
+    const shippingLabel = order.shippingService === 'TRACKED_24'
+      ? 'Royal Mail Tracked 24'
+      : order.shippingService === 'TRACKED_48'
+        ? 'Royal Mail Tracked 48'
+        : 'Shipping';
 
     const isCreditNote = invoiceType === 'CREDIT_NOTE';
     const docLabel = isCreditNote ? 'Credit Note' : 'Invoice';
     const headingText = isCreditNote ? 'Your VeriBuy Credit Note' : 'Your VeriBuy Invoice';
     const downloadLabel = isCreditNote ? 'Download Credit Note PDF' : 'Download Invoice PDF';
     const refLabel = isCreditNote ? 'Credit Note No.' : 'Invoice No.';
+
+    const shippingRow = shippingFee > 0
+      ? `<tr>
+      <td style="padding: 8px; border: 1px solid #eee;"><strong>${shippingLabel}</strong></td>
+      <td style="padding: 8px; border: 1px solid #eee;">${fmtCurrency(shippingFee)}</td>
+    </tr>`
+      : '';
 
     return `<!DOCTYPE html>
 <html>
@@ -402,8 +448,13 @@ export class InvoicesService {
       <td style="padding: 8px; border: 1px solid #eee; background: #f9f9f9;">${order.listingTitle ?? 'Device Listing'}</td>
     </tr>
     <tr>
-      <td style="padding: 8px; border: 1px solid #eee;"><strong>Amount</strong></td>
+      <td style="padding: 8px; border: 1px solid #eee;"><strong>Item Price</strong></td>
       <td style="padding: 8px; border: 1px solid #eee;">${amountFormatted}</td>
+    </tr>
+    ${shippingRow}
+    <tr>
+      <td style="padding: 8px; border: 1px solid #eee; background: #f9f9f9;"><strong>Total</strong></td>
+      <td style="padding: 8px; border: 1px solid #eee; background: #f9f9f9;"><strong>${totalFormatted}</strong></td>
     </tr>
     <tr>
       <td style="padding: 8px; border: 1px solid #eee;"><strong>${refLabel}</strong></td>

@@ -16,6 +16,7 @@ import * as crypto from 'crypto';
 import { TransactionsService } from './transactions.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
 import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, PaginationDto, Public } from '@veribuy/common';
 
@@ -81,6 +82,20 @@ export class TransactionsController {
   ) {
     validateInternalToken(internalService);
     return this.transactionsService.confirmPayment(orderId, paymentIntentId);
+  }
+
+  /**
+   * Update shipping details on a PENDING order before payment.
+   * Updates both the DB record and the Stripe PaymentIntent amount.
+   */
+  @Patch('orders/:orderId/shipping')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  async updateShipping(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() updateShippingDto: UpdateShippingDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transactionsService.updateShipping(orderId, user.userId, updateShippingDto);
   }
 
   @Patch('orders/:orderId/status')

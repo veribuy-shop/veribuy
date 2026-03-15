@@ -10,61 +10,62 @@ import {
 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'How Trust Lens Works - VeriBuy',
+  title: 'How Trust Lens Works',
   description: 'Learn how our verification process ensures every device is authentic and accurately described',
+  alternates: {
+    canonical: '/how-it-works',
+  },
 };
 
 export default function HowItWorksPage() {
   const steps = [
     {
       number: '1',
-      title: 'Seller Verification',
+      title: 'List Your Device',
       icon: <UserCheck className="w-8 h-8 md:w-10 md:h-10 text-white" />,
-      description: 'Before listing any device, sellers must complete identity verification. We verify government-issued ID and contact information to ensure accountability.',
+      description: 'Create a listing with your device details, photos, and IMEI number. You select the condition grade (A/B/C) based on the device\'s cosmetic and functional state.',
       details: [
-        'Government ID verification',
-        'Email and phone confirmation',
-        'Background checks for high-value sellers',
-        'Ongoing reputation monitoring',
+        'Enter device brand, model, and description',
+        'Upload photos from multiple angles',
+        'Select condition grade: A (Excellent), B (Good), or C (Fair)',
+        'Provide your IMEI by dialling *#06# on the device',
       ],
     },
     {
       number: '2',
-      title: 'Device Authentication',
+      title: 'Automated IMEI Verification',
       icon: <Search className="w-8 h-8 md:w-10 md:h-10 text-white" />,
-      description: 'Every device undergoes rigorous authentication checks to verify it\'s genuine and not stolen or blacklisted.',
+      description: 'Our Trust Lens system automatically runs your IMEI against global databases in seconds to check for issues.',
       details: [
-        'IMEI/serial number validation',
-        'Stolen device database checks',
+        'GSMA blacklist check',
+        'Stolen device database cross-reference',
         'Carrier blacklist verification',
-        'iCloud lock status (for Apple devices)',
-        'Warranty status validation',
+        'iCloud / Find My lock status (Apple devices)',
+        'IMEI format and validity check',
       ],
     },
     {
       number: '3',
-      title: 'Evidence Capture',
+      title: 'Instant or Admin Review',
       icon: <Camera className="w-8 h-8 md:w-10 md:h-10 text-white" />,
-      description: 'Sellers capture timestamped photos and videos of the device from multiple angles, creating an immutable evidence pack.',
+      description: 'If the IMEI is clean, your listing goes live automatically and your seller profile is marked Verified. If any check flags an issue, the listing is queued for manual admin review.',
       details: [
-        'Minimum 10 photos from all angles',
-        'Video showing device functionality',
-        'Screen-on photos showing no defects',
-        'Close-ups of any scratches or damage',
-        'All media is timestamped and stored securely',
+        'Clean IMEI: listing goes live instantly',
+        'Flagged IMEI: routed to admin Verification Queue',
+        'Admin approves or rejects based on check results',
+        'Once verified, your seller status carries forward',
       ],
     },
     {
       number: '4',
-      title: 'Condition Grading',
+      title: 'Evidence & Dispute Protection',
       icon: <Star className="w-8 h-8 md:w-10 md:h-10 text-white" />,
-      description: 'Devices are graded A, B, or C based on a standardized assessment of cosmetic and functional condition.',
+      description: 'All uploaded photos are timestamped and stored securely. If a dispute arises after sale, the evidence pack provides a verifiable record of the device\'s condition at listing time.',
       details: [
-        'Grade A: Excellent - Like new or minimal wear',
-        'Grade B: Good - Light scratches, fully functional',
-        'Grade C: Fair - Visible wear, fully functional',
-        'AI-assisted grading for consistency',
-        'Manual review by our team',
+        'Timestamped photos stored in secure object storage',
+        'Evidence pack available to buyer, seller, and admin',
+        'Used for dispute resolution if device condition is questioned',
+        'Helps build buyer confidence and reduces return disputes',
       ],
     },
   ];
@@ -93,7 +94,7 @@ export default function HowItWorksPage() {
             How Trust Lens Works
           </h1>
           <p className="text-base md:text-lg text-white/80 max-w-2xl mx-auto">
-            Our 4-step verification process ensures every device is authentic, accurately described, and ready for sale
+            How Trust Lens verifies devices and sellers through automated IMEI checks
           </p>
         </div>
       </section>

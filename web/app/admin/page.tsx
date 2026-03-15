@@ -90,6 +90,9 @@ interface Order {
   amount: number;
   currency: string;
   status: string;
+  shippingFee?: number | null;
+  shippingService?: string | null;
+  totalAmount?: number | null;
   createdAt: string;
   sellerId?: string;
   buyerId?: string;
@@ -413,7 +416,7 @@ function AdminDashboardContent() {
     const statusMap = new Map<string, { count: number; value: number }>();
     orders.forEach(order => {
       const current = statusMap.get(order.status) || { count: 0, value: 0 };
-      statusMap.set(order.status, { count: current.count + 1, value: current.value + Number(order.amount) });
+      statusMap.set(order.status, { count: current.count + 1, value: current.value + Number(order.totalAmount ?? order.amount) });
     });
     return Array.from(statusMap.entries()).map(([status, data]) => ({
       status: status.replace('_', ' '),
@@ -2140,7 +2143,7 @@ function OrdersTab({
             <p className="text-3xl font-bold text-[var(--color-green)] mt-2">{formatPrice(stats.totalRevenue, 'GBP')}</p>
           </div>
           <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
-            <p className="text-sm text-[var(--color-text-muted)]">Average Order Value</p>
+            <p className="text-sm text-[var(--color-text-muted)]">Avg. Item Price</p>
             <p className="text-3xl font-bold text-[var(--color-text)] mt-2">
               {stats.totalOrders > 0 ? formatPrice((stats.totalRevenue / stats.totalOrders) / 0.05, 'GBP') : '£0.00'}
             </p>
@@ -2223,7 +2226,12 @@ function OrdersTab({
                       ) : <span className="text-[var(--color-text-muted)] text-xs">—</span>}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm font-semibold text-[var(--color-text)]">
-                      {formatPrice(order.amount, order.currency)}
+                      {formatPrice(order.totalAmount ?? order.amount, order.currency)}
+                      {order.shippingFee && order.shippingFee > 0 && (
+                        <div className="text-xs font-normal text-[var(--color-text-muted)]">
+                          incl. {formatPrice(order.shippingFee, order.currency)} shipping
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
                       {statusEditId === order.id ? (

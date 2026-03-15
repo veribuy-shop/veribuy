@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   // Vercel ignores this setting and uses its own build pipeline, so it is safe to keep.
   output: 'standalone',
 
+  // Remove the X-Powered-By: Next.js header for security
+  poweredByHeader: false,
+
   // Images: allow Cloudinary as a remote pattern for evidence/listing images
   images: {
     remotePatterns: [

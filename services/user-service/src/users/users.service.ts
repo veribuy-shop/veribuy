@@ -19,6 +19,7 @@ const PROFILE_SELECT = {
   bio: true,
   avatarUrl: true,
   phone: true,
+  verificationStatus: true,
   sellerRating: true,
   totalSales: true,
   totalPurchases: true,
@@ -144,8 +145,34 @@ export class UsersService {
     userId: string,
     verificationStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'REJECTED' | 'SUSPENDED',
   ) {
+    // Fetch current status to enforce state-machine rules
+    const existing = await this.prisma.profile.findUnique({
+      where: { userId },
+      select: { verificationStatus: true, kycVerifiedAt: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Profile not found');
+    }
+
+    // State-machine guard: once VERIFIED, only REJECTED, SUSPENDED, or re-VERIFIED
+    // can override. UNVERIFIED and PENDING must never regress a verified seller.
+    // Trust-lens only sends REJECTED after the seller hits the failure threshold (3+).
+    const ALLOWED_FROM_VERIFIED = new Set(['VERIFIED', 'REJECTED', 'SUSPENDED']);
+    if (
+      existing.verificationStatus === 'VERIFIED' &&
+      !ALLOWED_FROM_VERIFIED.has(verificationStatus)
+    ) {
+      this.logger.warn(
+        `Blocked ${existing.verificationStatus} -> ${verificationStatus} transition for user ${userId}`,
+      );
+      return;
+    }
+
     const data: Record<string, unknown> = { verificationStatus };
-    if (verificationStatus === 'VERIFIED') {
+
+    // Only set kycVerifiedAt on first verification — preserve the original timestamp
+    if (verificationStatus === 'VERIFIED' && !existing.kycVerifiedAt) {
       data['kycVerifiedAt'] = new Date();
     }
 

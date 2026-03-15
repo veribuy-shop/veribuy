@@ -1,16 +1,19 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import { faqPageJsonLd } from '@/lib/structured-data';
 
 export const metadata: Metadata = {
-  title: 'Help Centre - VeriBuy',
-  description: 'Get help with buying and selling on VeriBuy',
+  title: 'Help Centre',
+  description: 'Get help with buying and selling on VeriBuy. Answers to common questions about Trust Lens verification, buyer protection, fees, and more.',
+  alternates: {
+    canonical: '/help',
+  },
 };
 
-export default function HelpPage() {
-  const faqs = [
+const faqs = [
     {
       question: 'How does Trust Lens verification work?',
-      answer: 'Trust Lens is our 4-step verification process that checks seller identity, validates device authenticity (IMEI/serial), captures timestamped evidence photos, and assigns a condition grade (A/B/C) before any listing goes live.',
+      answer: 'Trust Lens is our automated verification system. When a seller creates a listing with an IMEI, we run it against global databases (GSMA blacklist, stolen device reports, iCloud lock status) in seconds. Clean results mean the listing goes live instantly and the seller is marked Verified. Flagged results go to admin review. Sellers select their own condition grade (A/B/C) and upload evidence photos for dispute protection.',
     },
     {
       question: 'Is my purchase protected?',
@@ -18,7 +21,7 @@ export default function HelpPage() {
     },
     {
       question: 'How long does verification take?',
-      answer: 'Most devices are verified within 24-48 hours. You\'ll receive updates throughout the process and be notified when your listing goes live.',
+      answer: 'IMEI checks run automatically in seconds. If the device is clean, your listing goes live immediately. If the IMEI is flagged, it enters the admin review queue which typically takes 24-48 hours. You\'ll be notified when your listing status changes.',
     },
     {
       question: 'What are the seller fees?',
@@ -34,8 +37,14 @@ export default function HelpPage() {
     },
   ];
 
+export default function HelpPage() {
   return (
-    <div className="min-h-screen bg-white">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqPageJsonLd(faqs)) }}
+      />
+      <div className="min-h-screen bg-white">
       {/* Hero */}
       <section
         aria-labelledby="help-hero-heading"
@@ -92,5 +101,6 @@ export default function HelpPage() {
         </div>
       </section>
     </div>
+    </>
   );
 }

@@ -2,7 +2,11 @@ import type { Metadata } from 'next';
 import { ShieldCheck, RefreshCcw, Lock, Scale } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Buyer Protection - VeriBuy',
+  title: 'Buyer Protection',
+  description: 'Shop with confidence on VeriBuy. 7-day returns, escrow payments, Trust Lens verification, and dispute resolution.',
+  alternates: {
+    canonical: '/buyer-protection',
+  },
 };
 
 export default function BuyerProtectionPage() {
@@ -15,7 +19,7 @@ export default function BuyerProtectionPage() {
     {
       icon: <ShieldCheck className="w-7 h-7 text-[var(--color-green)]" />,
       title: 'Trust Lens Verified',
-      description: 'Every device has passed our rigorous verification process - IMEI checked, condition graded, and photographed with timestamped evidence.',
+      description: 'Every device has its IMEI checked against blacklist and stolen databases. Sellers provide timestamped photos as evidence, and select a condition grade (A/B/C).',
     },
     {
       icon: <Lock className="w-7 h-7 text-[var(--color-green)]" />,
