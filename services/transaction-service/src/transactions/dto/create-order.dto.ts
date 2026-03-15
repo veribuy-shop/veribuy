@@ -65,6 +65,16 @@ export class CreateOrderDto {
   @Min(0.01)
   amount: number;
 
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  shippingFee?: number;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['TRACKED_24', 'TRACKED_48'])
+  shippingService?: string;
+
   @IsString()
   @IsIn(['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NGN', 'ZAR', 'KES'])
   @IsOptional()

@@ -683,7 +683,7 @@ export default function CreateListingPage() {
                   <Lightbulb className="w-4 h-4 inline mr-1" aria-hidden="true" /> Pricing Tips
                 </h3>
                 <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
-                  <li>• Verified listings with Trust Lens approval sell 30% faster on average</li>
+                  <li>• Trust Lens verified listings give buyers confidence and attract more interest</li>
                   <li>• Grade A devices typically sell for 15-20% more than Grade B</li>
                   <li>• Include accessories to justify premium pricing</li>
                   <li>• Research similar devices on VeriBuy to set competitive prices</li>
@@ -928,7 +928,7 @@ export default function CreateListingPage() {
         </div>
 
         <p className="text-center text-sm text-[var(--color-text-muted)] mt-4">
-          Your listing will be reviewed by our Trust Lens team before going live
+          Your IMEI will be checked automatically. Flagged listings are reviewed by an admin
         </p>
       </div>
     </div>

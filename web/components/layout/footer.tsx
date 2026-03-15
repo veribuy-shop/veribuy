@@ -30,7 +30,7 @@ export function Footer() {
             <h4 className="font-semibold text-sm text-white mb-3">Sell</h4>
             <ul className="space-y-2 text-sm text-white/60">
               <li><Link href="/sell" className="hover:text-white transition-colors">Start Selling</Link></li>
-              <li><Link href="/seller-verification" className="hover:text-white transition-colors">Get Verified</Link></li>
+              <li><Link href="/seller-verification" className="hover:text-white transition-colors">How Verification Works</Link></li>
               <li><Link href="/pricing" className="hover:text-white transition-colors">Fees &amp; Pricing</Link></li>
             </ul>
           </div>

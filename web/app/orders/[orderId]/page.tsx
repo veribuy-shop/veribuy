@@ -5,12 +5,16 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CircleCheck, CircleX, Package, ClipboardList } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
+import { formatShippingService } from '@/lib/shipping';
 
 interface Order {
   id: string;
   amount: number;
   currency: string;
   status: string;
+  shippingFee?: number | null;
+  shippingService?: string | null;
+  totalAmount?: number | null;
   trackingNumber?: string | null;
   paidAt?: string;
   shippedAt?: string;
@@ -325,12 +329,21 @@ export default function OrderConfirmationPage() {
             </div>
             <div className="flex justify-between text-[var(--color-text)]">
               <span>Shipping</span>
-              <span>Free</span>
+              {order.shippingFee && order.shippingFee > 0 ? (
+                <span>{formatPrice(order.shippingFee, order.currency)}</span>
+              ) : (
+                <span className="text-[var(--color-success)]">Free</span>
+              )}
             </div>
+            {order.shippingService && (
+              <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+                <span>{formatShippingService(order.shippingService)}</span>
+              </div>
+            )}
             <div className="border-t border-[var(--color-border)] pt-2 mt-2">
               <div className="flex justify-between text-lg font-bold text-[var(--color-text)]">
                 <span>Total</span>
-                <span>{formatPrice(order.amount, order.currency)}</span>
+                <span>{formatPrice(order.totalAmount ?? order.amount, order.currency)}</span>
               </div>
             </div>
           </div>

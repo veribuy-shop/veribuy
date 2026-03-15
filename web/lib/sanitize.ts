@@ -49,6 +49,7 @@ export interface SafeProfile {
   bio: string | null;
   avatarUrl: string | null;
   phone: string | null;
+  verificationStatus: string;
   sellerRating: number | null;
   totalSales: number;
   totalPurchases: number;
@@ -162,6 +163,9 @@ export interface SafeListing {
 export interface SafeOrder {
   id: string;
   amount: number;
+  shippingFee: number | null;
+  shippingService: string | null;
+  totalAmount: number | null;
   currency: string;
   status: string;
   trackingNumber: string | null;
@@ -226,6 +230,7 @@ export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
     bio: raw.bio ?? null,
     avatarUrl: raw.avatarUrl ?? null,
     phone: raw.phone ?? null,
+    verificationStatus: raw.verificationStatus ?? 'UNVERIFIED',
     sellerRating: raw.sellerRating != null ? Number(raw.sellerRating) : null,
     totalSales: Number(raw.totalSales ?? 0),
     totalPurchases: Number(raw.totalPurchases ?? 0),
@@ -366,6 +371,9 @@ export function sanitizeOrder(raw: Record<string, any>): SafeOrder {
   return {
     id: raw.id ?? '',
     amount: Number(raw.amount ?? 0),
+    shippingFee: raw.shippingFee != null ? Number(raw.shippingFee) : null,
+    shippingService: raw.shippingService ?? null,
+    totalAmount: raw.totalAmount != null ? Number(raw.totalAmount) : null,
     currency: raw.currency ?? '',
     status: raw.status ?? '',
     trackingNumber: raw.trackingNumber ?? null,

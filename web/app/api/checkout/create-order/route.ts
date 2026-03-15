@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // Validate required fields (buyerId now comes from JWT, not body)
-    const { sellerId, listingId, amount, currency, shippingAddress } = body;
+    const { sellerId, listingId, amount, currency, shippingAddress, shippingFee, shippingService } = body;
 
     if (!sellerId || !listingId || !amount || !currency) {
       return NextResponse.json(
@@ -38,6 +38,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'Amount must be a positive number' },
         { status: 400 }
+      );
+    }
+
+    // Validate shippingFee if provided
+    if (shippingFee !== undefined && shippingFee !== null) {
+      if (typeof shippingFee !== 'number' || shippingFee < 0) {
+        return NextResponse.json(
+          { error: 'Shipping fee must be a non-negative number' },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Validate shippingService if provided
+    if (shippingService && !['TRACKED_24', 'TRACKED_48'].includes(shippingService)) {
+      return NextResponse.json(
+        { error: 'Shipping service must be TRACKED_24 or TRACKED_48' },
+        { status: 400 },
       );
     }
 
@@ -73,6 +91,8 @@ export async function POST(req: NextRequest) {
         amount,
         currency,
         shippingAddress,
+        shippingFee: shippingFee ?? undefined,
+        shippingService: shippingService ?? undefined,
       }),
     });
 

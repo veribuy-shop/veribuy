@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy - VeriBuy',
-  description: 'VeriBuy Privacy Policy',
+  title: 'Privacy Policy',
+  description: 'VeriBuy Privacy Policy — how we collect, use, and protect your personal information.',
+  alternates: {
+    canonical: '/privacy',
+  },
 };
 
 export default function PrivacyPage() {
@@ -23,7 +26,7 @@ export default function PrivacyPage() {
             <p>We collect information to provide and improve our services:</p>
             <ul className="list-disc pl-6 space-y-2">
               <li><strong>Account Information:</strong> Name, email, phone number, and shipping address</li>
-              <li><strong>Verification Data:</strong> Government ID for seller verification</li>
+              <li><strong>Verification Data:</strong> Device IMEI and serial numbers for Trust Lens verification</li>
               <li><strong>Device Information:</strong> IMEI, serial numbers, photos, and condition details</li>
               <li><strong>Payment Information:</strong> Credit card details (processed securely by our payment provider)</li>
               <li><strong>Usage Data:</strong> How you interact with our platform, including browsing history</li>
@@ -48,7 +51,7 @@ export default function PrivacyPage() {
             <p>We share your information only in limited circumstances:</p>
             <ul className="list-disc pl-6 space-y-2">
               <li><strong>With Other Users:</strong> Buyers and sellers see necessary information to complete transactions</li>
-              <li><strong>Service Providers:</strong> Payment processors, ID verification services, and cloud storage providers</li>
+              <li><strong>Service Providers:</strong> Payment processors, IMEI verification services, and cloud storage providers</li>
               <li><strong>Legal Compliance:</strong> When required by law or to protect our rights</li>
               <li><strong>Business Transfers:</strong> In case of merger, acquisition, or sale of assets</li>
             </ul>

@@ -2,7 +2,11 @@ import type { Metadata } from 'next';
 import { Check } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Pricing & Fees - VeriBuy',
+  title: 'Pricing & Fees',
+  description: 'Simple, fair pricing on VeriBuy. 5% seller commission on successful sales, free for buyers. No listing fees or subscriptions.',
+  alternates: {
+    canonical: '/pricing',
+  },
 };
 
 export default function PricingPage() {

@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
+import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
 import Stripe from 'stripe';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
@@ -60,13 +61,24 @@ export class TransactionsService implements OnModuleInit {
   }
 
   async createOrder(createOrderDto: CreateOrderDto) {
-    const { buyerId, sellerId, listingId, amount, currency = 'GBP', shippingAddress } =
-      createOrderDto;
+    const {
+      buyerId,
+      sellerId,
+      listingId,
+      amount,
+      shippingFee = 0,
+      shippingService = null,
+      currency = 'GBP',
+      shippingAddress,
+    } = createOrderDto;
 
     // DI-06: Prevent self-dealing — buyer and seller must be different users
     if (buyerId === sellerId) {
       throw new BadRequestException('Buyer and seller cannot be the same user');
     }
+
+    // Compute total: item price + shipping
+    const totalAmount = Math.round((amount + shippingFee) * 100) / 100;
 
     // Snapshot listing details for invoice generation — fire-and-forget on failure
     let listingTitle: string | null = null;
@@ -81,9 +93,9 @@ export class TransactionsService implements OnModuleInit {
       this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
     }
 
-    // Create Stripe Payment Intent
+    // Create Stripe Payment Intent — charge the total (item + shipping)
     const paymentIntent = await this.stripe.paymentIntents.create({
-      amount: Math.round(amount * 100),
+      amount: Math.round(totalAmount * 100),
       currency: currency.toLowerCase(),
       metadata: { buyerId, sellerId, listingId },
       payment_method_types: ['card'],
@@ -99,6 +111,9 @@ export class TransactionsService implements OnModuleInit {
         listingDescription,
         listingCategory,
         amount,
+        shippingFee: shippingFee || null,
+        shippingService,
+        totalAmount,
         currency,
         status: 'PENDING',
         paymentIntentId: paymentIntent.id,
@@ -111,6 +126,49 @@ export class TransactionsService implements OnModuleInit {
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
     };
+  }
+
+  /**
+   * Update shipping details on a PENDING order before payment.
+   *
+   * Updates the order's shippingFee, shippingService, and totalAmount in the DB
+   * and updates the Stripe PaymentIntent amount to match. This allows the buyer
+   * to change shipping service / enter their postcode after order creation but
+   * before confirming payment.
+   */
+  async updateShipping(orderId: string, buyerId: string, dto: UpdateShippingDto) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (order.buyerId !== buyerId) {
+      throw new BadRequestException('You can only update shipping on your own orders');
+    }
+    if (order.status !== 'PENDING') {
+      throw new BadRequestException('Shipping can only be updated on pending orders');
+    }
+    if (!order.paymentIntentId) {
+      throw new BadRequestException('Order has no associated payment intent');
+    }
+
+    const newTotal = Math.round((Number(order.amount) + dto.shippingFee) * 100) / 100;
+
+    // Update Stripe PaymentIntent amount
+    await this.stripe.paymentIntents.update(order.paymentIntentId, {
+      amount: Math.round(newTotal * 100),
+    });
+
+    // Update order in database
+    const updated = await this.prisma.order.update({
+      where: { id: orderId },
+      data: {
+        shippingFee: dto.shippingFee,
+        shippingService: dto.shippingService,
+        totalAmount: newTotal,
+      },
+    });
+
+    return updated;
   }
 
   async confirmPayment(orderId: string, paymentIntentId: string) {
@@ -155,11 +213,11 @@ export class TransactionsService implements OnModuleInit {
         },
       });
 
-      // Create escrow record
+      // Create escrow record — escrow the full totalAmount (item + shipping)
       const escrow = await tx.escrowRecord.create({
         data: {
           orderId: order.id,
-          amount: order.amount,
+          amount: order.totalAmount ?? order.amount,
           currency: order.currency,
           status: 'HELD',
           providerRef: paymentIntentId,
@@ -191,7 +249,7 @@ export class TransactionsService implements OnModuleInit {
       sellerId: updatedOrder.sellerId,
       recipientId: updatedOrder.buyerId,
       subject: 'Payment secured in escrow',
-      content: `Your payment of ${updatedOrder.currency} ${updatedOrder.amount} has been secured in escrow for order #${updatedOrder.id.substring(0, 8)}. The seller will now prepare your item for shipment.`,
+      content: `Your payment of ${updatedOrder.currency} ${updatedOrder.totalAmount ?? updatedOrder.amount} has been secured in escrow for order #${updatedOrder.id.substring(0, 8)}. The seller will now prepare your item for shipment.`,
     }).catch((err) => {
       this.logger.error('Failed to send buyer escrow notification', err?.stack ?? err);
     });
@@ -202,7 +260,7 @@ export class TransactionsService implements OnModuleInit {
       sellerId: updatedOrder.sellerId,
       recipientId: updatedOrder.sellerId,
       subject: 'New order — payment received',
-      content: `You have a new order (#${updatedOrder.id.substring(0, 8)}) with payment of ${updatedOrder.currency} ${updatedOrder.amount} secured in escrow. Please prepare the item and mark it as shipped once dispatched.`,
+      content: `You have a new order (#${updatedOrder.id.substring(0, 8)}) with payment of ${updatedOrder.currency} ${updatedOrder.totalAmount ?? updatedOrder.amount} secured in escrow. Please prepare the item and mark it as shipped once dispatched.`,
     }).catch((err) => {
       this.logger.error('Failed to send seller escrow notification', err?.stack ?? err);
     });
@@ -420,7 +478,7 @@ export class TransactionsService implements OnModuleInit {
         data: {
           orderId: order.id,
           stripeRefundId: refund.id,
-          amount: order.amount,
+          amount: order.totalAmount ?? order.amount,
           currency: order.currency,
           reason: refund.reason ?? null,
           status: refund.status ?? 'pending',
@@ -445,7 +503,7 @@ export class TransactionsService implements OnModuleInit {
       sellerId: order.sellerId,
       recipientId: order.buyerId,
       subject: 'Refund processed for your order',
-      content: `Your refund of ${order.currency} ${order.amount} for order #${order.id.substring(0, 8)} has been processed. The amount will be returned to your original payment method within 5-10 business days.`,
+      content: `Your refund of ${order.currency} ${order.totalAmount ?? order.amount} for order #${order.id.substring(0, 8)} has been processed. The amount will be returned to your original payment method within 5-10 business days.`,
     }).catch((err) => {
       this.logger.error('Failed to send refund notification', err?.stack ?? err);
     });
@@ -542,7 +600,7 @@ export class TransactionsService implements OnModuleInit {
           sellerId: order.sellerId,
           recipientId: order.sellerId,
           subject: 'Order completed — escrow released',
-          content: `Order #${shortId} has been completed. The escrow of ${order.currency} ${order.amount} has been released. Thank you for selling on VeriBuy!`,
+          content: `Order #${shortId} has been completed. The escrow of ${order.currency} ${order.totalAmount ?? order.amount} has been released. Thank you for selling on VeriBuy!`,
         });
         await this.sendOrderNotification({
           orderId: order.id,
@@ -646,6 +704,9 @@ export class TransactionsService implements OnModuleInit {
       listingDescription: order.listingDescription ?? null,
       listingCategory: order.listingCategory ?? null,
       amount: order.amount,
+      shippingFee: order.shippingFee ?? null,
+      shippingService: order.shippingService ?? null,
+      totalAmount: order.totalAmount ?? order.amount,
       currency: order.currency,
       status: order.status,
       shippingAddress: order.shippingAddress ?? null,

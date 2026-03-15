@@ -148,11 +148,27 @@ export class UlistingsController {
   }
 
   @Put(':id/trust-lens')
-  @Roles('ADMIN')
+  @Public()
   async updateTrustLensStatus(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateTrustLensDto,
+    @Headers('x-internal-service') token: string,
   ) {
+    const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!internalToken) {
+      throw new UnauthorizedException('Internal token not configured');
+    }
+
+    const tokenBuf = Buffer.from(token ?? '');
+    const expectedBuf = Buffer.from(internalToken);
+    const same =
+      tokenBuf.length === expectedBuf.length &&
+      crypto.timingSafeEqual(tokenBuf, expectedBuf);
+
+    if (!same) {
+      throw new UnauthorizedException('Invalid internal service token');
+    }
+
     return this.listingsService.updateTrustLensStatus(
       id,
       dto.trustLensStatus,

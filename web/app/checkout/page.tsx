@@ -7,7 +7,13 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
-import { CircleCheck, CircleX } from 'lucide-react';
+import { CircleCheck, CircleX, Truck, Clock } from 'lucide-react';
+import {
+  calculateShippingFee,
+  formatShippingService,
+  type ShippingService,
+  type ShippingQuote,
+} from '@/lib/shipping';
 
 // SEC-15: Fail loudly if the Stripe publishable key is absent rather than
 // silently passing an empty string, which would produce confusing Stripe errors.
@@ -31,6 +37,7 @@ interface Listing {
   currency: string;
   brand: string;
   model: string;
+  deviceType: string;
 }
 
 interface PendingOrder {
@@ -42,9 +49,13 @@ interface PendingOrder {
 interface CheckoutFormProps {
   listing: Listing;
   pendingOrder: PendingOrder;
+  selectedService: ShippingService;
+  shippingQuote: ShippingQuote | null;
+  onServiceChange: (service: ShippingService) => void;
+  onPostcodeChange: (postcode: string) => void;
 }
 
-function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
+function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, onServiceChange, onPostcodeChange }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
@@ -68,6 +79,9 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setShippingAddress(prev => ({ ...prev, [name]: value }));
+    if (name === 'postal_code') {
+      onPostcodeChange(value);
+    }
     if (validationErrors[name]) {
       setValidationErrors(prev => {
         const newErrors = { ...prev };
@@ -116,9 +130,16 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
       errors.country = 'Please select a country';
     }
 
+    if (!shippingQuote) {
+      errors.postal_code = 'Enter a valid UK postcode to calculate shipping';
+    }
+
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
   };
+
+  const itemPrice = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
+  const totalPrice = shippingQuote ? Math.round((itemPrice + shippingQuote.totalFee) * 100) / 100 : itemPrice;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +158,27 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
     setError('');
 
     try {
-      // Confirm payment with Stripe using PaymentElement
+      // Step 1: Update shipping details on the order + Stripe PaymentIntent
+      // before confirming payment so the charged amount matches the displayed total.
+      if (shippingQuote) {
+        const updateRes = await fetch('/api/checkout/update-shipping', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            orderId: pendingOrder.id,
+            shippingFee: shippingQuote.totalFee,
+            shippingService: selectedService,
+          }),
+        });
+
+        if (!updateRes.ok) {
+          const errData = await updateRes.json();
+          throw new Error(errData.error || 'Failed to update shipping details');
+        }
+      }
+
+      // Step 2: Confirm payment with Stripe using PaymentElement
       const { error: stripeError, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
@@ -167,7 +208,7 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
         throw new Error('Payment was not completed. Please try again.');
       }
 
-      // Confirm payment on backend
+      // Step 3: Confirm payment on backend
       const confirmResponse = await fetch('/api/checkout/confirm-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -357,58 +398,6 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
                 }`}
               >
                 <option value="GB">United Kingdom</option>
-                <option value="US">United States</option>
-                <option value="CA">Canada</option>
-                <option value="AU">Australia</option>
-                <option value="DE">Germany</option>
-                <option value="FR">France</option>
-                <option value="IT">Italy</option>
-                <option value="ES">Spain</option>
-                <option value="NL">Netherlands</option>
-                <option value="SE">Sweden</option>
-                <option value="NO">Norway</option>
-                <option value="DK">Denmark</option>
-                <option value="FI">Finland</option>
-                <option value="IE">Ireland</option>
-                <option value="BE">Belgium</option>
-                <option value="AT">Austria</option>
-                <option value="CH">Switzerland</option>
-                <option value="NZ">New Zealand</option>
-                <option value="SG">Singapore</option>
-                <option value="HK">Hong Kong</option>
-                <option value="JP">Japan</option>
-                <option value="KR">South Korea</option>
-                <option value="AE">United Arab Emirates</option>
-                <option value="SA">Saudi Arabia</option>
-                <option value="ZA">South Africa</option>
-                <option value="BR">Brazil</option>
-                <option value="MX">Mexico</option>
-                <option value="AR">Argentina</option>
-                <option value="CL">Chile</option>
-                <option value="CO">Colombia</option>
-                <option value="PE">Peru</option>
-                <option value="IN">India</option>
-                <option value="PK">Pakistan</option>
-                <option value="BD">Bangladesh</option>
-                <option value="NG">Nigeria</option>
-                <option value="KE">Kenya</option>
-                <option value="GH">Ghana</option>
-                <option value="EG">Egypt</option>
-                <option value="MA">Morocco</option>
-                <option value="TN">Tunisia</option>
-                <option value="IL">Israel</option>
-                <option value="TR">Turkey</option>
-                <option value="PL">Poland</option>
-                <option value="CZ">Czech Republic</option>
-                <option value="HU">Hungary</option>
-                <option value="RO">Romania</option>
-                <option value="GR">Greece</option>
-                <option value="PT">Portugal</option>
-                <option value="MY">Malaysia</option>
-                <option value="TH">Thailand</option>
-                <option value="VN">Vietnam</option>
-                <option value="PH">Philippines</option>
-                <option value="ID">Indonesia</option>
               </select>
               {validationErrors.country && (
                 <p id="error-country" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.country}</p>
@@ -416,6 +405,65 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Shipping Service */}
+      <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
+        <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Shipping Service</h2>
+        <p className="text-sm text-[var(--color-text-muted)] mb-4">
+          All orders are shipped via Royal Mail with tracking and photo on delivery.
+        </p>
+
+        {shippingQuote ? (
+          <div className="space-y-3">
+            {(['TRACKED_48', 'TRACKED_24'] as ShippingService[]).map((svc) => {
+              const quote = calculateShippingFee(listing.deviceType, shippingAddress.postal_code, svc);
+              const isSelected = selectedService === svc;
+              return (
+                <label
+                  key={svc}
+                  className={`flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-colors ${
+                    isSelected
+                      ? 'border-[var(--color-green)] bg-[var(--color-green)]/5'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-green)]/50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="shippingService"
+                    value={svc}
+                    checked={isSelected}
+                    onChange={() => onServiceChange(svc)}
+                    className="accent-[var(--color-green)]"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      {svc === 'TRACKED_24' ? (
+                        <Truck aria-hidden="true" className="h-4 w-4 text-[var(--color-green)]" />
+                      ) : (
+                        <Clock aria-hidden="true" className="h-4 w-4 text-[var(--color-text-muted)]" />
+                      )}
+                      <span className="font-medium text-[var(--color-text)]">{quote.label}</span>
+                    </div>
+                    <p className="text-sm text-[var(--color-text-muted)] mt-1">{quote.estimate}</p>
+                    {quote.surcharge > 0 && (
+                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                        Includes {formatPrice(quote.surcharge, 'GBP')} remote area surcharge
+                      </p>
+                    )}
+                  </div>
+                  <span className="font-semibold text-[var(--color-text)]">
+                    {formatPrice(quote.totalFee, 'GBP')}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-4 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-muted)]">
+            Enter your postcode above to see shipping options.
+          </div>
+        )}
       </div>
 
       {/* Payment Information */}
@@ -442,15 +490,23 @@ function CheckoutForm({ listing, pendingOrder }: CheckoutFormProps) {
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={!stripe || processing}
+        disabled={!stripe || processing || !shippingQuote}
         className={`w-full px-6 py-3 rounded-lg font-semibold text-white ${
-          !stripe || processing
+          !stripe || processing || !shippingQuote
             ? 'bg-[var(--color-border)] cursor-not-allowed'
             : 'bg-[var(--color-accent)] hover:opacity-90'
         }`}
       >
-        {processing ? 'Processing...' : `Pay ${formatPrice(listing.price, listing.currency)}`}
+        {processing
+          ? 'Processing...'
+          : `Pay ${formatPrice(totalPrice, listing.currency)}`
+        }
       </button>
+      {!shippingQuote && (
+        <p className="text-xs text-center text-[var(--color-text-muted)]">
+          Enter your postcode to enable payment.
+        </p>
+      )}
     </form>
   );
 }
@@ -464,6 +520,11 @@ function CheckoutPageContent() {
   const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Shipping state
+  const [selectedService, setSelectedService] = useState<ShippingService>('TRACKED_48');
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
+  const [postcode, setPostcode] = useState('');
 
   const listingId = searchParams.get('listingId');
 
@@ -498,7 +559,17 @@ function CheckoutPageContent() {
       const listingData = await listingResponse.json();
       setListing(listingData);
 
-      // Step 2: Pre-create the order to get a clientSecret for PaymentElement
+      // Compute a default shipping fee (cheapest: TRACKED_48, mainland UK)
+      const defaultQuote = calculateShippingFee(
+        listingData.deviceType || 'OTHER',
+        'SW1A 1AA', // default mainland postcode for initial PaymentIntent
+        'TRACKED_48',
+      );
+
+      // Step 2: Pre-create the order to get a clientSecret for PaymentElement.
+      // The shipping fee is set to the default mainland TRACKED_48 rate. It will
+      // be updated via PATCH /update-shipping before payment confirmation once
+      // the buyer enters their real postcode and selects a service tier.
       const createOrderResponse = await fetch('/api/checkout/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -513,7 +584,9 @@ function CheckoutPageContent() {
               ? parseFloat(listingData.price)
               : listingData.price,
           currency: listingData.currency,
-          // shippingAddress will be collected from the form; this is the initial order creation
+          shippingFee: defaultQuote.totalFee,
+          shippingService: 'TRACKED_48',
+          // shippingAddress will be collected from the form
           shippingAddress: null,
         }),
       });
@@ -540,6 +613,32 @@ function CheckoutPageContent() {
       setLoading(false);
     }
   };
+
+  // Recalculate shipping when postcode or service changes
+  const handlePostcodeChange = (newPostcode: string) => {
+    setPostcode(newPostcode);
+    if (newPostcode.trim().length >= 2 && listing) {
+      const quote = calculateShippingFee(listing.deviceType, newPostcode, selectedService);
+      setShippingQuote(quote);
+    } else {
+      setShippingQuote(null);
+    }
+  };
+
+  const handleServiceChange = (service: ShippingService) => {
+    setSelectedService(service);
+    if (postcode.trim().length >= 2 && listing) {
+      const quote = calculateShippingFee(listing.deviceType, postcode, service);
+      setShippingQuote(quote);
+    }
+  };
+
+  const itemPrice = listing
+    ? typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price
+    : 0;
+  const totalPrice = shippingQuote
+    ? Math.round((itemPrice + shippingQuote.totalFee) * 100) / 100
+    : itemPrice;
 
   if (loading) {
     return (
@@ -597,7 +696,14 @@ function CheckoutPageContent() {
                 },
               }}
             >
-              <CheckoutForm listing={listing} pendingOrder={pendingOrder} />
+              <CheckoutForm
+                listing={listing}
+                pendingOrder={pendingOrder}
+                selectedService={selectedService}
+                shippingQuote={shippingQuote}
+                onServiceChange={handleServiceChange}
+                onPostcodeChange={handlePostcodeChange}
+              />
             </Elements>
           </div>
 
@@ -628,12 +734,36 @@ function CheckoutPageContent() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--color-text-muted)]">Shipping:</span>
-                  <span className="font-medium text-[var(--color-success)]">FREE</span>
+                  {shippingQuote ? (
+                    <span className="font-medium text-[var(--color-text)]">
+                      {formatPrice(shippingQuote.totalFee, 'GBP')}
+                    </span>
+                  ) : (
+                    <span className="text-[var(--color-text-muted)] italic">Enter postcode</span>
+                  )}
                 </div>
+                {shippingQuote && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[var(--color-text-muted)]">
+                      {formatShippingService(selectedService)}
+                    </span>
+                    <span className="text-[var(--color-text-muted)]">
+                      {shippingQuote.estimate}
+                    </span>
+                  </div>
+                )}
+                {shippingQuote && shippingQuote.surcharge > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-[var(--color-text-muted)]">Remote area surcharge</span>
+                    <span className="text-[var(--color-text-muted)]">
+                      {formatPrice(shippingQuote.surcharge, 'GBP')}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
                   <span>Total:</span>
                   <span className="text-[var(--color-text)]">
-                    {formatPrice(listing.price, listing.currency)}
+                    {formatPrice(totalPrice, listing.currency)}
                   </span>
                 </div>
               </div>

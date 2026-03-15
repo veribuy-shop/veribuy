@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Terms of Service - VeriBuy',
-  description: 'VeriBuy Terms of Service',
+  title: 'Terms of Service',
+  description: 'VeriBuy Terms of Service — rules and policies for buying and selling verified electronics.',
+  alternates: {
+    canonical: '/terms',
+  },
 };
 
 export default function TermsPage() {
@@ -42,7 +45,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-[var(--color-text)] mb-4">3. Trust Lens Verification</h2>
             <p>
-              All sellers must complete Trust Lens verification before listing devices. By submitting a device for verification, you confirm that:
+              Each listing undergoes Trust Lens verification as part of the listing process. By submitting a device for verification, you confirm that:
             </p>
             <ul className="list-disc pl-6 space-y-2">
               <li>You are the legal owner of the device</li>

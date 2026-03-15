@@ -395,6 +395,9 @@ export class TrustLensService {
     return null;
   }
 
+  /** Number of FAILED verification requests before a verified seller is unverified. */
+  private static readonly FAILURE_THRESHOLD = 3;
+
   async updateVerificationStatus(    listingId: string,
     status: 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW',
     reviewNotes?: string,
@@ -443,9 +446,24 @@ export class TrustLensService {
           .syncVerificationStatus(existing.sellerId, 'VERIFIED')
           .catch(() => {});
       } else if (status === 'FAILED') {
-        this.userSync
-          .syncVerificationStatus(existing.sellerId, 'REJECTED')
-          .catch(() => {});
+        // Only revoke seller verification after FAILURE_THRESHOLD failed listings.
+        // A single bad listing should not unverify a trusted seller.
+        const failedCount = await this.prisma.verificationRequest.count({
+          where: { sellerId: existing.sellerId, status: 'FAILED' },
+        });
+
+        if (failedCount >= TrustLensService.FAILURE_THRESHOLD) {
+          this.logger.warn(
+            `Seller ${existing.sellerId} has ${failedCount} failed verifications (threshold: ${TrustLensService.FAILURE_THRESHOLD}) — syncing REJECTED`,
+          );
+          this.userSync
+            .syncVerificationStatus(existing.sellerId, 'REJECTED')
+            .catch(() => {});
+        } else {
+          this.logger.log(
+            `Seller ${existing.sellerId} has ${failedCount} failed verification(s), below threshold of ${TrustLensService.FAILURE_THRESHOLD} — skipping user status sync`,
+          );
+        }
       }
     }
 

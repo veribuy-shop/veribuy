@@ -347,6 +347,15 @@ export class UlistingsService {
     integrityFlags?: IntegrityFlag[],
   ): Promise<Listing> {
     try {
+      // Derive the listing status from the trust lens outcome
+      const statusUpdate: Record<string, unknown> = {};
+      if (trustLensStatus === 'PASSED') {
+        statusUpdate['status'] = 'ACTIVE';
+        statusUpdate['publishedAt'] = new Date();
+      } else if (trustLensStatus === 'FAILED') {
+        statusUpdate['status'] = 'REJECTED';
+      }
+
       const listing = await this.prisma.listing.update({
         where: { id },
         data: {
@@ -354,6 +363,7 @@ export class UlistingsService {
           conditionGrade: conditionGrade as any,
           // Use Prisma's set syntax to properly clear/replace array
           ...(integrityFlags !== undefined && { integrityFlags: { set: integrityFlags } }),
+          ...statusUpdate,
         },
       });
 
