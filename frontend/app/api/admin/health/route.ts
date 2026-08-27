@@ -5,94 +5,86 @@ import { getBackendUrl } from '@/lib/backend-url';
 // Single backend service (modular monolith)
 const BACKEND_URL = getBackendUrl();
 
+type HealthState = 'healthy' | 'unhealthy' | 'degraded';
+
 interface ServiceHealth {
   name: string;
-  status: 'healthy' | 'unhealthy' | 'degraded';
+  status: HealthState;
   responseTime: number;
   details: Record<string, unknown>;
   url: string;
 }
 
-interface InfraHealth {
-  name: string;
-  status: 'healthy' | 'unhealthy';
-  responseTime: number;
-  details: Record<string, unknown>;
-}
-
-async function checkBackend(): Promise<ServiceHealth> {
+async function fetchBackendHealth(): Promise<{ data: any; responseTime: number; ok: boolean }> {
   const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(`${BACKEND_URL}/health`, {
       signal: controller.signal,
       cache: 'no-store',
     });
-    clearTimeout(timeout);
-    const responseTime = Date.now() - start;
     const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      return { name: 'Backend API', status: 'unhealthy', responseTime, details: data, url: BACKEND_URL };
-    }
-
-    // Terminus returns { status: 'ok' | 'error', details: { database: { status: 'up'|'down' } } }
-    const dbStatus = data?.details?.database?.status;
-    if (dbStatus === 'down') {
-      return { name: 'Backend API', status: 'degraded', responseTime, details: data, url: BACKEND_URL };
-    }
-
-    return { name: 'Backend API', status: 'healthy', responseTime, details: data, url: BACKEND_URL };
-  } catch {
-    return {
-      name: 'Backend API',
-      status: 'unhealthy',
-      responseTime: Date.now() - start,
-      details: { error: 'Connection failed or timed out' },
-      url: BACKEND_URL,
-    };
+    return { data, responseTime: Date.now() - start, ok: res.ok };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
-async function checkPostgres(): Promise<InfraHealth> {
-  const start = Date.now();
-  try {
-    // Check database health through the backend Terminus endpoint
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${BACKEND_URL}/health`, { signal: controller.signal, cache: 'no-store' });
-    clearTimeout(timeout);
-    const responseTime = Date.now() - start;
-    const data = await res.json().catch(() => ({}));
+async function checkBackend(): Promise<ServiceHealth> {
+  const { data, responseTime, ok } = await fetchBackendHealth().catch(() => ({
+    data: { error: 'Connection failed or timed out' },
+    responseTime: -1,
+    ok: false,
+  }));
 
-    const dbStatus = data?.details?.database?.status;
-    if (res.ok && dbStatus === 'up') {
-      return { name: 'PostgreSQL', status: 'healthy', responseTime, details: { database: dbStatus } };
-    }
-    return { name: 'PostgreSQL', status: 'unhealthy', responseTime, details: data };
-  } catch {
-    return { name: 'PostgreSQL', status: 'unhealthy', responseTime: Date.now() - start, details: { error: 'Unreachable' } };
+  if (!ok) {
+    return { name: 'Backend API', status: 'unhealthy', responseTime, details: data, url: BACKEND_URL };
   }
+
+  // Backend /health status === 'error' indicates the database is down.
+  const status: HealthState = data?.status === 'error' ? 'degraded' : 'healthy';
+  return { name: 'Backend API', status, responseTime, details: data, url: BACKEND_URL };
 }
 
-async function checkRedis(): Promise<InfraHealth> {
-  const start = Date.now();
-  try {
-    // Redis health is inferred from backend health (backend uses Redis for caching)
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch(`${BACKEND_URL}/health`, { signal: controller.signal, cache: 'no-store' });
-    clearTimeout(timeout);
-    const responseTime = Date.now() - start;
+async function checkPostgres(): Promise<ServiceHealth> {
+  const { data, responseTime, ok } = await fetchBackendHealth().catch(() => ({
+    data: {},
+    responseTime: -1,
+    ok: false,
+  }));
 
-    if (res.ok) {
-      return { name: 'Redis', status: 'healthy', responseTime, details: { note: 'Inferred from backend health' } };
-    }
-    return { name: 'Redis', status: 'unhealthy', responseTime, details: {} };
-  } catch {
-    return { name: 'Redis', status: 'unhealthy', responseTime: Date.now() - start, details: { error: 'Unreachable' } };
-  }
+  const dbStatus = data?.details?.database?.status;
+  const status: HealthState =
+    !ok || dbStatus === 'down' ? 'unhealthy' : dbStatus === 'up' ? 'healthy' : 'degraded';
+
+  return {
+    name: 'PostgreSQL',
+    status,
+    responseTime,
+    details: { database: dbStatus ?? 'unknown' },
+    url: BACKEND_URL,
+  };
+}
+
+async function checkRedis(): Promise<ServiceHealth> {
+  const { data, responseTime, ok } = await fetchBackendHealth().catch(() => ({
+    data: {},
+    responseTime: -1,
+    ok: false,
+  }));
+
+  const redisStatus = data?.details?.redis?.status;
+  const status: HealthState =
+    !ok || redisStatus === 'down' ? 'unhealthy' : redisStatus === 'up' ? 'healthy' : 'degraded';
+
+  return {
+    name: 'Redis',
+    status,
+    responseTime,
+    details: { redis: redisStatus ?? 'unknown', ...(data?.details?.redis?.note ? { note: data.details.redis.note } : {}) },
+    url: BACKEND_URL,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -102,33 +94,36 @@ export async function GET(request: NextRequest) {
       return authResult.error;
     }
 
-    // Run all checks in parallel
+    // Run all checks against the single live health payload
     const [backend, postgres, redis] = await Promise.all([
       checkBackend(),
       checkPostgres(),
       checkRedis(),
     ]);
 
-    const services = [backend];
-    const healthyCount = services.filter(s => s.status === 'healthy').length;
+    const services = [backend, postgres, redis];
+    const healthyCount = services.filter((s) => s.status === 'healthy').length;
     const totalCount = services.length;
 
-    const overallStatus = healthyCount === totalCount
-      ? 'healthy'
-      : healthyCount >= totalCount * 0.7
-        ? 'degraded'
-        : 'unhealthy';
+    const overallStatus =
+      healthyCount === totalCount
+        ? 'healthy'
+        : healthyCount >= totalCount * 0.7
+          ? 'degraded'
+          : 'unhealthy';
 
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       overall: overallStatus,
       services,
-      infrastructure: [postgres, redis],
+      infrastructure: [],
       summary: {
         healthy: healthyCount,
-        unhealthy: totalCount - healthyCount,
+        unhealthy: services.filter((s) => s.status === 'unhealthy').length,
         total: totalCount,
-        avgResponseTime: Math.round(services.reduce((sum, s) => sum + s.responseTime, 0) / totalCount),
+        avgResponseTime: Math.round(
+          services.reduce((sum, s) => sum + Math.max(s.responseTime, 0), 0) / totalCount,
+        ),
       },
     });
   } catch (error) {

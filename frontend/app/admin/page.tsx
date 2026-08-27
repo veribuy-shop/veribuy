@@ -1159,6 +1159,7 @@ function SystemHealthTab() {
       </div>
 
       {/* Infrastructure */}
+      {health.infrastructure.length > 0 && (
       <div className="bg-white rounded-xl border border-[var(--color-border)] overflow-hidden">
         <div className="px-5 py-4 border-b border-[var(--color-border)]">
           <h2 className="font-bold text-[var(--color-text)]">Infrastructure</h2>
@@ -1195,6 +1196,7 @@ function SystemHealthTab() {
           })}
         </div>
       </div>
+      )}
 
       {/* Timestamp footer */}
       <p className="text-xs text-[var(--color-text-muted)] text-center">
