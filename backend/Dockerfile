@@ -24,6 +24,8 @@ RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nestjs
 COPY --from=build --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=build --chown=nestjs:nodejs /app/packages ./packages
 COPY --from=build --chown=nestjs:nodejs /app/backend ./backend
+COPY --chown=nestjs:nodejs backend/start.sh ./start.sh
+RUN chmod +x ./start.sh
 USER nestjs
 EXPOSE 3000
-CMD ["node", "backend/dist/src/main.js"]
+CMD ["./start.sh"]

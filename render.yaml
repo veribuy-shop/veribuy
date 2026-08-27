@@ -14,7 +14,6 @@ services:
     dockerfilePath: backend/Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    preDeployCommand: pnpm --filter @veribuy/backend exec prisma migrate deploy
     envVars:
       - key: DATABASE_URL
         fromDatabase:
