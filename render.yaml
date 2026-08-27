@@ -1,0 +1,120 @@
+# VeriBuy Render Blueprint
+# Deploy: https://render.com/docs/blueprint-spec
+#
+# All resources deploy to Frankfurt for lower latency to UK users.
+# Private networking: services communicate via http://<name>:10000.
+
+services:
+  # ─── Backend API ─────────────────────────────────────────
+  - type: web
+    name: veribuy-backend
+    runtime: docker
+    plan: starter
+    region: london
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    preDeployCommand: pnpm --filter @veribuy/backend exec prisma migrate deploy
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: veribuy-postgres
+          property: connectionString
+      - key: REDIS_HOST
+        fromService:
+          type: keyvalue
+          name: veribuy-redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: keyvalue
+          name: veribuy-redis
+          property: port
+      - key: REDIS_TLS
+        value: 'true'
+      - key: BACKEND_URL
+        value: http://veribuy-backend:10000
+      - key: ALLOWED_ORIGINS
+        value: https://veribuy-frontend.onrender.com
+      - fromGroup: veribuy-secrets
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: IMEI_CHECK_API_KEY
+        sync: false
+      - key: IFREE_ICLOUD_API_KEY
+        sync: false
+
+  # ─── Frontend ────────────────────────────────────────────
+  - type: web
+    name: veribuy-frontend
+    runtime: docker
+    plan: starter
+    region: london
+    dockerfilePath: frontend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    envVars:
+      - key: BACKEND_URL
+        value: http://veribuy-backend:10000
+      - key: NEXT_PUBLIC_API_URL
+        value: https://veribuy-backend.onrender.com
+      - key: NEXT_PUBLIC_APP_NAME
+        value: VeriBuy
+      - key: NEXT_PUBLIC_SITE_URL
+        value: https://veribuy-frontend.onrender.com
+      - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - fromGroup: veribuy-secrets
+      # Service URL aliases — all point to the single backend
+      - key: AUTH_SERVICE_URL
+        value: http://veribuy-backend:10000
+      - key: USER_SERVICE_URL
+        value: http://veribuy-backend:10000
+      - key: LISTING_SERVICE_URL
+        value: http://veribuy-backend:10000
+      - key: TRUST_LENS_SERVICE_URL
+        value: http://veribuy-backend:10000
+      - key: EVIDENCE_SERVICE_URL
+        value: http://veribuy-backend:10000
+      - key: TRANSACTION_SERVICE_URL
+        value: http://veribuy-backend:10000
+      - key: NOTIFICATION_SERVICE_URL
+        value: http://veribuy-backend:10000
+
+  # ─── Redis (Cache) ───────────────────────────────────────
+  - type: keyvalue
+    name: veribuy-redis
+    plan: free
+    region: london
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: off
+
+databases:
+  # basic-256mb (~$6/mo). Free tier exists but expires in 30 days and deletes data.
+  - name: veribuy-postgres
+    postgresMajorVersion: '17'
+    plan: basic-256mb
+    region: london
+    databaseName: veribuy
+    ipAllowList: []
+
+envVarGroups:
+  - name: veribuy-secrets
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: INTERNAL_SERVICE_SECRET
+        generateValue: true

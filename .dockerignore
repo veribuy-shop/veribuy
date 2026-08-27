@@ -3,8 +3,13 @@ dist
 .next
 .turbo
 *.log
+.env
+**/.env
+.env.docker
 .env.local
+**/.env.local
 .env.*.local
+**/.env.*.local
 coverage
 .git
 .github
@@ -15,16 +20,5 @@ coverage
 tmp
 *.tmp
 .cache
-# Observability stack not used in production (replaced by console-only logging)
-observability/
-infra/
-# Dev-only compose overrides
-docker-compose.dev.yml
-docker-compose.override.yml
 # Scripts not needed in images
 scripts/
-seed-listings.sh
-dev.sh
-dev-local.sh
-test-features.sh
-test-payment-flow.sh
