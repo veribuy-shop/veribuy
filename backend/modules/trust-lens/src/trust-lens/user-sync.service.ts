@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getInternalApiUrl } from '@veribuy/common';
 
 /**
  * Thin HTTP client that notifies user-service when a seller's Trust Lens
@@ -15,8 +16,7 @@ export class UserSyncService {
   private readonly token: string;
 
   constructor(private configService: ConfigService) {
-    this.url =
-      this.configService.get<string>('USER_SERVICE_URL') || 'http://localhost:3002';
+    this.url = getInternalApiUrl();
     this.token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN') || '';
 
     if (!this.token) {

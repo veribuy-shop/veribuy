@@ -10,5 +10,8 @@ export * from './decorators/current-user.decorator';
 // DTOs
 export * from './dto/pagination.dto';
 
+// Config helpers
+export * from './config';
+
 // Development API documentation
 export * from './swagger';

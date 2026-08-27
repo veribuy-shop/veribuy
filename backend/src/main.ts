@@ -3,22 +3,12 @@ import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionsFilter, assertTlsInProduction } from '@veribuy/logger';
+import { getInternalApiUrl } from '@veribuy/common';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const port = Number(process.env.PORT || process.env.BACKEND_PORT || 3000);
-  const backendUrl = process.env.BACKEND_URL || `http://localhost:${port}`;
-  for (const name of [
-    'AUTH_SERVICE_URL',
-    'USER_SERVICE_URL',
-    'LISTING_SERVICE_URL',
-    'TRUST_LENS_SERVICE_URL',
-    'EVIDENCE_SERVICE_URL',
-    'TRANSACTION_SERVICE_URL',
-    'NOTIFICATION_SERVICE_URL',
-  ]) {
-    process.env[name] ||= backendUrl;
-  }
+  const backendUrl = getInternalApiUrl();
 
   // Render Postgres requires TLS; ensure sslmode=require for production connections.
   const dbUrl = process.env.DATABASE_URL;
