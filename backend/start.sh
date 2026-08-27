@@ -20,10 +20,10 @@ if [ -n "$REDIS_URL" ]; then
 fi
 
 echo "Running database migrations..."
-cd /app
-pnpm --filter @veribuy/backend exec prisma migrate deploy || {
+cd /app/backend
+node scripts/run-migrations.js 2>&1 || {
   echo "Migration failed, but continuing startup..."
 }
 
 echo "Starting backend..."
-exec node backend/dist/src/main.js
+exec node /app/backend/dist/src/main.js
