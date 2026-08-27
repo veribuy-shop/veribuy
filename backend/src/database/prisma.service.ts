@@ -11,9 +11,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       throw new Error('DATABASE_URL is not defined in environment variables');
     }
     const isProd = process.env.NODE_ENV === 'production';
+    // Strip any sslmode=... param so pg does not force cert verification, then
+    // enable TLS explicitly below. Render internal Postgres uses a self-signed cert.
+    const cleanUrl = connectionString.replace(/([?&])sslmode=[^&]*&?/, '$1').replace(/[?&]$/, '');
     const poolConfig: PoolConfig = {
-      connectionString,
-      // Render internal Postgres presents a self-signed cert; accept it in production.
+      connectionString: cleanUrl,
       ssl: isProd ? { rejectUnauthorized: false } : undefined,
     };
     super({ adapter: new PrismaPg(poolConfig) });
