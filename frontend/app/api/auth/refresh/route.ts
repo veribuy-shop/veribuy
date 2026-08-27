@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backend-url';
 import { sanitizeAuthUser } from '@/lib/sanitize';
 
 /**
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     // Call backend refresh endpoint
     const response = await fetch(
-      `${process.env.AUTH_SERVICE_URL || 'http://localhost:3001'}/auth/refresh`,
+      `${getBackendUrl()}/auth/refresh`,
       {
         method: 'POST',
         headers: {

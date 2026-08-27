@@ -1,3 +1,4 @@
+import { getBackendUrl } from '@/lib/backend-url';
 /**
  * Public verification summary for a listing.
  *
@@ -8,8 +9,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 
-const TRUST_LENS_SERVICE_URL = process.env.TRUST_LENS_SERVICE_URL || 'http://localhost:3004';
-const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
+const TRUST_LENS_SERVICE_URL = getBackendUrl();
+const LISTING_SERVICE_URL = getBackendUrl();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface PublicVerificationSummary {

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backend-url';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 
-const NOTIFICATION_SERVICE_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008';
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const NOTIFICATION_SERVICE_URL = getBackendUrl();
+const AUTH_SERVICE_URL = getBackendUrl();
 const INTERNAL_SERVICE_TOKEN = process.env.INTERNAL_SERVICE_TOKEN || '';
 
 /**

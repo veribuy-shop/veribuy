@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backend-url';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import {
   sanitizeOrder,
@@ -7,9 +8,9 @@ import {
   sanitizeAdminProfile,
 } from '@/lib/sanitize';
 
-const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007';
-const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3002';
-const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
+const TRANSACTION_SERVICE_URL = getBackendUrl();
+const USER_SERVICE_URL = getBackendUrl();
+const LISTING_SERVICE_URL = getBackendUrl();
 
 interface RawOrder {
   id: string;

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backend-url';
 import { sanitizeAuthUser } from '@/lib/sanitize';
 
 /**
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     // Verify token with backend auth service
     const response = await fetch(
-      `${process.env.AUTH_SERVICE_URL || 'http://localhost:3001'}/auth/verify`,
+      `${getBackendUrl()}/auth/verify`,
       {
         method: 'POST',
         headers: {
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
       if (refreshToken) {
         // Attempt token refresh
         const refreshResponse = await fetch(
-          `${process.env.AUTH_SERVICE_URL || 'http://localhost:3001'}/auth/refresh`,
+          `${getBackendUrl()}/auth/refresh`,
           {
             method: 'POST',
             headers: {

@@ -5,7 +5,7 @@
  * Render with: <script type="application/ld+json">{JSON.stringify(data)}</script>
  */
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://veribuy.shop';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
 
 /* ------------------------------------------------------------------ */
 /*  Organization — used in root layout                                 */

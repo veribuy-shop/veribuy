@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { ClientLayout } from '@/components/client-layout';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://veribuy.shop';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
 
 export const viewport: Viewport = {
   width: 'device-width',

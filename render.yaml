@@ -26,10 +26,6 @@ services:
           property: connectionString
       - key: REDIS_TLS
         value: 'true'
-      - key: BACKEND_URL
-        value: http://veribuy-backend:10000
-      - key: ALLOWED_ORIGINS
-        value: https://veribuy-frontend.onrender.com
       - fromGroup: veribuy-secrets
       - key: STRIPE_SECRET_KEY
         sync: false
@@ -58,33 +54,9 @@ services:
     dockerContext: .
     healthCheckPath: /
     envVars:
-      - key: BACKEND_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: NEXT_PUBLIC_API_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: NEXT_PUBLIC_APP_NAME
-        value: VeriBuy
-      - key: NEXT_PUBLIC_SITE_URL
-        value: https://veribuy-frontend.onrender.com
       - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
         sync: false
       - fromGroup: veribuy-secrets
-      # Service URL aliases — all point to the single backend via its public URL
-      # (private networking by service name is NOT enabled, so use the public URL).
-      - key: AUTH_SERVICE_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: USER_SERVICE_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: LISTING_SERVICE_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: TRUST_LENS_SERVICE_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: EVIDENCE_SERVICE_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: TRANSACTION_SERVICE_URL
-        value: https://veribuy-backend-dz32.onrender.com
-      - key: NOTIFICATION_SERVICE_URL
-        value: https://veribuy-backend-dz32.onrender.com
 
   # ─── Redis (Cache) ───────────────────────────────────────
   - type: keyvalue

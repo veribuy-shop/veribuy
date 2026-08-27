@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/api-auth';
+import { getBackendUrl } from '@/lib/backend-url';
 
 // Single backend service (modular monolith)
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const BACKEND_URL = getBackendUrl();
 
 interface ServiceHealth {
   name: string;

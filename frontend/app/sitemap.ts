@@ -1,7 +1,8 @@
 import type { MetadataRoute } from 'next';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://veribuy.shop';
-const BACKEND_URL = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
+const BACKEND_URL = getBackendUrl();
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Static pages
