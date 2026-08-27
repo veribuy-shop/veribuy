@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getInternalApiUrl } from '@veribuy/common';
 
 /**
  * Thin HTTP client that notifies trust-lens-service when evidence is uploaded,
@@ -15,8 +16,7 @@ export class TrustLensSyncService {
   private readonly token: string;
 
   constructor(private configService: ConfigService) {
-    this.url =
-      this.configService.get<string>('TRUST_LENS_SERVICE_URL') || 'http://localhost:3004';
+    this.url = getInternalApiUrl();
     this.token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN') || '';
 
     if (!this.token) {

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getInternalApiUrl } from '@veribuy/common';
 
 @Injectable()
 export class NotificationClient {
@@ -8,9 +9,7 @@ export class NotificationClient {
   private readonly internalToken: string;
 
   constructor(private configService: ConfigService) {
-    this.baseUrl =
-      this.configService.get<string>('NOTIFICATION_SERVICE_URL') ||
-      'http://localhost:3008';
+    this.baseUrl = getInternalApiUrl();
     this.internalToken =
       this.configService.get<string>('INTERNAL_SERVICE_TOKEN') || '';
   }

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getInternalApiUrl } from '@veribuy/common';
 
 /**
  * Thin HTTP client that delegates all email sending to notification-service.
@@ -13,9 +14,7 @@ export class NotificationService {
   private readonly token: string;
 
   constructor(private configService: ConfigService) {
-    this.url =
-      this.configService.get<string>('NOTIFICATION_SERVICE_URL') ||
-      'http://localhost:3008';
+    this.url = getInternalApiUrl();
     this.token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN') || '';
 
     if (!this.token) {

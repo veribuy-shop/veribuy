@@ -12,7 +12,7 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
 import Stripe from 'stripe';
-import { PaginationDto, PaginatedResponse } from '@veribuy/common';
+import { PaginationDto, PaginatedResponse, getInternalApiUrl } from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
 
 /**
@@ -528,8 +528,7 @@ export class TransactionsService implements OnModuleInit {
     subject: string;
     content: string;
   }): Promise<void> {
-    const NOTIFICATION_SERVICE_URL =
-      process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3008';
+    const NOTIFICATION_SERVICE_URL = getInternalApiUrl();
 
     const systemSenderId =
       params.recipientId === params.buyerId ? params.sellerId : params.buyerId;
@@ -626,7 +625,7 @@ export class TransactionsService implements OnModuleInit {
    * Always call as fire-and-forget (.catch(...)) — must not block order flow.
    */
   private async updateListingStatus(listingId: string, status: string): Promise<void> {
-    const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
+    const LISTING_SERVICE_URL = getInternalApiUrl();
 
     const response = await fetch(`${LISTING_SERVICE_URL}/listings/${listingId}/status`, {
       method: 'PATCH',
@@ -652,7 +651,7 @@ export class TransactionsService implements OnModuleInit {
    * Returns null on failure — callers should handle gracefully.
    */
   private async fetchListing(listingId: string): Promise<Record<string, any> | null> {
-    const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
+    const LISTING_SERVICE_URL = getInternalApiUrl();
 
     const response = await fetch(`${LISTING_SERVICE_URL}/listings/${listingId}`, {
       headers: { 'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN! },
@@ -805,7 +804,7 @@ export class TransactionsService implements OnModuleInit {
       : null;
     const totalRatings = aggregate._count.rating;
 
-    const USER_SERVICE_URL = process.env.USER_SERVICE_URL || 'http://localhost:3002';
+    const USER_SERVICE_URL = getInternalApiUrl();
 
     const response = await fetch(`${USER_SERVICE_URL}/users/${sellerId}/seller-rating`, {
       method: 'PATCH',

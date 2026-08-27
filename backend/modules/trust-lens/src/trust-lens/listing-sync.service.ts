@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { getInternalApiUrl } from '@veribuy/common';
 
 /**
  * Thin HTTP client that notifies listing-service when a Trust Lens review
@@ -16,8 +17,7 @@ export class ListingSyncService {
   private readonly token: string;
 
   constructor(private configService: ConfigService) {
-    this.url =
-      this.configService.get<string>('LISTING_SERVICE_URL') || 'http://localhost:3003';
+    this.url = getInternalApiUrl();
     this.token = this.configService.get<string>('INTERNAL_SERVICE_TOKEN') || '';
 
     if (!this.token) {
