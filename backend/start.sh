@@ -10,6 +10,17 @@ if [ -n "$DATABASE_URL" ] && ! echo "$DATABASE_URL" | grep -q "sslaccept="; then
   fi
 fi
 
+# Disable Redis if connection fails (temporary workaround for Render free tier)
+if [ -n "$REDIS_URL" ]; then
+  echo "Testing Redis connection..."
+  if ! timeout 5 node -e "const Redis = require('ioredis'); const r = new Redis(process.env.REDIS_URL, {tls: {}}); r.on('error', () => process.exit(1)); r.on('connect', () => { r.quit(); process.exit(0); })" 2>/dev/null; then
+    echo "Redis unavailable, disabling cache..."
+    unset REDIS_URL
+    unset REDIS_HOST
+    unset REDIS_PORT
+  fi
+fi
+
 echo "Running database migrations..."
 cd /app
 pnpm --filter @veribuy/backend exec prisma migrate deploy || {
