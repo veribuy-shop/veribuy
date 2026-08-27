@@ -10,7 +10,7 @@ services:
     name: veribuy-backend
     runtime: docker
     plan: starter
-    region: london
+    region: frankfurt
     dockerfilePath: backend/Dockerfile
     dockerContext: .
     healthCheckPath: /health
@@ -59,7 +59,7 @@ services:
     name: veribuy-frontend
     runtime: docker
     plan: starter
-    region: london
+    region: frankfurt
     dockerfilePath: frontend/Dockerfile
     dockerContext: .
     healthCheckPath: /
@@ -95,7 +95,7 @@ services:
   - type: keyvalue
     name: veribuy-redis
     plan: free
-    region: london
+    region: frankfurt
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
     persistenceMode: off
@@ -105,7 +105,7 @@ databases:
   - name: veribuy-postgres
     postgresMajorVersion: '17'
     plan: basic-256mb
-    region: london
+    region: frankfurt
     databaseName: veribuy
     ipAllowList: []
 
