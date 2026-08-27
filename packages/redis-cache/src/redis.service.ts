@@ -6,6 +6,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   private client!: Redis;
 
   async onModuleInit() {
+    // REDIS_DISABLED=true fully disables the cache (e.g. when Redis is unreachable).
+    if (process.env.REDIS_DISABLED === 'true') {
+      console.warn('Redis disabled via REDIS_DISABLED=true');
+      return;
+    }
     // REDIS_TLS=true enables TLS (required in production on Railway — port 6380).
     // Local dev leaves this unset so plain Redis on 6379 continues to work.
     const tlsEnabled = process.env.REDIS_TLS === 'true';
@@ -45,10 +50,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
-    await this.client.quit();
+    await this.client?.quit();
   }
 
   async get<T>(key: string): Promise<T | null> {
+    if (!this.client) return null;
     const value = await this.client.get(key);
     if (!value) return null;
     try {
@@ -59,6 +65,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async set(key: string, value: any, ttl?: number): Promise<void> {
+    if (!this.client) return;
     const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
     if (ttl) {
       await this.client.setex(key, ttl, stringValue);
@@ -68,10 +75,12 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async del(key: string): Promise<void> {
+    if (!this.client) return;
     await this.client.del(key);
   }
 
   async delPattern(pattern: string): Promise<void> {
+    if (!this.client) return;
     const keys = await this.client.keys(pattern);
     if (keys.length > 0) {
       await this.client.del(...keys);
@@ -79,23 +88,27 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async exists(key: string): Promise<boolean> {
+    if (!this.client) return false;
     const result = await this.client.exists(key);
     return result === 1;
   }
 
   async ttl(key: string): Promise<number> {
+    if (!this.client) return -2;
     return await this.client.ttl(key);
   }
 
   async incr(key: string): Promise<number> {
+    if (!this.client) return 1;
     return await this.client.incr(key);
   }
 
   async decr(key: string): Promise<number> {
+    if (!this.client) return 0;
     return await this.client.decr(key);
   }
 
   getClient(): Redis {
-    return this.client;
+    return this.client!;
   }
 }
