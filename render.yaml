@@ -19,16 +19,11 @@ services:
         fromDatabase:
           name: veribuy-postgres
           property: connectionString
-      - key: REDIS_HOST
+      - key: REDIS_URL
         fromService:
           type: keyvalue
           name: veribuy-redis
-          property: host
-      - key: REDIS_PORT
-        fromService:
-          type: keyvalue
-          name: veribuy-redis
-          property: port
+          property: connectionString
       - key: REDIS_TLS
         value: 'true'
       - key: BACKEND_URL
