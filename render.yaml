@@ -117,3 +117,5 @@ envVarGroups:
         generateValue: true
       - key: INTERNAL_SERVICE_SECRET
         generateValue: true
+      - key: INTERNAL_SERVICE_TOKEN
+        generateValue: true
