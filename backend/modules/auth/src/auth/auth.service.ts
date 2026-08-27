@@ -166,6 +166,14 @@ export class AuthService {
 
     this.logger.log(`Bootstrapped first admin user: ${user.email}`);
     const tokens = await this.generateTokens(user.id, user.role);
+
+    // Fire-and-forget welcome email — never block bootstrap on delivery
+    this.notification
+      .sendWelcomeEmail(user.email, user.name)
+      .catch((err) =>
+        this.logger.error(`Failed to send welcome email to ${user.email}: ${err?.message}`),
+      );
+
     return { user, ...tokens };
   }
 
