@@ -19,6 +19,7 @@ import * as crypto from 'crypto';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -60,6 +61,15 @@ export class AuthController {
   @Throttle({ default: { limit: 3, ttl: 3600000 } })
   async register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
+  }
+
+  // First-use admin bootstrap (token-gated, only before any admin exists)
+  @Post('admin/bootstrap')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
+  async bootstrapAdmin(@Body() dto: BootstrapAdminDto) {
+    return this.authService.bootstrapAdmin(dto);
   }
 
   // 5 login attempts per minute per IP

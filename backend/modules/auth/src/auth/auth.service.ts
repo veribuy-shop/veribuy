@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ServiceUnavailableException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -15,6 +16,7 @@ import { PrismaService } from '../../../../src/database/prisma.service';
 import { NotificationService } from './notification.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -105,6 +107,75 @@ export class AuthService {
       autoVerified: autoVerify,
       ...tokens,
     };
+  }
+
+  /**
+   * First-use bootstrap: creates the first ADMIN user.
+   *
+   * Secure by design:
+   *  - Requires ADMIN_SETUP_TOKEN in env (constant-time compared).
+   *  - Only works while NO admin user exists yet, so it cannot be re-run to
+   *    escalate later — even if the token or endpoint is exposed.
+   *  - Returns 503 when ADMIN_SETUP_TOKEN is not configured (inert by default).
+   */
+  async bootstrapAdmin(dto: BootstrapAdminDto) {
+    const expectedToken = this.configService.get<string>('ADMIN_SETUP_TOKEN');
+    if (!expectedToken) {
+      throw new ServiceUnavailableException('Admin bootstrap is not configured');
+    }
+    if (!this.matchesSetupToken(dto.setupToken, expectedToken)) {
+      throw new ForbiddenException('Invalid admin bootstrap token');
+    }
+
+    const existingAdminCount = await this.prisma.user.count({
+      where: { role: 'ADMIN' },
+    });
+    if (existingAdminCount > 0) {
+      throw new ConflictException(
+        'Admin bootstrap is only available before the first admin exists',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    const user = await this.prisma.user.create({
+      data: {
+        name: dto.name,
+        email: dto.email,
+        passwordHash,
+        role: 'ADMIN',
+        isEmailVerified: true,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+    });
+
+    await this.prisma.profile.create({
+      data: {
+        userId: user.id,
+        displayName: dto.name,
+        firstName: dto.name.split(' ')[0],
+        lastName: dto.name.split(' ').slice(1).join(' ') || null,
+      },
+    });
+
+    this.logger.log(`Bootstrapped first admin user: ${user.email}`);
+    const tokens = await this.generateTokens(user.id, user.role);
+    return { user, ...tokens };
+  }
+
+  private matchesSetupToken(provided: string, expected: string): boolean {
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(a, b);
   }
 
   async login(dto: LoginDto) {
