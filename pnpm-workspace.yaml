@@ -1,5 +1,4 @@
 packages:
   - "packages/*"
-  - "gateway"
-  - "services/*"
-  - "web"
+  - "backend"
+  - "frontend"

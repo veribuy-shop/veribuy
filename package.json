@@ -4,15 +4,16 @@
   "private": true,
   "description": "VeriBuy — AI-enabled, verification-led marketplace for electronic devices",
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --concurrency=15",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "docker:build": "docker compose build",
-    "prisma:generate": "turbo run prisma:generate",
-    "prisma:migrate": "turbo run prisma:migrate"
+    "prisma:generate": "pnpm --filter @veribuy/backend prisma:generate",
+    "prisma:migrate": "pnpm --filter @veribuy/backend prisma:migrate",
+    "seed": "pnpm --filter @veribuy/backend seed"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",
