@@ -10,6 +10,7 @@ COPY frontend/package.json ./frontend/package.json
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS build
+COPY packages ./packages
 COPY backend ./backend
 RUN pnpm --filter @veribuy/backend prisma:generate
 RUN pnpm --filter @veribuy/backend build

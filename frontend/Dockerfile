@@ -48,10 +48,3 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "frontend/server.js"]
-
-# Development stage (for local development with hot-reload)
-FROM base AS development
-COPY --from=deps /app ./
-WORKDIR /app/frontend
-EXPOSE 3000
-CMD ["pnpm", "dev"]
