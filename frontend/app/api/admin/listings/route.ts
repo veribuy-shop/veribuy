@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeListing, sanitizePaginated } from '@/lib/sanitize';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
+const LISTING_SERVICE_URL = getBackendUrl();
 
 export async function GET(request: NextRequest) {
   try {

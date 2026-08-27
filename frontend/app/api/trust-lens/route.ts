@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeTrustLens, sanitizePaginated } from '@/lib/sanitize';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const TRUST_LENS_SERVICE_URL = process.env.TRUST_LENS_SERVICE_URL || 'http://localhost:3004';
+const TRUST_LENS_SERVICE_URL = getBackendUrl();
 
 export async function GET(request: NextRequest) {
   try {

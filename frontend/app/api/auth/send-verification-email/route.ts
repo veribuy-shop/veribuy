@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backend-url';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const AUTH_SERVICE_URL = getBackendUrl();
 
 export async function POST(request: NextRequest) {
   try {

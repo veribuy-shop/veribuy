@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backend-url';
 import { sanitizeAuthUser } from '@/lib/sanitize';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    const authServiceUrl = getBackendUrl();
     
     const response = await fetch(`${authServiceUrl}/auth/login`, {
       method: 'POST',

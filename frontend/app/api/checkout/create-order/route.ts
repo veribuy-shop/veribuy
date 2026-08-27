@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { sanitizeOrderWithPayment } from '@/lib/sanitize';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007';
+const TRANSACTION_SERVICE_URL = getBackendUrl();
 
 export async function POST(req: NextRequest) {
   try {

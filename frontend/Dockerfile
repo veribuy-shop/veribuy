@@ -18,9 +18,13 @@ COPY --from=deps /app ./
 # Copy pnpm from deps stage to avoid re-downloading
 COPY --from=deps /root/.local/share/pnpm /root/.local/share/pnpm
 WORKDIR /app/frontend
-ARG BACKEND_URL=http://backend:3000
+ARG BACKEND_URL=https://api.veribuy.shop
+ARG NEXT_PUBLIC_API_URL=https://api.veribuy.shop
+ARG NEXT_PUBLIC_SITE_URL=https://www.veribuy.shop
 ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=""
 ENV BACKEND_URL=$BACKEND_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken } from '@/lib/api-auth';
 import { sanitizeEvidenceItem } from '@/lib/sanitize';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const EVIDENCE_SERVICE_URL = process.env.EVIDENCE_SERVICE_URL || 'http://localhost:3006';
+const EVIDENCE_SERVICE_URL = getBackendUrl();
 
 export async function POST(req: NextRequest) {
   try {

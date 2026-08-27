@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeOrder } from '@/lib/sanitize';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007';
+const TRANSACTION_SERVICE_URL = getBackendUrl();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const TRANSACTION_SERVICE_URL = process.env.TRANSACTION_SERVICE_URL || 'http://localhost:3007';
+const TRANSACTION_SERVICE_URL = getBackendUrl();
 
 // Read at request time — throwing at module scope breaks Next.js build-time
 // static analysis (page-data collection runs without env vars).

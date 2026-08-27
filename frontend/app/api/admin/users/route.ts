@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getBackendUrl } from '@/lib/backend-url';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeUser, sanitizePaginated } from '@/lib/sanitize';
 
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const AUTH_SERVICE_URL = getBackendUrl();
 
 export async function GET(request: NextRequest) {
   try {

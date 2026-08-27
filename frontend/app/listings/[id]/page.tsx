@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import ListingDetailContent from './listing-detail-content';
 import { productJsonLd } from '@/lib/structured-data';
+import { getBackendUrl } from '@/lib/backend-url';
 
-const LISTING_SERVICE_URL = process.env.LISTING_SERVICE_URL || 'http://localhost:3003';
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://veribuy.shop';
+const LISTING_SERVICE_URL = getBackendUrl();
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
 
 interface ListingData {
   id: string;
