@@ -25,6 +25,7 @@ import { UpdateStatusDto, ALLOWED_TRANSITIONS } from './dto/update-status.dto';
 import { UpdateTrustLensDto } from './dto/update-trust-lens.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto } from '@veribuy/common';
+import { DeviceType, ConditionGrade } from '.prisma/veribuy-client';
 import * as crypto from 'crypto';
 
 interface AuthenticatedUser {
@@ -56,6 +57,15 @@ export class UlistingsController {
   }
 
   // Static routes MUST be declared before dynamic `:id` to avoid wildcard capturing them
+  @Get('options')
+  @Public()
+  async getOptions() {
+    return {
+      deviceTypes: Object.values(DeviceType),
+      conditionGrades: Object.values(ConditionGrade),
+    };
+  }
+
   @Get('seller/:sellerId')
   @Public()
   async findBySeller(
