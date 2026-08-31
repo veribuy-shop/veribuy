@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { ImeiCheckService } from '../imei-check/imei-check.service';
@@ -6,6 +6,7 @@ import { ListingSyncService } from './listing-sync.service';
 import { UserSyncService } from './user-sync.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { CreateVerificationRequestDto } from './dto/create-verification-request.dto';
+import { DeviceType } from '.prisma/veribuy-client';
 
 /** Fields safe to return to sellers (strips rawApiResponse, imei, serialNumber). */
 const SELLER_ID_VALIDATION_SELECT = {
@@ -177,6 +178,25 @@ export class TrustLensService {
   }
 
   async createVerificationRequest(dto: CreateVerificationRequestDto) {
+    // Smartphones must be verified against BOTH an IMEI and a serial number.
+    // Look up the listing's device type to enforce this server-side.
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: dto.listingId },
+      select: { deviceType: true },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    if (listing.deviceType === DeviceType.SMARTPHONE) {
+      if (!dto.imeiProvided || !dto.serialProvided) {
+        throw new BadRequestException(
+          'Smartphones require both an IMEI and a serial number for verification',
+        );
+      }
+    }
+
     // Wrap the 4-step creation in a transaction so a partial failure is rolled back
     const result = await this.prisma.$transaction(async (tx) => {
       // Create verification request

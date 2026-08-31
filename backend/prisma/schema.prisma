@@ -104,6 +104,8 @@ model Listing {
   price           Decimal         @db.Decimal(10, 2)
   currency        String          @default("GBP")
   conditionGrade  ConditionGrade? @map("condition_grade")
+  color           String?
+  storageCapacity String?         @map("storage_capacity")
   status          ListingStatus   @default(DRAFT)
   imei            String?
   serialNumber    String?         @map("serial_number")
@@ -444,6 +446,7 @@ enum ListingStatus {
   APPROVED
   REJECTED
   ACTIVE
+  INACTIVE
   SOLD
   DELISTED
   @@schema("listings")
