@@ -364,7 +364,8 @@ export default function CreateListingPage() {
         } else {
           const verificationData = {
             listingId: listing.id,
-            sellerId: user.id,
+            // SEC-06: sellerId intentionally omitted — the backend derives it from
+            // the verified JWT token (sellerId is the authenticated user's id).
             conditionGrade: formData.conditionGrade,
             imeiProvided: !!formData.imei,
             serialProvided: !!formData.serialNumber,
