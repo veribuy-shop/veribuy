@@ -85,6 +85,6 @@ export class SmsService {
   }
 
   private appUrl(): string {
-    return this.configService.get<string>('APP_URL') || 'https://dev.veribuy.shop';
+    return this.configService.get<string>('APP_URL') || 'http://localhost:3010';
   }
 }

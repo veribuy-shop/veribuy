@@ -317,7 +317,7 @@ export class NotificationsService {
     }
   }
 
-  // Contact Us — fires email to veribuy.shop@gmail.com + acknowledgement to sender
+  // Contact Us — fires email to the configured CONTACT_EMAIL recipient + acknowledgement to sender
   async contactUs(data: {
     fromName: string;
     fromEmail: string;
