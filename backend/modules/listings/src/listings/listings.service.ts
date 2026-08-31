@@ -26,6 +26,8 @@ const PUBLIC_SELECT = {
   price: true,
   currency: true,
   conditionGrade: true,
+  color: true,
+  storageCapacity: true,
   status: true,
   trustLensStatus: true,
   integrityFlags: true,
@@ -320,6 +322,22 @@ export class UlistingsService {
 
   async update(id: string, dto: UpdateListingDto): Promise<Listing> {
     try {
+      const current = await this.prisma.listing.findUnique({ where: { id } });
+      if (!current) {
+        throw new NotFoundException('Listing not found');
+      }
+
+      // Enforce the same state machine used by the dedicated status endpoint, so the
+      // generic PATCH can't bypass an invalid transition.
+      if (dto.status !== undefined && dto.status !== current.status) {
+        const allowed = ALLOWED_TRANSITIONS[current.status] ?? [];
+        if (!allowed.includes(dto.status)) {
+          throw new BadRequestException(
+            `Cannot transition listing from ${current.status} to ${dto.status}`,
+          );
+        }
+      }
+
       const listing = await this.prisma.listing.update({
         where: { id },
         data: {
@@ -327,6 +345,10 @@ export class UlistingsService {
           ...(dto.description !== undefined && { description: dto.description }),
           ...(dto.price !== undefined && { price: dto.price }),
           ...(dto.currency !== undefined && { currency: dto.currency }),
+          ...(dto.conditionGrade !== undefined && { conditionGrade: dto.conditionGrade }),
+          ...(dto.status !== undefined && { status: dto.status }),
+          ...(dto.color !== undefined && { color: dto.color || null }),
+          ...(dto.storageCapacity !== undefined && { storageCapacity: dto.storageCapacity || null }),
         },
       });
 

@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsNumber, Min, MaxLength } from 'class-validator';
+import { IsString, IsOptional, IsNumber, Min, MaxLength, IsEnum } from 'class-validator';
+import { ConditionGrade, ListingStatus } from '.prisma/veribuy-client';
 
 export class UpdateListingDto {
   @IsOptional()
@@ -20,4 +21,22 @@ export class UpdateListingDto {
   @IsString()
   @MaxLength(3)
   currency?: string;
+
+  @IsOptional()
+  @IsEnum(ConditionGrade)
+  conditionGrade?: ConditionGrade;
+
+  @IsOptional()
+  @IsEnum(ListingStatus)
+  status?: ListingStatus;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  storageCapacity?: string;
 }

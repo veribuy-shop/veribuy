@@ -244,12 +244,21 @@ export default function CreateListingPage() {
     }
     
     if (step === 4) {
-      // IMEI-capable devices must provide an identifier (IMEI or serial).
-      // Laptops and AirPods have no IMEI, so the serial (or none) is acceptable.
-      const requiresIdentifier = !['LAPTOP', 'AIRPODS'].includes(formData.deviceType);
-      if (requiresIdentifier && !formData.imei && !formData.serialNumber) {
-        setError('IMEI or Serial Number is required for verification');
-        return false;
+      // Smartphones must be verified against BOTH an IMEI and a serial number
+      // (enforced server-side by Trust Lens too).
+      if (formData.deviceType === 'SMARTPHONE') {
+        if (!formData.imei || !formData.serialNumber) {
+          setError('Smartphones require both an IMEI and a Serial Number for verification');
+          return false;
+        }
+      } else {
+        // Other IMEI-capable devices must provide an identifier (IMEI or serial).
+        // Laptops and AirPods have no IMEI, so the serial (or none) is acceptable.
+        const requiresIdentifier = !['LAPTOP', 'AIRPODS'].includes(formData.deviceType);
+        if (requiresIdentifier && !formData.imei && !formData.serialNumber) {
+          setError('IMEI or Serial Number is required for verification');
+          return false;
+        }
       }
       
       if (formData.deviceImages.length < 3) {
