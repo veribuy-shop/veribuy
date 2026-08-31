@@ -14,6 +14,7 @@ export class CreateVerificationRequestDto {
   listingId: string;
 
   @IsUUID('4')
+  @IsOptional()
   sellerId: string;
 
   @IsOptional()

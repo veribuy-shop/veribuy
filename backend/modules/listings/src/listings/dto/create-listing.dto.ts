@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsNumber,
   IsOptional,
+  IsUUID,
   Min,
   MaxLength,
   MinLength,
@@ -12,8 +13,12 @@ import {
 import { DeviceType, ConditionGrade } from '.prisma/veribuy-client';
 
 export class CreateListingDto {
-  // sellerId is NOT accepted from the request body — it is injected from the JWT in the controller
-  sellerId?: string;
+  // sellerId is NOT accepted from the request body — it is injected from the JWT in the controller.
+  // Decorated (optional + UUID) so the global forbidding whitelist allows its absence, while
+  // never accepting a client-supplied value (the controller overrides it from the JWT anyway).
+  @IsOptional()
+  @IsUUID()
+  sellerId: string;
 
   @IsString()
   @IsNotEmpty()
