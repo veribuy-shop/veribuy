@@ -6,8 +6,13 @@ import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import { Lightbulb, AlertTriangle } from 'lucide-react';
 
-type DeviceType = 'SMARTPHONE' | 'TABLET' | 'SMARTWATCH';
+type DeviceType = string;
 type ConditionGrade = 'A' | 'B' | 'C';
+
+interface DeviceTypeOption {
+  value: string;
+  label: string;
+}
 
 interface ListingFormData {
   // Step 1: Device Details
@@ -32,7 +37,6 @@ interface ListingFormData {
   serialNumber: string;
   deviceImages: File[];
   screenImages: File[];
-  bodyImages: File[];
   settingsScreenshot: File[];
 }
 
@@ -43,17 +47,32 @@ const STEPS = [
   { id: 4, name: 'Verification', description: 'IMEI/Serial & Evidence' },
 ];
 
-const DEVICE_TYPES: { value: DeviceType; label: string }[] = [
-  { value: 'SMARTPHONE', label: 'Smartphone' },
-  { value: 'TABLET', label: 'Tablet' },
-  { value: 'SMARTWATCH', label: 'Smartwatch' },
-];
+// Display labels for device types; the accepted values come from the backend
+// /api/listings/options endpoint (mirroring the DB DeviceType enum).
+const DEVICE_TYPE_LABELS: Record<string, string> = {
+  SMARTPHONE: 'Smartphone',
+  TABLET: 'Tablet',
+  LAPTOP: 'Laptop',
+  SMARTWATCH: 'Smartwatch',
+  AIRPODS: 'AirPods',
+  DESKTOP: 'Desktop',
+  GAMING_CONSOLE: 'Gaming Console',
+  OTHER: 'Other',
+};
 
-const POPULAR_BRANDS: Record<DeviceType, string[]> = {
+const POPULAR_BRANDS: Record<string, string[]> = {
   SMARTPHONE: ['Apple', 'Samsung', 'Google', 'OnePlus', 'Xiaomi', 'Motorola', 'Other'],
   TABLET: ['Apple', 'Samsung', 'Microsoft', 'Lenovo', 'Amazon', 'Other'],
+  LAPTOP: ['Apple', 'Dell', 'HP', 'Lenovo', 'Asus', 'Acer', 'Microsoft', 'Other'],
   SMARTWATCH: ['Apple', 'Samsung', 'Garmin', 'Fitbit', 'Other'],
+  AIRPODS: ['Apple', 'Other'],
+  DESKTOP: ['Apple', 'Dell', 'HP', 'Lenovo', 'Asus', 'Acer', 'Other'],
+  GAMING_CONSOLE: ['Sony', 'Microsoft', 'Nintendo', 'Valve', 'Other'],
+  OTHER: ['Other'],
 };
+
+// Device type values + labels are fetched from the backend so the form always
+// reflects the DB enum and never drifts from what the API actually accepts.
 
 const ACCESSORIES_OPTIONS = [
   'Original Box',
@@ -87,12 +106,40 @@ function useObjectURLs(files: File[]): string[] {
 
 export default function CreateListingPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
+  const [deviceTypeOptions, setDeviceTypeOptions] = useState<DeviceTypeOption[]>([]);
+
+  // Fetch the accepted device types from the backend so the form mirrors the DB enum.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/listings/options', { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        const types = Array.isArray(data?.deviceTypes) ? data.deviceTypes : [];
+        if (types.length > 0) {
+          setDeviceTypeOptions(
+            types.map((value: string) => ({
+              value,
+              label: DEVICE_TYPE_LABELS[value] ?? value,
+            }))
+          );
+        }
+      } catch {
+        // fall back to the hardcoded defaults below if the backend is unreachable
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [formData, setFormData] = useState<ListingFormData>({
     deviceType: 'SMARTPHONE',
@@ -110,7 +157,6 @@ export default function CreateListingPage() {
     serialNumber: '',
     deviceImages: [],
     screenImages: [],
-    bodyImages: [],
     settingsScreenshot: [],
   });
 
@@ -118,7 +164,6 @@ export default function CreateListingPage() {
   // initial empty arrays are accessible on first render.
   const deviceImageURLs    = useObjectURLs(formData.deviceImages);
   const screenImageURLs    = useObjectURLs(formData.screenImages);
-  const bodyImageURLs      = useObjectURLs(formData.bodyImages);
   const settingsImageURLs  = useObjectURLs(formData.settingsScreenshot);
 
   const updateFormData = (field: keyof ListingFormData, value: any) => {
@@ -199,8 +244,10 @@ export default function CreateListingPage() {
     }
     
     if (step === 4) {
-      // Require IMEI or serial for all supported device types
-      if (!formData.imei && !formData.serialNumber) {
+      // IMEI-capable devices must provide an identifier (IMEI or serial).
+      // Laptops and AirPods have no IMEI, so the serial (or none) is acceptable.
+      const requiresIdentifier = !['LAPTOP', 'AIRPODS'].includes(formData.deviceType);
+      if (requiresIdentifier && !formData.imei && !formData.serialNumber) {
         setError('IMEI or Serial Number is required for verification');
         return false;
       }
@@ -253,10 +300,9 @@ export default function CreateListingPage() {
         serialNumber: formData.serialNumber || undefined,
       };
 
-      const response = await fetch('/api/listings', {
+      const response = await authFetch('/api/listings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(listingData),
       });
 
@@ -271,7 +317,6 @@ export default function CreateListingPage() {
       const allFiles = [
         ...formData.deviceImages.map(f => ({ file: f, type: 'DEVICE_IMAGE' })),
         ...formData.screenImages.map(f => ({ file: f, type: 'SCREEN_IMAGE' })),
-        ...formData.bodyImages.map(f => ({ file: f, type: 'BODY_IMAGE' })),
         ...formData.settingsScreenshot.map(f => ({ file: f, type: 'SETTINGS_SCREENSHOT' })),
       ];
 
@@ -289,9 +334,8 @@ export default function CreateListingPage() {
             // SEC-06: sellerId intentionally not appended — evidence service derives it
             // from the JWT token forwarded by the BFF API route.
             uploadFormData.append('type', type);
-            return fetch('/api/evidence', {
+            return authFetch('/api/evidence', {
               method: 'POST',
-              credentials: 'include',
               body: uploadFormData,
             }).then(res => {
               if (!res.ok) throw new Error(`Upload failed for ${file.name}`);
@@ -329,10 +373,9 @@ export default function CreateListingPage() {
             brand: formData.brand || undefined,
           };
 
-          const verificationResponse = await fetch('/api/trust-lens', {
+          const verificationResponse = await authFetch('/api/trust-lens', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
             body: JSON.stringify(verificationData),
           });
 
@@ -454,9 +497,13 @@ export default function CreateListingPage() {
                   }}
                   className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 >
-                  {DEVICE_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
+                  {deviceTypeOptions.length > 0
+                    ? deviceTypeOptions.map(type => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))
+                    : Object.keys(POPULAR_BRANDS).map(value => (
+                        <option key={value} value={value}>{DEVICE_TYPE_LABELS[value] ?? value}</option>
+                      ))}
                 </select>
               </div>
 
@@ -472,7 +519,7 @@ export default function CreateListingPage() {
                   className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 >
                   <option value="">Select a brand</option>
-                  {POPULAR_BRANDS[formData.deviceType].map(brand => (
+                  {(POPULAR_BRANDS[formData.deviceType] ?? ['Other']).map(brand => (
                     <option key={brand} value={brand}>{brand}</option>
                   ))}
                 </select>
@@ -705,7 +752,7 @@ export default function CreateListingPage() {
                   <AlertTriangle className="w-4 h-4 inline mr-1" aria-hidden="true" /> Verification Requirements
                 </h3>
                 <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
-                  <li>• IMEI or Serial Number (required for all devices)</li>
+                  <li>• IMEI or Serial Number (required for phones/tablets/smartwatches; laptops & AirPods may use serial only)</li>
                   <li>• At least 3 high-quality device images (various angles)</li>
                   <li>• At least 1 screen/display image (powered on)</li>
                   <li>• Optional: Screenshots of Settings showing device info</li>
@@ -810,41 +857,6 @@ export default function CreateListingPage() {
                         <img
                           src={screenImageURLs[idx]}
                           alt={`Screen image ${idx + 1}: ${file.name}`}
-                          className="w-full h-24 object-cover rounded border border-[var(--color-border)]"
-                        />
-                        <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate rounded-b">
-                          {file.name}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="body-images" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                  Body/Cosmetic Condition Images
-                </label>
-                <input
-                  id="body-images"
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={(e) => handleFileChange('bodyImages', e.target.files)}
-                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-                  aria-describedby="body-images-hint"
-                />
-                <p id="body-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  Show any scratches, dents, or wear.{' '}
-                  <span aria-live="polite">{formData.bodyImages.length} file(s) selected.</span>
-                </p>
-                {formData.bodyImages.length > 0 && (
-                  <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Selected body image previews">
-                    {formData.bodyImages.map((file, idx) => (
-                      <div key={idx} className="relative">
-                        <img
-                          src={bodyImageURLs[idx]}
-                          alt={`Body image ${idx + 1}: ${file.name}`}
                           className="w-full h-24 object-cover rounded border border-[var(--color-border)]"
                         />
                         <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate rounded-b">
