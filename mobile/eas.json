@@ -1,0 +1,32 @@
+{
+  "cli": {
+    "version": ">= 5.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.veribuy.shop",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51T6XiiDJuj7a1vPYjTyB7bmokurhnV0S2NqEFOPlV4BtuQtJlYzAHj9frgRZ2eyksFCuYCiyNjjmDC9fdr7fiU0D00vtyY0obM"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.veribuy.shop",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51T6XiiDJuj7a1vPYjTyB7bmokurhnV0S2NqEFOPlV4BtuQtJlYzAHj9frgRZ2eyksFCuYCiyNjjmDC9fdr7fiU0D00vtyY0obM"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

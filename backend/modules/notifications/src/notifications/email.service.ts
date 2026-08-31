@@ -8,11 +8,14 @@ export class EmailService {
   private resend: Resend | null = null;
   private readonly from: string;
   private readonly appUrl: string;
+  private readonly contactEmail: string;
 
   constructor(private configService: ConfigService) {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
     this.from = this.configService.get<string>('EMAIL_FROM') || 'VeriBuy <noreply@veribuy.shop>';
-    this.appUrl = this.configService.get<string>('APP_URL') || 'https://dev.veribuy.shop';
+    this.appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3010';
+    this.contactEmail =
+      this.configService.get<string>('CONTACT_EMAIL') || 'veribuy.shop@gmail.com';
 
     if (apiKey) {
       this.resend = new Resend(apiKey);
@@ -103,7 +106,7 @@ export class EmailService {
     message: string;
   }): Promise<void> {
     await this.send({
-      to: 'veribuy.shop@gmail.com',
+      to: this.contactEmail,
       replyTo: data.fromEmail,
       subject: `[Contact Us] ${data.subject}`,
       html: `
@@ -131,7 +134,7 @@ export class EmailService {
           <p style="color:#6b7280;font-size:14px">Your message:</p>
           <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px;white-space:pre-wrap;color:#374151;font-size:14px">${this.escape(data.message)}</div>
           <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
-          <p style="color:#9ca3af;font-size:12px">VeriBuy — Verified Electronics Marketplace | <a href="mailto:veribuy.shop@gmail.com" style="color:#9ca3af">veribuy.shop@gmail.com</a></p>
+          <p style="color:#9ca3af;font-size:12px">VeriBuy — Verified Electronics Marketplace | <a href="mailto:${this.contactEmail}" style="color:#9ca3af">${this.contactEmail}</a></p>
         </div>
       `,
     });
