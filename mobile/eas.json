@@ -14,15 +14,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.veribuy.shop",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51T6XiiDJuj7a1vPYjTyB7bmokurhnV0S2NqEFOPlV4BtuQtJlYzAHj9frgRZ2eyksFCuYCiyNjjmDC9fdr7fiU0D00vtyY0obM"
+        "EXPO_PUBLIC_API_URL": "https://api.veribuy.shop"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.veribuy.shop",
-        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51T6XiiDJuj7a1vPYjTyB7bmokurhnV0S2NqEFOPlV4BtuQtJlYzAHj9frgRZ2eyksFCuYCiyNjjmDC9fdr7fiU0D00vtyY0obM"
+        "EXPO_PUBLIC_API_URL": "https://api.veribuy.shop"
       }
     }
   },
