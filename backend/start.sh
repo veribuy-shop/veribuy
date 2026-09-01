@@ -18,11 +18,26 @@ fi
 # PENDING because no IMEI check could run.
 if [ -n "$REDIS_URL" ]; then
   echo "Testing Redis connection..."
-  if ! timeout 5 node -e "const Redis = require('ioredis'); const tlsOn = process.env.REDIS_TLS === 'true'; const r = new Redis(process.env.REDIS_URL, {tls: tlsOn ? {} : undefined, retryStrategy: () => null}); r.on('error', () => process.exit(1)); r.on('connect', () => { r.quit(); process.exit(0); })" 2>/dev/null; then
-    echo "WARNING: Redis connection test failed — IMEI checks and caches may be unavailable."
+  TEST_OUTPUT=$(timeout 5 node -e "
+    const Redis = require('ioredis');
+    const tlsOn = process.env.REDIS_TLS === 'true';
+    const url = process.env.REDIS_URL;
+    const effective = tlsOn && url.startsWith('redis://') ? url.replace(/^redis:\/\//, 'rediss://') : url;
+    let masked = effective;
+    try { masked = masked.replace(/\/\/[^@]+@/, '//***@'); } catch {}
+    const r = new Redis(effective, { tls: tlsOn ? {} : undefined, retryStrategy: () => null });
+    r.on('error', (e) => { console.error('TEST FAILED: ' + masked.split('@').pop() + ' -> ' + e.message); process.exit(1); });
+    r.on('connect', () => { console.error('TEST OK: ' + masked); r.quit(); process.exit(0); });
+  " 2>&1)
+  TEST_CODE=$?
+  if [ "$TEST_CODE" -ne 0 ]; then
+    echo "WARNING: Redis connection test failed —$(printf " %s" "$TEST_OUTPUT")"
+    echo "         IMEI checks and caches may be unavailable. Check REDIS_URL / REDIS_TLS on this service."
   else
-    echo "Redis connection OK."
+    echo "Redis connection OK: $(printf " %s" "$TEST_OUTPUT")"
   fi
+else
+  echo "NOTE: REDIS_URL is not set on this service — Redis will fall back to localhost."
 fi
 
 echo "Running database migrations..."
