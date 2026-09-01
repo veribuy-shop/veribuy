@@ -200,6 +200,43 @@ export class TrustLensService {
     });
   }
 
+  /**
+   * Public, sanitized check-result summary for a listing. Used by the frontend
+   * to render the Verification Report for the lister/buyer. Only exposes the
+   * booleans stored on IdentifierValidation — never the raw IMEI, serial number
+   * or the 3rd-party API payload.
+   *
+   * Returns null when no check has run yet (no verification request or no
+   * identifier-validation row), and always resolves (never throws NotFound) so
+   * the caller can fall back gracefully while a check is still PENDING.
+   */
+  async getPublicCheckSummary(listingId: string) {
+    const iv = await this.prisma.identifierValidation.findFirst({
+      where: { verificationRequest: { listingId } },
+      select: {
+        imeiValid: true,
+        icloudLocked: true,
+        reportedStolen: true,
+        blacklisted: true,
+        fmiOn: true,
+        verifiedAt: true,
+      },
+    });
+
+    if (!iv || iv.verifiedAt === null) {
+      return null;
+    }
+
+    return {
+      imeiValid: iv.imeiValid,
+      icloudLocked: iv.icloudLocked,
+      reportedStolen: iv.reportedStolen,
+      blacklisted: iv.blacklisted,
+      fmiOn: iv.fmiOn,
+      verifiedAt: iv.verifiedAt,
+    };
+  }
+
   async getAllVerificationRequests(pagination: PaginationDto): Promise<PaginatedResponse<any>> {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;

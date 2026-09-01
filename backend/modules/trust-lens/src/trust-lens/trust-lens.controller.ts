@@ -38,6 +38,19 @@ export class TrustLensController {
     return verification;
   }
 
+  /**
+   * Public sanitized check-result summary, safe for any viewer (buyers,
+   * unauthenticated, and the lister). Returns the stored booleans only — never
+   * the raw IMEI/serial/API payload. Returns null when no check has run yet.
+   * Must be declared before the auth-guarded `:listingId` route so it matches
+   * first for the `/summary` path.
+   */
+  @Get(':listingId/summary')
+  @Public()
+  async publicSummary(@Param('listingId', ParseUUIDPipe) listingId: string) {
+    return this.trustlensService.getPublicCheckSummary(listingId);
+  }
+
   @Post()
   @Roles('BUYER', 'SELLER', 'ADMIN')
   create(
