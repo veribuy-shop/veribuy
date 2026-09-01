@@ -206,6 +206,23 @@ function estimateRetailPrice(price: number, brand: string): number | null {
   return retail > price ? retail : null;
 }
 
+const VIEWER_ID_KEY = 'vb_viewer_id';
+
+/**
+ * A stable, non-sensitive per-browser token used to dedupe listing view counts.
+ * Persisted in localStorage so every poll/refresh from this browser maps to the
+ * same viewer and is only counted once per listing (server-side 24h window).
+ */
+function getViewerId(): string {
+  if (typeof window === 'undefined') return '';
+  let id = window.localStorage.getItem(VIEWER_ID_KEY);
+  if (!id) {
+    id = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    window.localStorage.setItem(VIEWER_ID_KEY, id);
+  }
+  return id;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Page Component                                                     */
 /* ------------------------------------------------------------------ */
@@ -241,9 +258,12 @@ export default function ListingDetailContent({ id }: { id: string }) {
     const isTerminal = (status: string) =>
       status === 'PASSED' || status === 'REQUIRES_REVIEW' || status === 'FAILED';
 
+    const viewerId = getViewerId();
+    const viewerQs = viewerId ? `?viewer=${encodeURIComponent(viewerId)}` : '';
+
     const loadListingAndVerification = async () => {
       const [listingRes, verificationRes] = await Promise.all([
-        fetch(`/api/listings/${id}`, { signal }),
+        fetch(`/api/listings/${id}${viewerQs}`, { signal }),
         fetch(`/api/listings/${id}/verification`, { signal }),
       ]);
       if (!listingRes.ok) {

@@ -77,8 +77,8 @@ export class UlistingsController {
 
   @Get(':id')
   @Public()
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.listingsService.findOne(id);
+  async findOne(@Param('id', ParseUUIDPipe) id: string, @Query('viewer') viewer?: string) {
+    return this.listingsService.findOne(id, viewer);
   }
 
   /**

@@ -177,47 +177,67 @@ export class UlistingsService {
     return listing;
   }
 
-  /** Returns listing WITHOUT imei/serial (safe for public) + increments view count */
-  async findOne(id: string): Promise<any> {
+  /**
+   * Returns listing WITHOUT imei/serial (safe for public).
+   *
+   * `viewerId` is an opaque per-browser token so a real user view is counted once
+   * (24h window), and the detail page's polling loop / refreshes from the same
+   * session never inflate the counter. When Redis is down we skip counting
+   * entirely rather than risk double-counting via the cache-miss path.
+   */
+  async findOne(id: string, viewerId?: string): Promise<any> {
     const cacheKey = `listing:${id}`;
 
     // Try cache first — fail open
+    let cached: any = null;
     try {
-      const cached = await this.redis.get<any>(cacheKey);
-      if (cached) {
-        // Increment view count in background, don't block response
-        this.prisma.listing
-          .update({ where: { id }, data: { viewCount: { increment: 1 } } })
-          .catch((err: Error) => this.logger.warn(`View count update failed: ${err.message}`));
-        return cached;
-      }
+      cached = await this.redis.get<any>(cacheKey);
     } catch (err) {
       this.logger.warn(`Redis GET failed for listing:${id}: ${(err as Error).message}`);
     }
 
-    const listing = await this.prisma.listing.findUnique({
-      where: { id },
-      select: PUBLIC_SELECT,
-    });
-
+    let listing = cached;
     if (!listing) {
-      throw new NotFoundException('Listing not found');
+      listing = await this.prisma.listing.findUnique({
+        where: { id },
+        select: PUBLIC_SELECT,
+      });
+
+      if (!listing) {
+        throw new NotFoundException('Listing not found');
+      }
+
+      // Cache for 5 minutes — fail open
+      try {
+        await this.redis.set(cacheKey, listing, 300);
+      } catch (err) {
+        this.logger.warn(`Redis SET failed for listing:${id}: ${(err as Error).message}`);
+      }
     }
 
-    // Increment view count
-    await this.prisma.listing.update({
-      where: { id },
-      data: { viewCount: { increment: 1 } },
-    });
-
-    // Cache for 5 minutes — fail open
-    try {
-      await this.redis.set(cacheKey, listing, 300);
-    } catch (err) {
-      this.logger.warn(`Redis SET failed for listing:${id}: ${(err as Error).message}`);
-    }
+    await this.countViewOnce(id, viewerId);
 
     return listing;
+  }
+
+  /** Count a listing view once per viewer within a 24h window (dedupe). */
+  private async countViewOnce(id: string, viewerId?: string): Promise<void> {
+    const VIEW_WINDOW_SECONDS = 24 * 60 * 60;
+    try {
+      const client = this.redis.getClient();
+      // Redis unavailable → bail (fail-open; no risk of inflating the counter).
+      if (!client) return;
+      const key = `view:${id}:${viewerId ?? 'anon'}`;
+      const counted = await client.set(key, '1', 'EX', VIEW_WINDOW_SECONDS, 'NX');
+      if (counted === 'OK') {
+        await this.prisma.listing.update({
+          where: { id },
+          data: { viewCount: { increment: 1 } },
+        });
+      }
+    } catch (err: any) {
+      this.logger.warn(`View count update failed: ${err?.message ?? err}`);
+    }
   }
 
   async findBySeller(sellerId: string, pagination: PaginationDto): Promise<PaginatedResponse<any>> {

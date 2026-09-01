@@ -18,7 +18,11 @@ export async function GET(
     }
 
     // Listing detail is public — no token required to view
-    const response = await fetch(`${LISTING_SERVICE_URL}/listings/${id}`, {
+    // Forward the optional per-browser `viewer` token so the backend can dedupe
+    // view counts by session (prevents polling/refresh from inflating views).
+    const viewer = request.nextUrl.searchParams.get('viewer') ?? '';
+    const qs = viewer ? `?viewer=${encodeURIComponent(viewer)}` : '';
+    const response = await fetch(`${LISTING_SERVICE_URL}/listings/${id}${qs}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
