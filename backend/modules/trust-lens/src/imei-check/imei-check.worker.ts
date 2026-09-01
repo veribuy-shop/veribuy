@@ -4,6 +4,7 @@ import { ImeiCheckService } from './imei-check.service';
 import { ListingSyncService } from '../trust-lens/listing-sync.service';
 import { UserSyncService } from '../trust-lens/user-sync.service';
 import { RedisService } from '@veribuy/redis-cache';
+import type { Redis } from 'ioredis';
 
 export interface ImeiCheckJob {
   verificationRequestId: string;
@@ -69,17 +70,45 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Return the Redis client or null when Redis is disabled/unavailable. The IMEI
+   * queue depends on Redis — if it is not connected (e.g. REDIS_DISABLED=true or
+   * a bad REDIS_URL) there is NO durable queue, so we surface it loudly instead
+   * of throwing a cryptic TypeError against an undefined client.
+   */
+  private redisClient(): Redis | null {
+    let client: Redis;
+    try {
+      client = this.redis.getClient();
+    } catch {
+      client = undefined as unknown as Redis;
+    }
+    if (!client || (client as any).status === 'end' || (client as any).status === 'close') {
+      this.logger.error(
+        'IMEI queue unavailable: Redis is not connected (check REDIS_DISABLED / REDIS_URL / REDIS_TLS). ' +
+          'IMEI checks will NOT run while the queue is down.',
+      );
+      return null;
+    }
+    return client;
+  }
+
+  /**
    * Enqueue an IMEI check job — persists the request in Redis so it survives
    * worker restarts and is never lost. Returns the number of jobs in the queue.
+   * Throws when Redis is unavailable so callers do not silently skip verification.
    */
   async enqueue(job: ImeiCheckJob): Promise<number> {
-    const client = this.redis.getClient();
+    const client = this.redisClient();
+    if (!client) {
+      throw new Error('Redis unavailable — cannot enqueue IMEI check job');
+    }
     const serialized = JSON.stringify({ ...job, attempts: job.attempts ?? 0 });
     return await client.rpush(QUEUE_KEY, serialized);
   }
 
   private async drain(): Promise<void> {
-    const client = this.redis.getClient();
+    const client = this.redisClient();
+    if (!client) return;
     // Non-blocking pop; jobs that cannot be processed stay in the queue and are
     // retried on the next tick (up to MAX_ATTEMPTS). This keeps the process from
     // being wedged by a slow upstream API while bounding how many paid API calls
