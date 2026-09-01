@@ -77,18 +77,34 @@ export async function GET(
 
     // Trust Lens is a protected service — call it directly (server-to-server,
     // no user JWT needed; the trust-lens service trusts internal network calls).
-    // We use a lightweight approach: read the listing's own trustLensStatus and
-    // integrityFlags (already public), then derive check results from them.
     const status: string = listing.trustLensStatus ?? 'PENDING';
     const integrityFlags: string[] = Array.isArray(listing.integrityFlags)
       ? listing.integrityFlags
       : [];
 
-    // Derive per-check results from the integrity flags and listing state.
-    // The actual identifier validation only ran if the listing has gone past PENDING.
-    const verificationRan =
-      status === 'PASSED' || status === 'REQUIRES_REVIEW' || status === 'FAILED';
-    const imeiCheckPerformed = verificationRan && integrityFlags.length > 0;
+    // The full check result lives on IdentifierValidation (written by the
+    // backend worker). We read the sanitized booleans from the public summary
+    // endpoint so clean devices (which carry no integrity flags) still show
+    // their GSMA/iCloud/stolen rows in the Verification Report.
+    const checkSummaryRes = await fetch(
+      `${TRUST_LENS_SERVICE_URL}/trust-lens/${id}/summary`,
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+    let checkSummary: {
+      imeiValid: boolean | null;
+      icloudLocked: boolean | null;
+      reportedStolen: boolean | null;
+      blacklisted: boolean | null;
+      fmiOn: boolean | null;
+      verifiedAt: string | null;
+    } | null = null;
+    if (checkSummaryRes.ok) {
+      checkSummary = await checkSummaryRes.json();
+    }
+
+    // Results surface the moment the worker writes them — no terminal-status
+    // gate. A non-null checkSummary means the IMEI check actually ran.
+    const imeiCheckPerformed = !!checkSummary;
 
     // Read the live cached outcome written by the backend ImeiCheckWorker so the
     // frontend can surface an accurate in-progress state (Redis is best-effort;
@@ -106,17 +122,18 @@ export async function GET(
 
     let checks: PublicVerificationSummary['checks'] = null;
 
-    if (imeiCheckPerformed) {
-      const isFlagged = (flag: string) => integrityFlags.includes(flag);
+    if (imeiCheckPerformed && checkSummary) {
+      const clean = (v: boolean | null) => v === true;
+      const icloudLocked = clean(checkSummary.icloudLocked) || (isApple && clean(checkSummary.fmiOn));
 
       checks = {
-        gsmaBlacklist: isFlagged('BLACKLISTED') || isFlagged('REPORTED_STOLEN')
+        gsmaBlacklist: clean(checkSummary.blacklisted) || clean(checkSummary.reportedStolen)
           ? 'FLAGGED'
           : 'CLEAN',
         icloudStatus: isApple
-          ? isFlagged('ICLOUD_LOCKED') ? 'LOCKED' : 'CLEAN'
+          ? icloudLocked ? 'LOCKED' : 'CLEAN'
           : 'NOT_APPLICABLE',
-        stolenReport: isFlagged('REPORTED_STOLEN') ? 'FLAGGED' : 'CLEAN',
+        stolenReport: clean(checkSummary.reportedStolen) ? 'FLAGGED' : 'CLEAN',
       };
     }
 
