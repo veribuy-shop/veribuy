@@ -367,9 +367,11 @@ export default function CreateListingPage() {
       }
       
       // Step 3: Create verification request in Trust Lens
+      let verificationFailed = false;
       try {
         if (!user?.id) {
           console.error('User ID unavailable when creating verification request — skipping');
+          verificationFailed = true;
         } else {
           const verificationData = {
             listingId: listing.id,
@@ -390,16 +392,19 @@ export default function CreateListingPage() {
           });
 
           if (!verificationResponse.ok) {
-            console.error('Failed to create verification request');
+            const data = await verificationResponse.json().catch(() => ({}));
+            console.error('Failed to create verification request:', data.error || verificationResponse.status);
+            verificationFailed = true;
           }
         }
       } catch (verificationError) {
         console.error('Verification request error:', verificationError);
+        verificationFailed = true;
         // Don't block the flow if verification fails
       }
       
       // Redirect to the listing detail page
-      router.push(`/listings/${listing.id}`);
+      router.push(`/listings/${listing.id}${verificationFailed ? '?verification=failed' : ''}`);
     } catch (err: any) {
       setError(err.message || 'Failed to create listing');
       setIsSubmitting(false);

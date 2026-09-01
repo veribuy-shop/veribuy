@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../../src/database/prisma.service';
-import { ImeiCheckService } from '../imei-check/imei-check.service';
+import { ImeiCheckWorker } from '../imei-check/imei-check.worker';
 import { ListingSyncService } from './listing-sync.service';
 import { UserSyncService } from './user-sync.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
@@ -25,12 +25,6 @@ const SELLER_ID_VALIDATION_SELECT = {
   // imei / serialNumber excluded from default seller view
 } as const;
 
-/** Mask IMEI for logging — show only last 4 digits. */
-function maskImei(imei?: string): string {
-  if (!imei) return '[not provided]';
-  return `****${imei.slice(-4)}`;
-}
-
 @Injectable()
 export class TrustLensService {
   private readonly logger = new Logger(TrustLensService.name);
@@ -38,143 +32,50 @@ export class TrustLensService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
-    private imeiCheckService: ImeiCheckService,
+    private imeiCheckWorker: ImeiCheckWorker,
     private listingSync: ListingSyncService,
     private userSync: UserSyncService,
   ) {}
 
   /**
-   * Calls the real IMEI Check API (services 3, 4, 5 in parallel) and writes
-   * results back to IdentifierValidation + merges integrity flags into the
-   * VerificationRequest. Also auto-sets the request status:
-   *   - All clean  → PASSED  (listing can go ACTIVE)
-   *   - Any flag   → REQUIRES_REVIEW (queued for admin)
-   * Never throws — on error it logs and leaves the fields null.
+   * Enqueue an IMEI check for a verification request.
    *
-   * Guard: if the request is already in a terminal/manually-reviewed state
-   * (PASSED, FAILED) we skip overwriting it to avoid clobbering admin decisions.
+   * The job is persisted in a Redis-backed queue and drained by
+   * `ImeiCheckWorker`, which calls the real IMEI Check API (services 3, 4, 5),
+   * writes results back to IdentifierValidation, and updates the
+   * VerificationRequest status. Enqueuing (rather than fire-and-forget) means
+   * the check is never lost if the process is busy or restarted.
    */
-  private async triggerIdentifierVerification(
-    verificationRequestId: string,
-    listingId: string,
-    imei?: string,
-    serialNumber?: string,
-    brand?: string,
-  ): Promise<void> {
+  async enqueueImeiCheck(data: {
+    verificationRequestId: string;
+    listingId: string;
+    imei?: string;
+    serialNumber?: string;
+    brand?: string;
+  }): Promise<void> {
     try {
-      if (!imei) {
-        this.logger.warn(
-          `triggerIdentifierVerification called without IMEI for listing ${listingId} — skipping`,
-        );
-        return;
-      }
-
-      // Guard: skip if already in a terminal state set by admin
-      const current = await this.prisma.verificationRequest.findUnique({
-        where: { id: verificationRequestId },
-        select: { status: true, completedAt: true },
+      await this.imeiCheckWorker.enqueue({
+        verificationRequestId: data.verificationRequestId,
+        listingId: data.listingId,
+        imei: data.imei,
+        serialNumber: data.serialNumber,
+        brand: data.brand,
       });
-      if (current?.status === 'PASSED' || current?.status === 'FAILED') {
-        this.logger.warn(
-          `triggerIdentifierVerification: request ${verificationRequestId} is already ${current.status} — skipping`,
-        );
-        return;
-      }
-
-      this.logger.log(
-        `Running IMEI checks for listing ${listingId}, IMEI ${maskImei(imei)}, brand=${brand ?? 'unknown'}`,
-      );
-
-      const result = await this.imeiCheckService.checkImei(imei, brand);
-
-      // Strip `price` field from rawApiResponse before persisting
-      const sanitizedRaw = Object.fromEntries(
-        Object.entries(result.rawApiResponse).map(([key, val]) => {
-          if (val && typeof val === 'object' && 'price' in (val as object)) {
-            const { price: _price, ...rest } = val as Record<string, unknown>;
-            return [key, rest];
-          }
-          return [key, val];
-        }),
-      );
-
-      // Write results back to IdentifierValidation
-      await this.prisma.identifierValidation.update({
-        where: { verificationRequestId },
-        data: {
-          imei: imei,
-          serialNumber: serialNumber ?? null,
-          imeiValid: result.imeiValid,
-          serialValid: null,
-          icloudLocked: result.icloudLocked,
-          reportedStolen: result.reportedStolen,
-          blacklisted: result.blacklisted,
-          fmiOn: result.fmiOn ?? null,
-          rawApiResponse: { ...sanitizedRaw, checksRun: result.checksRun } as any,
-          verifiedAt: new Date(),
-        },
-      });
-
-      // Determine the new verification status.
-      // 'CLEAN'   → all checks passed, auto-approve.
-      // 'NOT_RUN' → API key not configured, leave as PENDING for manual review.
-      // anything else → flags present, route to REQUIRES_REVIEW.
-      const isClean = result.flags.length === 1 && result.flags[0] === 'CLEAN';
-      const isNotRun = result.flags.includes('NOT_RUN');
-      const newStatus = isClean ? 'PASSED' : isNotRun ? 'PENDING' : 'REQUIRES_REVIEW';
-
-      // Build integrity flags (exclude synthetic sentinel values from the stored array)
-      const integrityFlags = result.flags.filter((f) => f !== 'CLEAN' && f !== 'NOT_RUN');
-
-      // Update VerificationRequest with flags + new status.
-      // Never overwrite completedAt if it was already set (admin may have set it).
-      const updatedRequest = await this.prisma.verificationRequest.update({
-        where: { id: verificationRequestId },
-        data: {
-          status: newStatus,
-          integrityFlags: { set: integrityFlags as any },
-          ...(isClean && !current?.completedAt ? { completedAt: new Date() } : {}),
-        },
-        select: { sellerId: true },
-      });
-
-      // Auto-fulfill the IMEI checklist item (settings screenshot) only when check passed
-      if (result.imeiValid) {
-        await this.prisma.evidenceChecklist.updateMany({
-          where: {
-            verificationRequestId,
-            type: 'SCREENSHOT',
-          },
-          data: {
-            fulfilled: true,
-            fulfilledAt: new Date(),
-          },
-        });
-      }
-
-      this.logger.log(
-        `IMEI check complete for listing ${listingId} (IMEI ${maskImei(imei)}): status=${newStatus}, flags=[${result.flags.join(', ')}]`,
-      );
-
-      // If IMEI check auto-passed, propagate the result to listing-service and user-service.
-      // Both calls are fire-and-forget — errors are logged inside the sync services.
-      if (isClean) {
-        this.listingSync
-          .syncTrustLensResult(listingId, 'PASSED', undefined, [])
-          .catch(() => {});
-        this.userSync
-          .syncVerificationStatus(updatedRequest.sellerId, 'VERIFIED')
-          .catch(() => {});
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack : undefined;
+    } catch (err) {
+      // Fail open — a Redis outage must not block listing creation. Without the
+      // queue the check simply won't run and the request stays PENDING for review.
       this.logger.error(
-        `triggerIdentifierVerification failed for listing ${listingId}: ${message}`,
-        stack,
+        `Failed to enqueue IMEI check for listing ${data.listingId}: ${(err as Error).message}`,
       );
-      // Intentionally not re-throwing — verification failure must not block listing creation.
     }
+  }
+
+  /**
+   * Read the most recently cached IMEI check outcome for a listing, if any.
+   * Used by the API so callers can surface the result without a DB round-trip.
+   */
+  async getCachedImeiStatus(listingId: string): Promise<Record<string, unknown> | null> {
+    return await this.imeiCheckWorker.getCachedStatus(listingId);
   }
 
   async createVerificationRequest(dto: CreateVerificationRequestDto) {
@@ -243,16 +144,15 @@ export class TrustLensService {
       return verificationRequest;
     });
 
-    // Fire-and-forget IMEI check outside the transaction (network call)
+    // Enqueue the IMEI check for the durable Redis-backed worker (network call
+    // runs outside the request). The job persists in Redis so it is never lost.
     if (dto.imeiProvided || dto.serialProvided) {
-      this.triggerIdentifierVerification(
-        result.id,
-        dto.listingId,
-        dto.imei,
-        dto.serialNumber,
-        dto.brand,
-      ).catch((err) => {
-        this.logger.error('Background identifier verification error', err?.stack ?? err);
+      await this.enqueueImeiCheck({
+        verificationRequestId: result.id,
+        listingId: dto.listingId,
+        imei: dto.imei,
+        serialNumber: dto.serialNumber,
+        brand: dto.brand,
       });
     }
 
