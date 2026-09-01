@@ -246,7 +246,10 @@ function AdminDashboardContent() {
       } else if (activeTab === 'orders' && !ordersLoaded) {
         await withTimeout(loadOrders());
         setOrdersLoaded(true);
-      } else if (activeTab === 'verification' && !verificationsLoaded) {
+      } else if (activeTab === 'verification') {
+        // Always refetch if not yet loaded. Once loaded, the tab shows a manual
+        // Refresh button; users can also pull the queue by switching to another
+        // tab and back via the per-tab refresh handler.
         await withTimeout(loadVerifications());
         setVerificationsLoaded(true);
       }
