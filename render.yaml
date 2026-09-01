@@ -24,8 +24,11 @@ services:
           type: keyvalue
           name: veribuy-redis
           property: connectionString
+      # NOTE: the keyvalue `connectionString` is the INTERNAL host (red-…, plain
+      # redis://, private network). Enable TLS ONLY against the public endpoint
+      # (different host, port 6380). With the internal URL, keep TLS off.
       - key: REDIS_TLS
-        value: 'true'
+        value: 'false'
       - fromGroup: veribuy-secrets
       - key: STRIPE_SECRET_KEY
         sync: false
@@ -64,7 +67,7 @@ services:
           name: veribuy-redis
           property: connectionString
       - key: REDIS_TLS
-        value: 'true'
+        value: 'false'
       - fromGroup: veribuy-secrets
 
   # ─── Redis (Cache + IMEI job queue) ────────────────────────

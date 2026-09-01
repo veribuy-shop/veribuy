@@ -18,7 +18,9 @@ fi
 # PENDING because no IMEI check could run.
 if [ -n "$REDIS_URL" ]; then
   echo "Testing Redis connection..."
-  TEST_OUTPUT=$(timeout 5 node -e "
+  # Run the probe as an `if` condition so a failed test (non-zero exit) does NOT
+  # abort the script under `set -e` — this is a warning, not a hard failure.
+  if TEST_OUTPUT=$(timeout 5 node -e "
     const Redis = require('ioredis');
     const tlsOn = process.env.REDIS_TLS === 'true';
     const url = process.env.REDIS_URL;
@@ -28,13 +30,11 @@ if [ -n "$REDIS_URL" ]; then
     const r = new Redis(effective, { tls: tlsOn ? {} : undefined, retryStrategy: () => null });
     r.on('error', (e) => { console.error('TEST FAILED: ' + masked.split('@').pop() + ' -> ' + e.message); process.exit(1); });
     r.on('connect', () => { console.error('TEST OK: ' + masked); r.quit(); process.exit(0); });
-  " 2>&1)
-  TEST_CODE=$?
-  if [ "$TEST_CODE" -ne 0 ]; then
-    echo "WARNING: Redis connection test failed —$(printf " %s" "$TEST_OUTPUT")"
-    echo "         IMEI checks and caches may be unavailable. Check REDIS_URL / REDIS_TLS on this service."
-  else
+  " 2>&1); then
     echo "Redis connection OK: $(printf " %s" "$TEST_OUTPUT")"
+  else
+    echo "WARNING: Redis connection test failed:$(printf " %s" "$TEST_OUTPUT")"
+    echo "         IMEI checks and caches may be unavailable. Check REDIS_URL / REDIS_TLS on this service."
   fi
 else
   echo "NOTE: REDIS_URL is not set on this service — Redis will fall back to localhost."
