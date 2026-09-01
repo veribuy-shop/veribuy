@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Patch, Query, UseGuards, ForbiddenException, NotFoundException, ParseUUIDPipe, Headers, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Patch, Query, UseGuards, ForbiddenException, NotFoundException, ParseUUIDPipe, Headers, HttpCode, HttpStatus, UnauthorizedException } from '@nestjs/common';
 import * as nodeCrypto from 'crypto';
 import { TrustLensService } from './trust-lens.service';
 import { CreateVerificationRequestDto } from './dto/create-verification-request.dto';
@@ -60,6 +60,14 @@ export class TrustLensController {
       dto.reviewNotes,
       dto.integrityFlags,
     );
+  }
+
+  @Delete(':listingId')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  async remove(@Param('listingId', ParseUUIDPipe) listingId: string) {
+    await this.trustlensService.deleteVerificationRequest(listingId);
+    return { message: 'Verification request deleted' };
   }
 
   /**

@@ -217,31 +217,45 @@ function DashboardContent() {
     if (!user?.id) return;
     setLoading(true);
     try {
-      const [listRes, sellerOrdRes, buyerOrdRes, verRes, profileRes] = await Promise.all([
-        authFetch(`/api/listings?sellerId=${user.id}`),
-        authFetch(`/api/checkout/orders/seller/${user.id}`),
-        authFetch(`/api/checkout/orders/buyer/${user.id}`),
-        authFetch('/api/trust-lens?limit=100'),
-        fetch(`/api/users/${user.id}/profile`, { credentials: 'include' }),
+      // Wrap each fetch in a 10 s timeout so a single slow/stalled endpoint
+      // never blocks the entire dashboard from loading.
+      const withTimeout = <T,>(p: Promise<T>, ms = 10_000): Promise<T | null> =>
+        Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+
+      const [listRes, sellerOrdRes, buyerOrdRes, verRes, profileRes] = await Promise.allSettled([
+        withTimeout(authFetch(`/api/listings?sellerId=${user.id}`)),
+        withTimeout(authFetch(`/api/checkout/orders/seller/${user.id}`)),
+        withTimeout(authFetch(`/api/checkout/orders/buyer/${user.id}`)),
+        withTimeout(authFetch('/api/trust-lens?limit=100')),
+        withTimeout(fetch(`/api/users/${user.id}/profile`, { credentials: 'include' })),
       ]);
-      if (listRes.ok) {
-        const d = await listRes.json();
+
+      const settleOk = (r: PromiseSettledResult<Response | null>): Response | null =>
+        r.status === 'fulfilled' ? r.value : null;
+
+      const listVal = settleOk(listRes);
+      if (listVal?.ok) {
+        const d = await listVal.json();
         setListings(Array.isArray(d) ? d : (d.data ?? []));
       }
-      if (sellerOrdRes.ok) {
-        const d = await sellerOrdRes.json();
+      const sellerOrdVal = settleOk(sellerOrdRes);
+      if (sellerOrdVal?.ok) {
+        const d = await sellerOrdVal.json();
         setSellerOrders(Array.isArray(d) ? d : (d.data ?? []));
       }
-      if (buyerOrdRes.ok) {
-        const d = await buyerOrdRes.json();
+      const buyerOrdVal = settleOk(buyerOrdRes);
+      if (buyerOrdVal?.ok) {
+        const d = await buyerOrdVal.json();
         setBuyerOrders(Array.isArray(d) ? d : (d.data ?? []));
       }
-      if (verRes.ok) {
-        const d = await verRes.json();
+      const verVal = settleOk(verRes);
+      if (verVal?.ok) {
+        const d = await verVal.json();
         setVerifications(Array.isArray(d) ? d : (d.data ?? []));
       }
-      if (profileRes.ok) {
-        const p = await profileRes.json();
+      const profileVal = settleOk(profileRes);
+      if (profileVal?.ok) {
+        const p = await profileVal.json();
         setSellerRating(p.sellerRating ?? null);
         setTotalSalesCount(p.totalSales ?? 0);
         setVerificationStatus(p.verificationStatus ?? 'UNVERIFIED');

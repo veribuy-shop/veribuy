@@ -317,6 +317,23 @@ export class TrustLensService {
     return null;
   }
 
+  /**
+   * Delete a verification request and its cascade-related rows (IdentifierValidation,
+   * EvidenceChecklist). Used by admins to clean up stale or stuck queue items.
+   */
+  async deleteVerificationRequest(listingId: string): Promise<void> {
+    const existing = await this.prisma.verificationRequest.findUnique({
+      where: { listingId },
+      select: { id: true, status: true },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Verification request not found for listing ${listingId}`);
+    }
+
+    await this.prisma.verificationRequest.delete({ where: { listingId } });
+    this.logger.log(`Deleted verification request for listing ${listingId} (was ${existing.status})`);
+  }
+
   /** Number of FAILED verification requests before a verified seller is unverified. */
   private static readonly FAILURE_THRESHOLD = 3;
 

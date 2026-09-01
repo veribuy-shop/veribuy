@@ -12,32 +12,19 @@ export interface ImeiCheckJob {
   imei?: string;
   serialNumber?: string;
   brand?: string;
-  /** Number of prior failed attempts — used to cap retries so a failing check
-   * cannot loop forever, re-firing paid imeicheck.com requests. */
   attempts?: number;
 }
 
 const QUEUE_KEY = 'veribuy:imei-check:queue';
 const STATUS_PREFIX = 'veribuy:verification-status';
 const STATUS_TTL_SECONDS = 3600;
-/** Maximum number of times a job will be attempted before we give up on it. */
 const MAX_ATTEMPTS = 2;
 
-/** Mask IMEI for logging — show only last 4 digits. */
 function maskImei(imei?: string): string {
-  if (!imei) return '[not provided]';
+  if (!imei || imei.length < 4) return '[not provided]';
   return `****${imei.slice(-4)}`;
 }
 
-/**
- * Drains the Redis-backed IMEI check job queue.
- *
- * Unlike a fire-and-forget background promise (which can be lost if the process
- * is busy, crashes, or the request is interrupted before it runs), jobs are
- * persisted in Redis and consumed by this worker as soon as it is running. This
- * guarantees the imeicheck.com call actually happens even if it is enqueued
- * before the worker is ready.
- */
 @Injectable()
 export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ImeiCheckWorker.name);
@@ -54,13 +41,17 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     this.active = true;
-    // Poll with a short delay so a burst of enqueued jobs is processed promptly.
     this.pollTimer = setInterval(() => {
       this.drain().catch((err) =>
         this.logger.error(`IMEI check drain error: ${(err as Error).message}`, (err as Error).stack),
       );
     }, 1000);
-    this.logger.log('IMEI check worker started');
+    // Log whether the IMEI check API key is configured so deployment issues
+    // are visible immediately in Render logs.
+    const hasKey = Boolean(this.imeiCheckService['apiKey']);
+    this.logger.log(
+      `IMEI check worker started (apiKey=${hasKey ? 'SET' : 'MISSING — set IMEI_CHECK_API_KEY on Render'})`,
+    );
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -69,12 +60,6 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
     this.logger.log('IMEI check worker stopped');
   }
 
-  /**
-   * Return the Redis client or null when Redis is disabled/unavailable. The IMEI
-   * queue depends on Redis — if it is not connected (e.g. REDIS_DISABLED=true or
-   * a bad REDIS_URL) there is NO durable queue, so we surface it loudly instead
-   * of throwing a cryptic TypeError against an undefined client.
-   */
   private redisClient(): Redis | null {
     let client: Redis;
     try {
@@ -92,11 +77,6 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
     return client;
   }
 
-  /**
-   * Enqueue an IMEI check job — persists the request in Redis so it survives
-   * worker restarts and is never lost. Returns the number of jobs in the queue.
-   * Throws when Redis is unavailable so callers do not silently skip verification.
-   */
   async enqueue(job: ImeiCheckJob): Promise<number> {
     const client = this.redisClient();
     if (!client) {
@@ -109,10 +89,6 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
   private async drain(): Promise<void> {
     const client = this.redisClient();
     if (!client) return;
-    // Non-blocking pop; jobs that cannot be processed stay in the queue and are
-    // retried on the next tick (up to MAX_ATTEMPTS). This keeps the process from
-    // being wedged by a slow upstream API while bounding how many paid API calls
-    // a single failing job can trigger.
     while (this.active) {
       const item = await client.lpop(QUEUE_KEY);
       if (!item) return;
@@ -120,7 +96,6 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       try {
         job = JSON.parse(item);
       } catch {
-        // Malformed job — drop it rather than retry forever.
         this.logger.error(`Dropped malformed IMEI check job`);
         continue;
       }
@@ -133,8 +108,6 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
           (err as Error).stack,
         );
         if (attempts < MAX_ATTEMPTS) {
-          // Do not silently drop — requeue with an incremented attempt count so a
-          // transient failure is retried, but never beyond MAX_ATTEMPTS.
           await client
             .rpush(QUEUE_KEY, JSON.stringify({ ...job, attempts }))
             .catch(() => {});
@@ -142,15 +115,19 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
           this.logger.error(
             `IMEI check job for listing ${job.listingId} exceeded MAX_ATTEMPTS — giving up.`,
           );
+          // Write terminal FAILED status so the FE doesn't poll forever.
+          await this.cacheStatus(
+            job.verificationRequestId,
+            job.listingId,
+            'FAILED',
+            { error: 'IMEI check failed after retries' },
+          );
+          await this.writeTerminalFailure(job);
         }
       }
     }
   }
 
-  /**
-   * Reflect an in-progress / completed check outcome so callers (FE) can read it
-   * immediately without waiting for a full DB round-trip.
-   */
   private async cacheStatus(
     verificationRequestId: string,
     listingId: string,
@@ -166,30 +143,52 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       .catch(() => {});
   }
 
-  /** Read a cached check outcome (null when absent/expired). */
   async getCachedStatus(listingId: string): Promise<Record<string, unknown> | null> {
     return await this.redis.get<Record<string, unknown>>(`${STATUS_PREFIX}:listing:${listingId}`);
   }
 
   /**
-   * Run the real IMEI Check API (services 3, 4, 5) and write the outcome to
-   * IdentifierValidation + VerificationRequest, syncing terminal states onward.
-   * Never throws on upstream failure — degrades gracefully and leaves the
-   * request in PENDING status.
+   * Write a FAILED status back to the VerificationRequest + Listing when the
+   * worker gives up. Without this, the DB record stays PENDING and the FE polls
+   * forever because no terminal status ever appears in Redis.
    */
+  private async writeTerminalFailure(job: ImeiCheckJob): Promise<void> {
+    try {
+      await this.prisma.verificationRequest.update({
+        where: { id: job.verificationRequestId },
+        data: {
+          status: 'FAILED',
+          reviewNotes: 'IMEI check failed after retries — please re-list and try again.',
+          completedAt: new Date(),
+        },
+      });
+      await this.listingSync
+        .syncTrustLensResult(job.listingId, 'FAILED', undefined, [])
+        .catch(() => {});
+    } catch (err) {
+      this.logger.error(
+        `Failed to write terminal FAILED status for listing ${job.listingId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
   async process(job: ImeiCheckJob): Promise<void> {
     const { verificationRequestId, listingId, imei, serialNumber, brand } = job;
 
     if (!imei) {
       this.logger.warn(
-        `IMEI check job without IMEI for listing ${listingId} — skipping`,
+        `IMEI check job without IMEI for listing ${listingId} — writing FAILED and skipping`,
       );
+      await this.cacheStatus(verificationRequestId, listingId, 'FAILED', {
+        error: 'No IMEI provided',
+      });
+      await this.writeTerminalFailure(job);
       return;
     }
 
-    this.cacheStatus(verificationRequestId, listingId, 'IN_PROGRESS', {});
+    // Write IN_PROGRESS so the FE shows a live indicator immediately.
+    await this.cacheStatus(verificationRequestId, listingId, 'IN_PROGRESS', {});
 
-    // Guard: skip if already in a terminal state set by admin.
     const current = await this.prisma.verificationRequest.findUnique({
       where: { id: verificationRequestId },
       select: { status: true, completedAt: true },
@@ -205,9 +204,22 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       `Running IMEI checks for listing ${listingId}, IMEI ${maskImei(imei)}, brand=${brand ?? 'unknown'}`,
     );
 
-    const result = await this.imeiCheckService.checkImei(imei, brand);
+    let result;
+    try {
+      result = await this.imeiCheckService.checkImei(imei, brand);
+    } catch (err) {
+      this.logger.error(
+        `checkImei threw for listing ${listingId}: ${(err as Error).message}`,
+        (err as Error).stack,
+      );
+      // Write terminal FAILED to Redis + DB so the FE stops polling.
+      await this.cacheStatus(verificationRequestId, listingId, 'FAILED', {
+        error: (err as Error).message,
+      });
+      await this.writeTerminalFailure(job);
+      return;
+    }
 
-    // Strip `price` field from rawApiResponse before persisting.
     const sanitizedRaw = Object.fromEntries(
       Object.entries(result.rawApiResponse).map(([key, val]) => {
         if (val && typeof val === 'object' && 'price' in (val as object)) {
@@ -218,11 +230,10 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       }),
     );
 
-    // Write results back to IdentifierValidation.
     await this.prisma.identifierValidation.update({
       where: { verificationRequestId },
       data: {
-        imei: imei,
+        imei,
         serialNumber: serialNumber ?? null,
         imeiValid: result.imeiValid,
         serialValid: null,
@@ -240,19 +251,19 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
     const newStatus = isClean ? 'PASSED' : isNotRun ? 'PENDING' : 'REQUIRES_REVIEW';
     const integrityFlags = result.flags.filter((f) => f !== 'CLEAN' && f !== 'NOT_RUN');
 
-    // Update VerificationRequest with flags + new status. Never overwrite
-    // completedAt if it was already set (admin may have set it).
     const updatedRequest = await this.prisma.verificationRequest.update({
       where: { id: verificationRequestId },
       data: {
         status: newStatus,
         integrityFlags: { set: integrityFlags as any },
         ...(isClean && !current?.completedAt ? { completedAt: new Date() } : {}),
+        // When the API key is missing and checks don't run, mark as FAILED
+        // so the listing isn't stuck in limbo forever.
+        ...(isNotRun ? { completedAt: new Date(), reviewNotes: 'IMEI check could not run — API key may be missing' } : {}),
       },
       select: { sellerId: true },
     });
 
-    // Auto-fulfill the IMEI checklist item (settings screenshot) on a valid check.
     if (result.imeiValid) {
       await this.prisma.evidenceChecklist.updateMany({
         where: { verificationRequestId, type: 'SCREENSHOT' },
@@ -264,7 +275,6 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       `IMEI check complete for listing ${listingId} (IMEI ${maskImei(imei)}): status=${newStatus}, flags=[${result.flags.join(', ')}]`,
     );
 
-    // Cache the outcome for immediate FE read.
     await this.cacheStatus(verificationRequestId, listingId, newStatus, {
       integrityFlags,
       imeiValid: result.imeiValid,
@@ -277,7 +287,6 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       verifiedAt: new Date().toISOString(),
     });
 
-    // If the check auto-passed, propagate to listing + user services.
     if (isClean) {
       this.listingSync
         .syncTrustLensResult(listingId, 'PASSED', undefined, [])

@@ -138,7 +138,10 @@ export class ImeiCheckService {
    */
   async checkImei(imei: string, brand?: string): Promise<ImeiCheckResult> {
     if (!this.apiKey) {
-      this.logger.warn('IMEI_CHECK_API_KEY is not set — skipping IMEI verification');
+      this.logger.error(
+        'CRITICAL: IMEI_CHECK_API_KEY is not set — all IMEI checks will return NOT_RUN. ' +
+          'Set IMEI_CHECK_API_KEY in your backend environment variables on Render.',
+      );
       return this.buildDefaultResult({ error: 'API key not configured' });
     }
 
