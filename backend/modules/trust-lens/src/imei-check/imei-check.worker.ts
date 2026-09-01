@@ -30,6 +30,8 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ImeiCheckWorker.name);
   private active = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private lastRedisWarnAt = 0;
+  private static readonly REDIS_WARN_INTERVAL_MS = 30_000;
 
   constructor(
     private prisma: PrismaService,
@@ -67,11 +69,19 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
     } catch {
       client = undefined as unknown as Redis;
     }
-    if (!client || (client as any).status === 'end' || (client as any).status === 'close') {
-      this.logger.error(
-        'IMEI queue unavailable: Redis is not connected (check REDIS_DISABLED / REDIS_URL / REDIS_TLS). ' +
-          'IMEI checks will NOT run while the queue is down.',
-      );
+    // Commands are only writable once the connection is fully 'ready'. While
+    // Redis is connecting/down the status is 'wait'/'connecting'/'reconnecting'
+    // and any command would throw ("Stream isn't writeable...") — so bail out
+    // here instead. Log at most every 30s to avoid per-second log spam.
+    if (!client || (client as any).status !== 'ready') {
+      const now = Date.now();
+      if (now - this.lastRedisWarnAt > ImeiCheckWorker.REDIS_WARN_INTERVAL_MS) {
+        this.lastRedisWarnAt = now;
+        this.logger.warn(
+          'IMEI queue unavailable: Redis is not ready (check REDIS_URL / REDIS_TLS). ' +
+            'IMEI checks will NOT run while the queue is down.',
+        );
+      }
       return null;
     }
     return client;
