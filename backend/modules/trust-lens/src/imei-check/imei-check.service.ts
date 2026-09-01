@@ -122,7 +122,8 @@ export class ImeiCheckService {
   /**
    * Run IMEI checks in parallel, with brand-aware service selection:
    *
-   *   Apple     → service 3 (Apple Full Info) + service 4 (iCloud check) + service 5 (GSMA blacklist)
+   *   Apple     → service 3 (Apple Full Info — iCloud/FMI lock, model info) + service 5
+   *               (GSMA blacklist, kept live so a change in blacklist state stays current)
    *   Samsung   → service 21 (Info & KNOX GUARD) + service 5 (GSMA blacklist)
    *   Xiaomi    → service 25 (MI LOCK & INFO) + service 5
    *   OnePlus   → service 27 (IMEI INFO) + service 5
@@ -167,16 +168,16 @@ export class ImeiCheckService {
     let brandLockFlag: string | null = null;
 
     if (apple) {
-      // --- Apple: run services 3, 4, 5 in parallel ---
-      checksRun.push('apple_full_info', 'icloud_check', 'gsma_blacklist');
+      // --- Apple: run services 3 + 5 in parallel (service 4 iCloud check is
+      // redundant — Apple Full Info already returns iCloud/FMI lock state). ---
+      checksRun.push('apple_full_info', 'gsma_blacklist');
 
-      const [service3, service4, service5] = await Promise.allSettled([
+      const [service3, service5] = await Promise.allSettled([
         this.callService(3, imei), // Apple Full Info [No Carrier] — $0.07
-        this.callService(4, imei), // iCloud Clean/Lost Check      — $0.02
-        this.callService(5, imei), // Blacklist Status (GSMA)      — $0.02
+        this.callService(5, imei), // Blacklist Status (GSMA)      — $0.02, kept live
       ]);
 
-      // Service 3 — Apple Full Info
+      // Service 3 — Apple Full Info (device model + iCloud/FMI lock state)
       if (service3.status === 'fulfilled') {
         raw['service3'] = service3.value;
         const obj = service3.value.object;
@@ -184,39 +185,40 @@ export class ImeiCheckService {
           deviceModel = (obj['model'] as string) ?? undefined;
           deviceColor = (obj['color'] as string) ?? undefined;
           deviceStorage = (obj['storage'] as string) ?? undefined;
+
           if (obj['fmiOn'] !== undefined) fmiOn = Boolean(obj['fmiOn']);
           if (obj['fmiON'] !== undefined) fmiOn = Boolean(obj['fmiON']);
+
+          // iCloud lock may come through as activation/icloud lock keys or
+          // via lost/FMI state — treat any of them as locked for Apple devices.
+          const lockVal =
+            obj['icloudLock'] ?? obj['icloud_lock'] ?? obj['iCloudLock'] ??
+            obj['activationLock'] ?? obj['activation_lock'] ?? obj['lostMode'] ?? obj['lost_mode'];
+          if (lockVal === true || lockVal === 'true' || lockVal === 1 || lockVal === 'locked') {
+            icloudLocked = true;
+          }
+          const lockStr = String(lockVal ?? '').toLowerCase();
+          if (lockStr.includes('locked') || lockStr.includes('on')) icloudLocked = true;
+
+          // Service 3 can also surface blacklist/stolen state; merge it with the
+          // GSMA result so both sources are captured.
+          const objBlacklist = obj['blacklisted'] ?? obj['blacklist'];
+          if (objBlacklist === true || objBlacklist === 'true' || objBlacklist === 1) blacklisted = true;
+          const objStolen = obj['stolen'] ?? obj['reportedStolen'] ?? obj['reported_stolen'];
+          if (objStolen === true || objStolen === 'true' || objStolen === 1) reportedStolen = true;
         }
+        const s3result = (service3.value.result ?? '').toLowerCase();
+        if (s3result.includes('blacklist') || s3result.includes('stolen')) blacklisted = true;
+        if (s3result.includes('stolen')) reportedStolen = true;
       } else {
         this.logger.warn(`ImeiCheck service 3 failed: ${String(service3.reason)}`);
         raw['service3Error'] = String(service3.reason);
       }
 
-      // Service 4 — iCloud Clean/Lost Check
-      if (service4.status === 'fulfilled') {
-        raw['service4'] = service4.value;
-        const obj = service4.value.object;
-        if (obj) {
-          const lostMode = obj['lostMode'] ?? obj['lost_mode'];
-          const icloudLock = obj['icloudLock'] ?? obj['icloud_lock'] ?? obj['iCloudLock'];
-          if (lostMode === true || lostMode === 'true' || lostMode === 1) icloudLocked = true;
-          if (icloudLock === true || icloudLock === 'true' || icloudLock === 1) icloudLocked = true;
-          if (fmiOn === undefined) {
-            const fmi = obj['fmiOn'] ?? obj['fmiON'];
-            if (fmi !== undefined) fmiOn = Boolean(fmi);
-          }
-        }
-        const result = (service4.value.result ?? '').toLowerCase();
-        if (result.includes('lost') || result.includes('locked')) icloudLocked = true;
-      } else {
-        this.logger.warn(`ImeiCheck service 4 failed: ${String(service4.reason)}`);
-        raw['service4Error'] = String(service4.reason);
-      }
-
       // fmiOn counts as iCloud locked for Apple devices
       if (fmiOn === true) icloudLocked = true;
 
-      // Service 5 — GSMA Blacklist
+      // Service 5 — GSMA Blacklist (brand-agnostic live safety net)
       if (service5.status === 'fulfilled') {
         raw['service5'] = service5.value;
         ({ blacklisted, reportedStolen } = this.parseBlacklistResult(service5.value, blacklisted, reportedStolen));
