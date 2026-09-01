@@ -473,11 +473,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <p className="text-[var(--color-text-muted)] text-xs mb-0.5">IMEI</p>
-                          <p className="font-mono font-medium">{iv.imei || '—'}</p>
+                          <p className="font-mono font-medium">{iv.imei || listing.imei || '—'}</p>
                         </div>
                         <div>
                           <p className="text-[var(--color-text-muted)] text-xs mb-0.5">Serial Number</p>
-                          <p className="font-mono font-medium">{iv.serialNumber || '—'}</p>
+                          <p className="font-mono font-medium">{iv.serialNumber || listing.serialNumber || '—'}</p>
                         </div>
                       </div>
 
@@ -517,7 +517,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
                       {/* Check status flags */}
                       <div className="border border-[var(--color-border)] rounded-xl divide-y divide-[var(--color-border)]/30 text-sm">
                         <div className="flex items-center justify-between px-4 py-2.5">
-                          <span className="text-[var(--color-text)]">IMEI Valid</span>
+                          <span className="text-[var(--color-text)]">IMEI Status</span>
                           {statusBadge(iv.imeiValid, 'Valid', 'Invalid')}
                         </div>
                         <div className="flex items-center justify-between px-4 py-2.5">
