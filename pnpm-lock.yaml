@@ -165,6 +165,9 @@ importers:
       '@types/pg':
         specifier: ^8.16.0
         version: 8.16.0
+      ioredis:
+        specifier: ^5.4.2
+        version: 5.10.0
       jest:
         specifier: ^29.7.0
         version: 29.7.0(@types/node@22.19.11)(ts-node@10.9.2(@types/node@22.19.11)(typescript@5.9.3))
