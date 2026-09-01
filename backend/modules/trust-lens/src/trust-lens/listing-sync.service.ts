@@ -28,16 +28,18 @@ export class ListingSyncService {
   }
 
   /**
-   * Sync a terminal Trust Lens review result to the listing-service.
+   * Sync a Trust Lens review result to the listing-service.
    *
    * @param listingId  The listing whose trustLensStatus must be updated.
-   * @param status     'PASSED' or 'FAILED' (only terminal states are synced).
+   * @param status     'PASSED', 'FAILED', or 'REQUIRES_REVIEW'. PASSED activates
+   *                   the listing, FAILED rejects it, and REQUIRES_REVIEW records
+   *                   the human-review state while leaving the listing DRAFT.
    * @param conditionGrade  Optional condition grade to persist on the listing.
    * @param integrityFlags  Optional integrity flags to persist on the listing.
    */
   async syncTrustLensResult(
     listingId: string,
-    status: 'PASSED' | 'FAILED',
+    status: 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW',
     conditionGrade?: string,
     integrityFlags?: string[],
   ): Promise<void> {

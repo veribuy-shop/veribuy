@@ -297,12 +297,20 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       verifiedAt: new Date().toISOString(),
     });
 
-    if (isClean) {
+    if (newStatus === 'PASSED') {
       this.listingSync
         .syncTrustLensResult(listingId, 'PASSED', undefined, [])
         .catch(() => {});
       this.userSync
         .syncVerificationStatus(updatedRequest.sellerId, 'VERIFIED')
+        .catch(() => {});
+    } else if (newStatus === 'REQUIRES_REVIEW') {
+      // Sync the human-review state (plus the integrity flags that triggered it) to
+      // the listing so the verification page can render the report even when the
+      // FE's Redis cache read fails. The listing stays DRAFT — updateTrustLensStatus
+      // only activates on PASSED / rejects on FAILED.
+      this.listingSync
+        .syncTrustLensResult(listingId, 'REQUIRES_REVIEW', undefined, integrityFlags)
         .catch(() => {});
     }
   }
