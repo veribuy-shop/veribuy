@@ -244,11 +244,11 @@ export default function CreateListingPage() {
     }
     
     if (step === 4) {
-      // Smartphones must be verified against BOTH an IMEI and a serial number
-      // (enforced server-side by Trust Lens too).
+      // Smartphones are verified by IMEI only (serial optional). This matches the
+      // server-side Trust Lens requirement.
       if (formData.deviceType === 'SMARTPHONE') {
-        if (!formData.imei || !formData.serialNumber) {
-          setError('Smartphones require both an IMEI and a Serial Number for verification');
+        if (!formData.imei) {
+          setError('Smartphones require an IMEI for verification');
           return false;
         }
       } else {
@@ -767,7 +767,7 @@ export default function CreateListingPage() {
                   <AlertTriangle className="w-4 h-4 inline mr-1" aria-hidden="true" /> Verification Requirements
                 </h3>
                 <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
-                  <li>• IMEI or Serial Number (required for phones/tablets/smartwatches; laptops & AirPods may use serial only)</li>
+                  <li>• IMEI required for phones; serial optional. Tablets/smartwatches need IMEI or serial (laptops & AirPods may use serial only)</li>
                   <li>• At least 3 high-quality device images (various angles)</li>
                   <li>• At least 1 screen/display image (powered on)</li>
                   <li>• Optional: Screenshots of Settings showing device info</li>

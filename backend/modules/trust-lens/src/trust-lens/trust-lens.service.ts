@@ -79,7 +79,7 @@ export class TrustLensService {
   }
 
   async createVerificationRequest(dto: CreateVerificationRequestDto) {
-    // Smartphones must be verified against BOTH an IMEI and a serial number.
+    // Smartphones must be verified with an IMEI (serial is optional).
     // Look up the listing's device type to enforce this server-side.
     const listing = await this.prisma.listing.findUnique({
       where: { id: dto.listingId },
@@ -91,9 +91,9 @@ export class TrustLensService {
     }
 
     if (listing.deviceType === DeviceType.SMARTPHONE) {
-      if (!dto.imeiProvided || !dto.serialProvided) {
+      if (!dto.imeiProvided) {
         throw new BadRequestException(
-          'Smartphones require both an IMEI and a serial number for verification',
+          'Smartphones require an IMEI for verification',
         );
       }
     }
