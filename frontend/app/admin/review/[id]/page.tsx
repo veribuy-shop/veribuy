@@ -98,33 +98,50 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     setListingNotFound(false);
     setVerificationNotFound(false);
     try {
-      // Fetch listing details and verification request in parallel
-      const [listingRes, verificationRes, evidenceRes] = await Promise.all([
-        fetch(`/api/listings/${listingId}`, { credentials: 'include' }),
-        fetch(`/api/trust-lens?listingId=${listingId}`, { credentials: 'include' }),
-        fetch(`/api/evidence?listingId=${listingId}`, { credentials: 'include' }),
+      const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T | null> =>
+        Promise.race([p, new Promise<null>(r => setTimeout(() => r(null), ms))]);
+
+      const [listingRes, verificationRes, evidenceRes] = await Promise.allSettled([
+        withTimeout(fetch(`/api/listings/${listingId}`, { credentials: 'include' }), 10_000),
+        withTimeout(fetch(`/api/trust-lens?listingId=${listingId}`, { credentials: 'include' }), 10_000),
+        withTimeout(fetch(`/api/evidence?listingId=${listingId}`, { credentials: 'include' }), 10_000),
       ]);
 
-      if (listingRes.status === 404) {
+      const settleOk = <T,>(r: PromiseSettledResult<T | null>): T | null =>
+        r.status === 'fulfilled' ? r.value : null;
+
+      const lr = settleOk(listingRes);
+      const vr = settleOk(verificationRes);
+      const er = settleOk(evidenceRes);
+
+      if (!lr) {
         setListingNotFound(true);
         return;
       }
-      if (listingRes.ok) {
-        const listingData = await listingRes.json();
-        setListing(listingData);
+
+      if (lr.status === 404) {
+        setListingNotFound(true);
+        return;
+      }
+      if (lr.ok) {
+        setListing(await lr.json());
       }
 
-      if (verificationRes.status === 404 || verificationRes.status === 403) {
+      if (vr) {
+        if (vr.status === 404 || vr.status === 403) {
+          setVerificationNotFound(true);
+        } else if (vr.ok) {
+          const verificationData = await vr.json();
+          setVerification(verificationData);
+          setReviewNotes(verificationData.reviewNotes || '');
+          setSelectedIntegrityFlags(verificationData.integrityFlags || []);
+        }
+      } else {
         setVerificationNotFound(true);
-      } else if (verificationRes.ok) {
-        const verificationData = await verificationRes.json();
-        setVerification(verificationData);
-        setReviewNotes(verificationData.reviewNotes || '');
-        setSelectedIntegrityFlags(verificationData.integrityFlags || []);
       }
 
-      if (evidenceRes.ok) {
-        const evidenceData = await evidenceRes.json();
+      if (er?.ok) {
+        const evidenceData = await er.json();
         if (evidenceData.items) {
           setEvidence(evidenceData.items);
           if (evidenceData.items.length > 0) {

@@ -46,6 +46,42 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function DELETE(request: NextRequest) {
+  try {
+    // Require ADMIN role — only admins can delete verification requests
+    const authResult = await requireRole(request, 'ADMIN');
+    if ('error' in authResult) {
+      return authResult.error;
+    }
+
+    const { searchParams } = new URL(request.url);
+    const listingId = searchParams.get('listingId');
+
+    if (!listingId) {
+      return NextResponse.json({ error: 'listingId is required' }, { status: 400 });
+    }
+
+    const response = await fetch(`${TRUST_LENS_SERVICE_URL}/trust-lens/${listingId}`, {
+      method: 'DELETE',
+      headers: createAuthHeaders(authResult.token),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Failed to delete verification request' }));
+      return NextResponse.json(error, { status: response.status });
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Trust Lens API proxy error:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete verification request' },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Get and validate access token

@@ -222,30 +222,32 @@ function AdminDashboardContent() {
   // Load data based on active tab (lazy loading)
   const loadTabData = useCallback(async () => {
     setTabLoading(prev => ({ ...prev, [activeTab]: true }));
+    const withTimeout = <T,>(p: Promise<T>, ms = 10_000): Promise<T | null> =>
+      Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
     try {
       if (activeTab === 'dashboard') {
-        const tasks: Promise<void>[] = [];
-        if (!statsLoaded) tasks.push(loadStats().then(() => setStatsLoaded(true)));
-        if (!verificationsLoaded) tasks.push(loadVerifications().then(() => setVerificationsLoaded(true)));
-        if (!usersLoaded) tasks.push(loadUsers().then(() => setUsersLoaded(true)));
-        await Promise.all(tasks);
+        await Promise.allSettled([
+          statsLoaded ? Promise.resolve(null) : withTimeout(loadStats()).then(() => setStatsLoaded(true)),
+          verificationsLoaded ? Promise.resolve(null) : withTimeout(loadVerifications()).then(() => setVerificationsLoaded(true)),
+          usersLoaded ? Promise.resolve(null) : withTimeout(loadUsers()).then(() => setUsersLoaded(true)),
+        ]);
       } else if (activeTab === 'overview' && !statsLoaded) {
-        await loadStats();
+        await withTimeout(loadStats());
         setStatsLoaded(true);
       } else if (activeTab === 'analytics' && !analyticsLoaded) {
-        await loadAnalytics();
+        await withTimeout(loadAnalytics());
         setAnalyticsLoaded(true);
       } else if (activeTab === 'users' && !usersLoaded) {
-        await loadUsers();
+        await withTimeout(loadUsers());
         setUsersLoaded(true);
       } else if (activeTab === 'listings' && !listingsLoaded) {
-        await loadListings();
+        await withTimeout(loadListings());
         setListingsLoaded(true);
       } else if (activeTab === 'orders' && !ordersLoaded) {
-        await loadOrders();
+        await withTimeout(loadOrders());
         setOrdersLoaded(true);
       } else if (activeTab === 'verification' && !verificationsLoaded) {
-        await loadVerifications();
+        await withTimeout(loadVerifications());
         setVerificationsLoaded(true);
       }
     } catch (error) {
@@ -262,17 +264,25 @@ function AdminDashboardContent() {
 
   const loadStats = async () => {
     try {
-      const [usersRes, listingsRes, ordersRes, verificationsRes] = await Promise.all([
-        authFetch('/api/admin/users'),
-        authFetch('/api/admin/listings'),
-        authFetch('/api/admin/orders?limit=100&enrich=false'),
-        authFetch('/api/trust-lens?limit=1000'),
+      const withTimeout = <T,>(p: Promise<T>, ms = 10_000): Promise<T | null> =>
+        Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
+
+      const results = await Promise.allSettled([
+        withTimeout(authFetch('/api/admin/users')),
+        withTimeout(authFetch('/api/admin/listings')),
+        withTimeout(authFetch('/api/admin/orders?limit=100&enrich=false')),
+        withTimeout(authFetch('/api/trust-lens?limit=1000')),
       ]);
 
-      const usersData = usersRes.ok ? await usersRes.json() : { data: [] };
-      const listingsData = listingsRes.ok ? await listingsRes.json() : { data: [] };
-      const ordersData = ordersRes.ok ? await ordersRes.json() : { data: [] };
-      const verificationsData = verificationsRes.ok ? await verificationsRes.json() : { data: [] };
+      const settleOk = (r: PromiseSettledResult<Response | null>): Response | null =>
+        r.status === 'fulfilled' ? r.value : null;
+
+      const [usersResponse, listingsResponse, ordersResponse, verificationsResponse] = results.map(settleOk);
+
+      const usersData = usersResponse?.ok ? await usersResponse.json() : { data: [] };
+      const listingsData = listingsResponse?.ok ? await listingsResponse.json() : { data: [] };
+      const ordersData = ordersResponse?.ok ? await ordersResponse.json() : { data: [] };
+      const verificationsData = verificationsResponse?.ok ? await verificationsResponse.json() : { data: [] };
 
       const totalUsers = Array.isArray(usersData) ? usersData.length : (usersData.data?.length || 0);
       const allListings = Array.isArray(listingsData) ? listingsData : (listingsData.data || []);
@@ -1336,10 +1346,19 @@ function VerificationTab({
   verifications: VerificationRequest[];
   onRefresh: () => void;
 }) {
+  const { authFetch } = useAuth();
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
+  const [deletingRequest, setDeletingRequest] = useState<VerificationRequest | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [localVerifications, setLocalVerifications] = useState(verifications);
+  const [actionError, setActionError] = useState('');
 
-  const filtered = verifications.filter(v => {
+  useEffect(() => {
+    setLocalVerifications(verifications);
+  }, [verifications]);
+
+  const filtered = localVerifications.filter(v => {
     const matchesStatus = statusFilter === 'ALL' || v.status === statusFilter;
     const matchesSearch =
       !searchTerm ||
@@ -1359,7 +1378,29 @@ function VerificationTab({
     }
   };
 
-  const pending = verifications.filter(v => v.status === 'PENDING' || v.status === 'IN_PROGRESS').length;
+  const pending = localVerifications.filter(v => v.status === 'PENDING' || v.status === 'IN_PROGRESS').length;
+
+  const handleDeleteRequest = async () => {
+    if (!deletingRequest) return;
+    setIsDeleting(true);
+    setActionError('');
+    try {
+      const res = await authFetch(`/api/trust-lens?listingId=${deletingRequest.listingId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setLocalVerifications(prev => prev.filter(v => v.listingId !== deletingRequest.listingId));
+        setDeletingRequest(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setActionError(data.message || data.error || 'Failed to delete verification request');
+        setDeletingRequest(null);
+      }
+    } catch {
+      setActionError('Failed to delete verification request');
+      setDeletingRequest(null);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -1454,12 +1495,20 @@ function VerificationTab({
                       {new Date(v.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-5 py-4 whitespace-nowrap text-sm">
-                      <Link
-                        href={`/admin/review/${v.listingId}`}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-md text-xs hover:opacity-90 transition-opacity"
-                      >
-                        Review
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/admin/review/${v.listingId}`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-[var(--color-primary)] text-white rounded-md text-xs hover:opacity-90 transition-opacity"
+                        >
+                          Review
+                        </Link>
+                        <button
+                          onClick={() => setDeletingRequest(v)}
+                          className="inline-flex items-center px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-danger)] rounded-md text-xs hover:bg-[var(--color-danger)]/5 transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -1470,8 +1519,44 @@ function VerificationTab({
       </div>
 
       <p className="text-sm text-[var(--color-text-muted)] text-center">
-        Showing {filtered.length} of {verifications.length} requests
+        Showing {filtered.length} of {localVerifications.length} requests
       </p>
+
+      {actionError && (
+        <div className="bg-[var(--color-danger)]/5 border border-[var(--color-danger)]/20 text-[var(--color-danger)] px-4 py-3 rounded-xl flex items-start gap-3">
+          <span className="flex-1 text-sm">{actionError}</span>
+          <button onClick={() => setActionError('')} className="hover:opacity-70 text-lg leading-none">&times;</button>
+        </div>
+      )}
+
+      {deletingRequest && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-[var(--color-text)] mb-2">Delete verification request?</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mb-6">
+              This will permanently remove the verification record and its associated
+              evidence checklist for listing <span className="font-mono">{deletingRequest.listingId.slice(0, 8)}…</span>.
+              This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeletingRequest(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm bg-[var(--color-surface-alt)] hover:bg-[var(--color-border)] rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteRequest}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm bg-[var(--color-danger)] text-white rounded-md hover:opacity-90 disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
