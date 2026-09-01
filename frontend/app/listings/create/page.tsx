@@ -403,8 +403,14 @@ export default function CreateListingPage() {
         // Don't block the flow if verification fails
       }
       
-      // Redirect to the listing detail page
-      router.push(`/listings/${listing.id}${verificationFailed ? '?verification=failed' : ''}`);
+      // For IMEI-verified smartphones, route to the dedicated Verification Report
+      // stage so the seller sees the live check run and the pass/fail outcome.
+      // Other device types keep going to the listing detail page.
+      if (formData.deviceType === 'SMARTPHONE' && formData.imei) {
+        router.push(`/verification/${listing.id}`);
+      } else {
+        router.push(`/listings/${listing.id}${verificationFailed ? '?verification=failed' : ''}`);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to create listing');
       setIsSubmitting(false);
