@@ -37,6 +37,7 @@ function getClient(): Redis | null {
         retryStrategy: (times: number) => Math.min(times * 50, 2000),
         maxRetriesPerRequest: 1,
         enableOfflineQueue: false,
+        connectTimeout: 10_000,
       })
     : new Redis({
         host: process.env.REDIS_HOST || 'localhost',
@@ -47,7 +48,16 @@ function getClient(): Redis | null {
         retryStrategy: (times: number) => Math.min(times * 50, 2000),
         maxRetriesPerRequest: 1,
         enableOfflineQueue: false,
+        connectTimeout: 10_000,
       });
+
+  let target = effectiveUrl ?? `redis://${process.env.REDIS_HOST || 'localhost'}:${parseInt(process.env.REDIS_PORT || (tlsEnabled ? '6380' : '6379'))}`;
+  try {
+    target = target.replace(/\/\/[^@]+@/, '//***@');
+  } catch {
+    // ignore parse issues in the log-only path
+  }
+  console.log(`[Frontend Redis] connecting to ${target} (tls=${tlsEnabled})`);
 
   // Do not let an idle client keep a serverless/edge process alive — unref the
   // underlying socket so the event loop can exit if nothing else is pending.

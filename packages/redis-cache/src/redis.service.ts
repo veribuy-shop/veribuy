@@ -15,11 +15,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     // Local dev leaves this unset so plain Redis on 6379 continues to work.
     const tlsEnabled = process.env.REDIS_TLS === 'true';
 
-    // Prefer REDIS_URL (Railway injects this automatically) over individual vars.
+    // Prefer REDIS_URL (Render injects this automatically) over individual vars.
     const redisUrl = process.env.REDIS_URL;
 
     // When REDIS_TLS is set and the URL uses plain redis://, promote it to rediss://
-    // so ioredis activates TLS on the same URL path.
+    // so ioredis activates TLS on the same URL path (the port in the URL is kept).
     const effectiveUrl = redisUrl
       ? tlsEnabled && redisUrl.startsWith('redis://')
         ? redisUrl.replace(/^redis:\/\//, 'rediss://')
@@ -30,6 +30,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       ? new Redis(effectiveUrl, {
           tls: tlsEnabled ? {} : undefined,
           retryStrategy: (times: number) => Math.min(times * 50, 2000),
+          connectTimeout: 10_000,
+          maxRetriesPerRequest: 1,
+          enableOfflineQueue: false,
         })
       : new Redis({
           host: process.env.REDIS_HOST || 'localhost',
@@ -38,14 +41,28 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
           db: parseInt(process.env.REDIS_DB || '0'),
           tls: tlsEnabled ? {} : undefined,
           retryStrategy: (times: number) => Math.min(times * 50, 2000),
+          connectTimeout: 10_000,
+          maxRetriesPerRequest: 1,
+          enableOfflineQueue: false,
         });
 
+    // Log the exact target (password masked) so Render logs show what we are
+    // actually trying to reach — a missing/misconfigured REDIS_URL is otherwise
+    // indistinguishable from a firewall/port problem.
+    let target = effectiveUrl ?? `redis://${process.env.REDIS_HOST || 'localhost'}:${parseInt(process.env.REDIS_PORT || (tlsEnabled ? '6380' : '6379'))}`;
+    try {
+      target = target.replace(/\/\/[^@]+@/, '//***@');
+    } catch {
+      // ignore parse issues in the log-only path
+    }
+    console.log(`[Redis] connecting to ${target} (tls=${tlsEnabled})`);
+
     this.client.on('error', (err: Error) => {
-      console.error('Redis Client Error:', err);
+      console.error(`[Redis] ${err.name} at ${target.split('@').pop()}: ${err.message}`);
     });
 
     this.client.on('connect', () => {
-      console.log('Redis Client Connected');
+      console.log(`[Redis] connected to ${target}`);
     });
   }
 
