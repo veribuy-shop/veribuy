@@ -2,6 +2,18 @@ import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { RedisService } from '@veribuy/redis-cache';
 
+@Controller()
+export class RootController {
+  @Get()
+  root() {
+    return {
+      service: 'veribuy-backend',
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+
 @Controller('health')
 export class HealthController {
   constructor(
