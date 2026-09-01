@@ -103,8 +103,12 @@ export async function GET(
     }
 
     // Results surface the moment the worker writes them — no terminal-status
-    // gate. A non-null checkSummary means the IMEI check actually ran.
-    const imeiCheckPerformed = !!checkSummary;
+    // gate. "Performed" means a check was submitted and either is running or
+    // has produced results. It must stay true while IN_PROGRESS/PENDING so the
+    // client keeps polling; the page only stops when a terminal status appears
+    // or the check genuinely never started (no IMEI/serial on the listing).
+    const isRunning = status === 'IN_PROGRESS' || status === 'PENDING';
+    const imeiCheckPerformed = !!checkSummary || isRunning;
 
     // Read the live cached outcome written by the backend ImeiCheckWorker so the
     // frontend can surface an accurate in-progress state (Redis is best-effort;
