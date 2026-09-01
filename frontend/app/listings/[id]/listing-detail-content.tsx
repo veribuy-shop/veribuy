@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import ContactSellerModal from '@/components/ContactSellerModal';
@@ -212,12 +212,15 @@ function estimateRetailPrice(price: number, brand: string): number | null {
 
 export default function ListingDetailContent({ id }: { id: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const verificationFailed = searchParams.get('verification') === 'failed';
   const { user } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [verificationSummary, setVerificationSummary] = useState<VerificationSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [imeiChecking, setImeiChecking] = useState(false);
   const [error, setError] = useState('');
   const [showContactModal, setShowContactModal] = useState(false);
   const [showGradeTooltip, setShowGradeTooltip] = useState(false);
@@ -225,35 +228,81 @@ export default function ListingDetailContent({ id }: { id: string }) {
   // PERF-04: Consolidate three independent fetches into a single useEffect
   // using Promise.all so they run in parallel. AbortController cancels
   // in-flight requests when `id` changes.
+  //
+  // The listing's Trust Lens check runs asynchronously after submission. When a
+  // listing is still in PENDING / IN_PROGRESS we poll the listing + verification
+  // summary so the outcome surfaces immediately once the check completes, then
+  // stop polling once a terminal status (PASSED/REQUIRES_REVIEW/FAILED) is seen.
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
+    let polling = false;
+
+    const isTerminal = (status: string) =>
+      status === 'PASSED' || status === 'REQUIRES_REVIEW' || status === 'FAILED';
+
+    const loadListingAndVerification = async () => {
+      const [listingRes, verificationRes] = await Promise.all([
+        fetch(`/api/listings/${id}`, { signal }),
+        fetch(`/api/listings/${id}/verification`, { signal }),
+      ]);
+      if (!listingRes.ok) {
+        throw new Error(listingRes.status === 404 ? 'Listing not found' : 'Failed to fetch listing');
+      }
+      const listingData = await listingRes.json();
+      setListing(listingData);
+      if (verificationRes.ok) {
+        const verificationData = await verificationRes.json();
+        setVerificationSummary(verificationData);
+        // Prefer the live (Redis-cached) check state when present — it reflects
+        // the backend worker's actual progress even before the listing service
+        // catches up with the terminal status.
+        const live = (verificationData as any)?.liveStatus;
+        setImeiChecking(live === 'IN_PROGRESS' || (live == null && !isTerminal(String(listingData.trustLensStatus ?? 'PENDING'))));
+        return { data: listingData, done: isTerminal(live ?? String(listingData.trustLensStatus ?? 'PENDING')) };
+      }
+      return { data: listingData, done: false };
+    };
 
     const loadAll = async () => {
       setLoading(true);
       setError('');
-
       try {
-        const [listingRes, evidenceRes, verificationRes] = await Promise.all([
-          fetch(`/api/listings/${id}`, { signal }),
+        const [{ data: listingData }, evidenceRes] = await Promise.all([
+          loadListingAndVerification(),
           fetch(`/api/evidence?listingId=${id}`, { credentials: 'include', signal }),
-          fetch(`/api/listings/${id}/verification`, { signal }),
         ]);
-
-        if (!listingRes.ok) {
-          throw new Error(listingRes.status === 404 ? 'Listing not found' : 'Failed to fetch listing');
-        }
-        const listingData = await listingRes.json();
-        setListing(listingData);
-
         if (evidenceRes.ok) {
           const evidenceData: EvidenceResponse = await evidenceRes.json();
           setEvidenceItems(evidenceData.items ?? []);
         }
 
-        if (verificationRes.ok) {
-          const verificationData = await verificationRes.json();
-          setVerificationSummary(verificationData);
+        // Show the page immediately — the IMEI check continues polling in the
+        // background and updates the verification badge as it progresses, so the
+        // user is never staring at a loading screen while the check runs.
+        if (!signal.aborted) setLoading(false);
+
+        // Poll while the IMEI check is still running so the outcome shows
+        // promptly. Uses adaptive backoff: fast at first (snappy feel) then
+        // slowing, and stops the instant the live status reaches a terminal
+        // state — so the spinner clears as soon as the check resolves.
+        if (signal.aborted) return;
+        polling = true;
+        const MAX_POLL_MS = 45_000;
+        const startedAt = Date.now();
+        while (polling && Date.now() - startedAt < MAX_POLL_MS) {
+          const elapsed = Date.now() - startedAt;
+          const interval = elapsed < 5000 ? 750 : elapsed < 15000 ? 1200 : 2000;
+          await new Promise((r) => setTimeout(r, interval));
+          if (signal.aborted) return;
+          let pollDone = false;
+          try {
+            ({ done: pollDone } = await loadListingAndVerification());
+          } catch (err: any) {
+            if (err.name === 'AbortError') return;
+            break;
+          }
+          if (pollDone) break;
         }
       } catch (err: any) {
         if (err.name === 'AbortError') return;
@@ -266,7 +315,10 @@ export default function ListingDetailContent({ id }: { id: string }) {
     };
 
     loadAll();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      polling = false;
+    };
   }, [id]);
 
   /* ---------------------------------------------------------------- */
@@ -434,6 +486,18 @@ export default function ListingDetailContent({ id }: { id: string }) {
           </ol>
         </nav>
 
+        {verificationFailed && (
+          <div role="alert" className="mb-6 bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 rounded-xl px-4 py-3 flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-[var(--color-warning)]" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-semibold text-[var(--color-text)]">Device check could not be started</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                Your listing was created, but the automated device check did not start. It will remain unavailable until it can be verified.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* ── Top 2-col: Image + Purchase ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10 items-start">
 
@@ -568,13 +632,19 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   <TrustIcon className={cn('w-5 h-5 shrink-0 mt-0.5', trustStatus.textClassName)} aria-hidden="true" />
                   <div>
                     <p className={cn('text-sm font-semibold', trustStatus.textClassName)}>
-                      {listing.trustLensStatus === 'FAILED' ? 'Verification Failed' : 'Verification Pending'}
+                      {listing.trustLensStatus === 'FAILED' ? 'Verification Failed' : 'Verification Checking'}
                     </p>
                     <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
                       {listing.trustLensStatus === 'FAILED'
                         ? 'This listing did not pass Trust Lens verification and cannot be purchased.'
-                        : 'This listing is awaiting Trust Lens verification and cannot be purchased yet.'}
+                        : 'Your device is being checked. Result will appear here shortly.'}
                     </p>
+                    {imeiChecking && (
+                      <div className="flex items-center gap-1.5 mt-2 text-xs text-[var(--color-accent)]">
+                        <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-3 w-3 border-2 border-[var(--color-accent)] border-t-transparent"></div>
+                        <span>Running device check…</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

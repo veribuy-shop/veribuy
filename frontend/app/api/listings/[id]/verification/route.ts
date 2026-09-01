@@ -1,4 +1,5 @@
 import { getBackendUrl } from '@/lib/backend-url';
+import { getCachedImeiStatus } from '@/lib/redis';
 /**
  * Public verification summary for a listing.
  *
@@ -22,6 +23,15 @@ export interface PublicVerificationSummary {
   imeiCheckPerformed: boolean;
   /** Whether the device is Apple (determines which checks are applicable). */
   isAppleDevice: boolean;
+  /**
+   * Live check state read directly from the shared Redis cache written by the
+   * backend ImeiCheckWorker. Lets the frontend render an accurate in-progress
+   * indicator (e.g. "Running device check…") before the check reaches a
+   * terminal state. Null when nothing is cached / Redis unavailable.
+   */
+  liveStatus: 'IN_PROGRESS' | 'PASSED' | 'REQUIRES_REVIEW' | 'FAILED' | 'PENDING' | null;
+  /** ISO timestamp of when the cached status was last written. */
+  liveStatusUpdatedAt: string | null;
   /** Per-check results — only present when imeiCheckPerformed is true. */
   checks: {
     gsmaBlacklist: 'CLEAN' | 'FLAGGED' | 'NOT_RUN';
@@ -80,6 +90,20 @@ export async function GET(
       status === 'PASSED' || status === 'REQUIRES_REVIEW' || status === 'FAILED';
     const imeiCheckPerformed = verificationRan && integrityFlags.length > 0;
 
+    // Read the live cached outcome written by the backend ImeiCheckWorker so the
+    // frontend can surface an accurate in-progress state (Redis is best-effort;
+    // on failure we just fall back to the listing-derived status below). The
+    // value is validated against a strict whitelist — never trusted blindly,
+    // since it originates from a shared Redis instance.
+    const cached = await getCachedImeiStatus(id);
+    const LIVE_STATUSES = new Set(['IN_PROGRESS', 'PASSED', 'REQUIRES_REVIEW', 'FAILED', 'PENDING']);
+    const cachedStatus = String(cached?.status ?? '');
+    const liveStatus = LIVE_STATUSES.has(cachedStatus)
+      ? (cachedStatus as PublicVerificationSummary['liveStatus'])
+      : null;
+    const liveStatusUpdatedAt =
+      typeof cached?.updatedAt === 'string' ? cached.updatedAt : null;
+
     let checks: PublicVerificationSummary['checks'] = null;
 
     if (imeiCheckPerformed) {
@@ -103,6 +127,8 @@ export async function GET(
       integrityFlags,
       imeiCheckPerformed,
       isAppleDevice: isApple,
+      liveStatus,
+      liveStatusUpdatedAt,
       checks,
       verifiedAt: null, // Not exposed publicly — only in admin view
       completedAt: null,

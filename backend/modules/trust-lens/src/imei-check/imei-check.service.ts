@@ -45,6 +45,52 @@ export class ImeiCheckService {
   }
 
   /**
+   * Brand-specific imeicheck.com service IDs (from the account dashboard).
+   * Each entry maps a normalised brand to [serviceId, checksRunLabel].
+   * The GSMA blacklist (service 5) is always run on top as a universal safety
+   * net, so these are only the "extra" brand-specific lookups.
+   */
+  private static readonly BRAND_SERVICES: {
+    matches: string[];
+    serviceId: number;
+    label: string;
+  }[] = [
+    {
+      matches: ['samsung', 'galaxy'],
+      serviceId: 21, // Samsung Info & KNOX GUARD
+      label: 'samsung_knox',
+    },
+    {
+      matches: ['xiaomi', 'redmi', 'poco', 'mi '],
+      serviceId: 25, // Xiaomi MI LOCK & INFO
+      label: 'xiaomi_info',
+    },
+    {
+      matches: ['oneplus', 'one plus'],
+      serviceId: 27, // OnePlus IMEI INFO
+      label: 'oneplus_info',
+    },
+    {
+      matches: ['honor'],
+      serviceId: 58, // Honor Info
+      label: 'honor_info',
+    },
+    {
+      matches: ['motorola', 'moto'],
+      serviceId: 63, // Motorola Info
+      label: 'motorola_info',
+    },
+    {
+      matches: ['google', 'pixel'],
+      serviceId: 72, // Google Pixel Info + Warranty
+      label: 'google_pixel_info',
+    },
+  ];
+
+  /** GSMA blacklist service — brand-agnostic, always used as a safety net. */
+  private static readonly BLACKLIST_SERVICE = 5;
+
+  /**
    * Returns true if the brand string indicates an Apple device.
    * Handles common casing/spacing variations (e.g. "apple", "Apple", "APPLE").
    */
@@ -53,11 +99,40 @@ export class ImeiCheckService {
     return brand.trim().toLowerCase() === 'apple';
   }
 
+  /** Normalise a free-form brand string (lowercase, trimmed, no diacritics). */
+  private normalizeBrand(brand?: string): string {
+    return (brand ?? '').trim().toLowerCase();
+  }
+
+  /**
+   * Resolve a free-form brand string to its brand-specific imeicheck service,
+   * if we have one configured. Returns null for unknown/unsupported brands.
+   */
+  private resolveBrandService(brand?: string): { serviceId: number; label: string } | null {
+    const normalized = this.normalizeBrand(brand);
+    if (!normalized) return null;
+    for (const entry of ImeiCheckService.BRAND_SERVICES) {
+      if (entry.matches.some((m) => normalized.includes(m))) {
+        return { serviceId: entry.serviceId, label: entry.label };
+      }
+    }
+    return null;
+  }
+
   /**
    * Run IMEI checks in parallel, with brand-aware service selection:
    *
-   *   Apple devices  → service 3 (Apple Full Info) + service 4 (iCloud check) + service 5 (GSMA blacklist)
-   *   All others     → service 5 only (GSMA blacklist — brand-agnostic)
+   *   Apple     → service 3 (Apple Full Info) + service 4 (iCloud check) + service 5 (GSMA blacklist)
+   *   Samsung   → service 21 (Info & KNOX GUARD) + service 5 (GSMA blacklist)
+   *   Xiaomi    → service 25 (MI LOCK & INFO) + service 5
+   *   OnePlus   → service 27 (IMEI INFO) + service 5
+   *   Honor     → service 58 (Info) + service 5
+   *   Motorola  → service 63 (Info) + service 5
+   *   Google    → service 72 (Pixel Info + Warranty) + service 5
+   *   All others→ service 5 only (GSMA blacklist — brand-agnostic)
+   *
+   * The GSMA blacklist (service 5) is the universal safety net for every non-Apple
+   * device, so a brand is never left unchecked even when no specific lookup exists.
    *
    * Never throws — on error returns a safe default with the error captured in rawApiResponse.
    */
@@ -68,8 +143,9 @@ export class ImeiCheckService {
     }
 
     const apple = this.isAppleBrand(brand);
+    const brandService = apple ? null : this.resolveBrandService(brand);
     this.logger.log(
-      `Running IMEI checks for ${brand ?? 'unknown brand'} (apple=${apple}), IMEI ${maskImei(imei)}`,
+      `Running IMEI checks for ${brand ?? 'unknown brand'} (apple=${apple}, brandService=${brandService?.label ?? 'none'}), IMEI ${maskImei(imei)}`,
     );
 
     const raw: Record<string, unknown> = {};
@@ -82,6 +158,10 @@ export class ImeiCheckService {
     let icloudLocked = false;
     let blacklisted = false;
     let reportedStolen = false;
+    // Brand-specific soft locks (e.g. Samsung Knox Guard, Xiaomi MI Lock). These
+    // surface as REQUIRES_REVIEW flags but do NOT make the IMEI "invalid".
+    let brandLocked = false;
+    let brandLockFlag: string | null = null;
 
     if (apple) {
       // --- Apple: run services 3, 4, 5 in parallel ---
@@ -142,14 +222,37 @@ export class ImeiCheckService {
         raw['service5Error'] = String(service5.reason);
       }
     } else {
-      // --- Non-Apple: run service 5 only (GSMA blacklist is brand-agnostic) ---
-      checksRun.push('gsma_blacklist');
+      // --- Non-Apple: run the brand-specific service (if known) + GSMA blacklist ---
+      const label = brandService?.label ?? 'gsma_blacklist';
+      checksRun.push(label, 'gsma_blacklist');
       raw['brand'] = brand ?? 'unknown';
 
-      const [service5] = await Promise.allSettled([
-        this.callService(5, imei), // Blacklist Status (GSMA) — $0.02
+      const [brandCall, service5] = await Promise.allSettled([
+        brandService ? this.callService(brandService.serviceId, imei) : Promise.resolve(undefined),
+        this.callService(ImeiCheckService.BLACKLIST_SERVICE, imei),
       ]);
 
+      if (brandService) {
+        const key = `service${brandService.serviceId}`;
+        if (brandCall.status === 'fulfilled' && brandCall.value) {
+          const brandResult = brandCall.value;
+          raw[key] = brandResult;
+          const obj = brandResult.object;
+          if (obj) {
+            deviceModel = (obj['model'] as string) ?? (obj['modelName'] as string) ?? undefined;
+            deviceColor = (obj['color'] as string) ?? undefined;
+            deviceStorage = (obj['storage'] as string) ?? undefined;
+          }
+          // Brand-specific lock detection (Samsung Knox Guard, Xiaomi MI Lock, etc.)
+          brandLocked = this.parseBrandLock(brandService.label, brandResult.object ?? (brandResult as unknown as Record<string, unknown>));
+          if (brandLocked) brandLockFlag = this.brandLockFlagFor(brandService.label);
+        } else if (brandCall.status === 'rejected') {
+          this.logger.warn(`ImeiCheck service ${brandService.serviceId} (${brandService.label}) failed: ${String(brandCall.reason)}`);
+          raw[`service${brandService.serviceId}Error`] = String(brandCall.reason);
+        }
+      }
+
+      // GSMA blacklist — brand-agnostic safety net
       if (service5.status === 'fulfilled') {
         raw['service5'] = service5.value;
         ({ blacklisted, reportedStolen } = this.parseBlacklistResult(service5.value, blacklisted, reportedStolen));
@@ -159,15 +262,22 @@ export class ImeiCheckService {
       }
     }
 
-    // Build integrity flags
+    // Build integrity flags. Only report CLEAN when at least one check actually
+    // ran and found nothing wrong. If every service errored (e.g. invalid IMEI
+    // or upstream failure) we must NOT auto-approve — route to NOT_RUN so the
+    // request stays PENDING for manual review instead of falsely PASSING.
     const flags: string[] = [];
     if (icloudLocked) flags.push('ICLOUD_LOCKED');
     if (reportedStolen) flags.push('REPORTED_STOLEN');
     if (blacklisted) flags.push('BLACKLISTED');
-    if (flags.length === 0) flags.push('CLEAN');
+    if (brandLocked && brandLockFlag) flags.push(brandLockFlag);
 
-    // IMEI is considered valid if at least service 5 ran and no hard blocks
-    const anySucceeded = 'service3' in raw || 'service4' in raw || 'service5' in raw;
+    // IMEI is considered valid if at least one service ran and no hard blocks
+    const anySucceeded =
+      'service3' in raw || 'service4' in raw || 'service5' in raw || Object.keys(raw).some((k) => /^service\d+$/.test(k));
+    if (flags.length === 0) {
+      flags.push(anySucceeded ? 'CLEAN' : 'NOT_RUN');
+    }
     const imeiValid = anySucceeded && !blacklisted && !reportedStolen;
 
     return {
@@ -213,6 +323,56 @@ export class ImeiCheckService {
       reportedStolen = true;
     }
     return { blacklisted, reportedStolen };
+  }
+
+  /**
+   * Detect a brand-specific soft lock (a device-level lock that shouldn't be
+   * auto-approved but isn't a GSMA blacklist entry) from a brand service's raw
+   * response. Looks at key names/values commonly returned by these services.
+   */
+  private parseBrandLock(label: string, obj: Record<string, unknown>): boolean {
+    const keys = Object.keys(obj ?? {});
+    const join = keys.join(' ').toLowerCase();
+    const valStr = keys
+      .map((k) => String(obj[k] ?? ''))
+      .join(' ')
+      .toLowerCase();
+
+    if (label === 'samsung_knox') {
+      // Knox Guard ON + Locked / KG Locked means a lost/stolen or financed-dispute device.
+      const kg = (obj['kg'] ?? obj['knoxGuard'] ?? obj['knox_guard'] ?? '').toString().toLowerCase();
+      return (
+        kg === 'on' ||
+        kg === 'locked' ||
+        (join.includes('knox') && valStr.includes('locked'))
+      );
+    }
+    if (label === 'xiaomi_info') {
+      const miLock = (obj['miLock'] ?? obj['mi_lock'] ?? obj['miActivationLock'] ?? '').toString().toLowerCase();
+      return miLock === 'on' || miLock === 'locked' || (join.includes('mi activation') && valStr.includes('on'));
+    }
+    // Fallback: any generic "lock"/"guard" indicator that is ON/locked.
+    const lockKey = keys.find((k) => {
+      const lk = k.toLowerCase();
+      return lk.includes('lock') || lk.includes('guard');
+    });
+    if (lockKey) {
+      const v = String(obj[lockKey] ?? '').toLowerCase();
+      if (v === 'on' || v === 'locked' || v === 'true' || v === '1') return true;
+    }
+    return false;
+  }
+
+  /** Integrity flag name for a brand-specific lock, for the REQUIRES_REVIEW path. */
+  private brandLockFlagFor(label: string): string {
+    switch (label) {
+      case 'samsung_knox':
+        return 'KNOX_LOCKED';
+      case 'xiaomi_info':
+        return 'MI_LOCKED';
+      default:
+        return 'DEVICE_LOCKED';
+    }
   }
 
   private async callService(serviceId: number, imei: string): Promise<ImeiApiResponse> {

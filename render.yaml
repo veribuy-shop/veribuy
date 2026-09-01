@@ -56,15 +56,29 @@ services:
     envVars:
       - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
         sync: false
+      # Shared Redis access for the BFF (server-side only — reads cached IMEI
+      # check status). NOT a NEXT_PUBLIC_ var, so it never reaches the browser.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: veribuy-redis
+          property: connectionString
+      - key: REDIS_TLS
+        value: 'true'
       - fromGroup: veribuy-secrets
 
-  # ─── Redis (Cache) ───────────────────────────────────────
+  # ─── Redis (Cache + IMEI job queue) ────────────────────────
+  # Doubles as the durable IMEI-check job queue (see ImeiCheckWorker) so it must
+  # NOT evict queued jobs under memory pressure — hence noeviction, not LRU.
+  # Note: the free plan has no disk persistence (data lost on restart). For the
+  # IMEI queue to survive a Redis restart, upgrade to a paid plan (persistence
+  # becomes journal-snapshot automatically).
   - type: keyvalue
     name: veribuy-redis
     plan: free
     region: frankfurt
     ipAllowList: []
-    maxmemoryPolicy: allkeys-lru
+    maxmemoryPolicy: noeviction
     persistenceMode: off
 
 databases:

@@ -3,6 +3,10 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   output: 'standalone',
 
+  // ioredis is a native Node dependency used only in server-side BFF route
+  // handlers — never bundle it into the client or server bundles.
+  serverExternalPackages: ['ioredis'],
+
   // Remove the X-Powered-By: Next.js header for security
   poweredByHeader: false,
 
