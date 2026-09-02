@@ -62,12 +62,12 @@ export async function GET(
     // for the public fields, then augment with what listing carries.
     const listingRes = await fetch(`${LISTING_SERVICE_URL}/listings/${id}`, {
       headers: { 'Content-Type': 'application/json' },
-    });
+    }).catch(() => null);
 
-    if (!listingRes.ok) {
+    if (!listingRes || !listingRes.ok) {
       return NextResponse.json(
         { error: 'Listing not found' },
-        { status: listingRes.status },
+        { status: listingRes?.status ?? 404 },
       );
     }
 
@@ -85,11 +85,9 @@ export async function GET(
     // The full check result lives on IdentifierValidation (written by the
     // backend worker). We read the sanitized booleans from the public summary
     // endpoint so clean devices (which carry no integrity flags) still show
-    // their GSMA/iCloud/stolen rows in the Verification Report.
-    const checkSummaryRes = await fetch(
-      `${TRUST_LENS_SERVICE_URL}/trust-lens/${id}/summary`,
-      { headers: { 'Content-Type': 'application/json' } },
-    );
+    // their GSMA/iCloud/stolen rows in the Verification Report. This read is
+    // best-effort — a failure must not 500 the whole summary; we just return
+    // the listing-derived view and let the client keep polling.
     let checkSummary: {
       imeiValid: boolean | null;
       icloudLocked: boolean | null;
@@ -98,8 +96,16 @@ export async function GET(
       fmiOn: boolean | null;
       verifiedAt: string | null;
     } | null = null;
-    if (checkSummaryRes.ok) {
-      checkSummary = await checkSummaryRes.json();
+    try {
+      const checkSummaryRes = await fetch(
+        `${TRUST_LENS_SERVICE_URL}/trust-lens/${id}/summary`,
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+      if (checkSummaryRes.ok) {
+        checkSummary = await checkSummaryRes.json();
+      }
+    } catch {
+      // Redis/backend summary unavailable — fall through to listing-derived view.
     }
 
     // Results surface the moment the worker writes them — no terminal-status
@@ -112,10 +118,13 @@ export async function GET(
 
     // Read the live cached outcome written by the backend ImeiCheckWorker so the
     // frontend can surface an accurate in-progress state (Redis is best-effort;
-    // on failure we just fall back to the listing-derived status below). The
-    // value is validated against a strict whitelist — never trusted blindly,
-    // since it originates from a shared Redis instance.
-    const cached = await getCachedImeiStatus(id);
+    // on failure we just fall back to the listing-derived status below).
+    let cached: Record<string, unknown> | null = null;
+    try {
+      cached = await getCachedImeiStatus(id);
+    } catch {
+      cached = null;
+    }
     const LIVE_STATUSES = new Set(['IN_PROGRESS', 'PASSED', 'REQUIRES_REVIEW', 'FAILED', 'PENDING']);
     const cachedStatus = String(cached?.status ?? '');
     const liveStatus = LIVE_STATUSES.has(cachedStatus)
