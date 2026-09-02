@@ -99,6 +99,10 @@ export class UlistingsService {
 
     if (query.status) {
       where.status = query.status;
+    } else if (query.sellerId) {
+      // Seller's own dashboard: return all statuses so pending-review (DRAFT /
+      // REQUIRES_REVIEW) and rejected listings still show up.
+      // no default filter
     } else {
       // Public browse: only show ACTIVE listings
       where.status = ListingStatus.ACTIVE;
