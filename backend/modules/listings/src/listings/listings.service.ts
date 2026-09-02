@@ -153,8 +153,41 @@ export class UlistingsService {
       this.prisma.listing.count({ where }),
     ]);
 
+    // Attach a cover image to each listing so browse cards render a real photo
+    // instead of falling back to a device-icon placeholder. Evidence images live
+    // in the shared DB (logical `evidence` schema); we fetch them in ONE query for
+    // the page's listing IDs (no N+1) and take the first image per pack.
+    const listingIds = data.map((l) => l.id);
+    let coverImages: Map<string, string> = new Map();
+    if (listingIds.length > 0) {
+      try {
+        const packs = await this.prisma.evidencePack.findMany({
+          where: { listingId: { in: listingIds } },
+          select: {
+            listingId: true,
+            items: {
+              select: { url: true },
+              orderBy: { createdAt: 'asc' as const },
+            },
+          },
+        });
+        coverImages = new Map(
+          packs
+            .map((p): [string, string] => [p.listingId, p.items[0]?.url ?? ''])
+            .filter(([, url]) => url.length > 0),
+        );
+      } catch (err) {
+        this.logger.warn(`Failed to fetch evidence covers for listings: ${(err as Error).message}`);
+      }
+    }
+
+    const withImages = data.map((l) => ({
+      ...l,
+      imageUrl: coverImages.get(l.id) ?? null,
+    }));
+
     return {
-      data,
+      data: withImages,
       pagination: {
         page,
         limit,

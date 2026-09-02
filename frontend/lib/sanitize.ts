@@ -87,6 +87,7 @@ export interface SafePublicListing {
   integrityFlags: string[];
   viewCount: number;
   publishedAt: string | null;
+  imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -278,6 +279,7 @@ export function sanitizePublicListing(raw: Record<string, any>): SafePublicListi
     integrityFlags: Array.isArray(raw.integrityFlags) ? raw.integrityFlags : [],
     viewCount: Number(raw.viewCount ?? 0),
     publishedAt: raw.publishedAt ?? null,
+    imageUrl: raw.imageUrl ?? null,
     createdAt: raw.createdAt ?? '',
     updatedAt: raw.updatedAt ?? '',
   };
