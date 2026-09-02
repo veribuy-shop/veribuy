@@ -34,6 +34,7 @@ interface VerificationSummary {
     icloudStatus: CheckResult;
     stolenReport: CheckResult;
   } | null;
+  deviceAttributes: Array<{ label: string; value: string }>;
   verifiedAt: string | null;
   completedAt: string | null;
 }
@@ -240,16 +241,21 @@ function VerificationReportContent({ id }: { id: string }) {
                     </div>
                   );
                 })}
-                <div className="flex items-center gap-3 p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-                  <div className="w-10 h-10 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">
-                    <Smartphone className="w-5 h-5 text-[var(--color-primary)]" aria-hidden="true" />
+                {(summary.deviceAttributes?.length ?? 0) > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    {summary.deviceAttributes!.map((attr) => (
+                      <div key={attr.label} className="flex items-start gap-3 p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
+                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0">
+                          <Smartphone className="w-4 h-4 text-[var(--color-primary)]" aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-[var(--color-text-muted)]">{attr.label}</p>
+                          <p className="text-sm font-semibold text-[var(--color-text)] truncate" title={attr.value}>{attr.value}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-[var(--color-text)]">Brand Lock Check</p>
-                    <p className="text-xs text-[var(--color-text-muted)]">Cross-referenced with device brand activation/lock services</p>
-                  </div>
-                  <span className="text-sm font-bold text-emerald-600">Passed</span>
-                </div>
+                )}
               </div>
             ) : running ? (
               <div className="text-center py-8" role="status">

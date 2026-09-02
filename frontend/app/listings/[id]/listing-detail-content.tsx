@@ -96,6 +96,7 @@ interface VerificationSummary {
     icloudStatus: CheckResult;
     stolenReport: CheckResult;
   } | null;
+  deviceAttributes: Array<{ label: string; value: string }>;
   verifiedAt: string | null;
   completedAt: string | null;
 }
@@ -491,31 +492,41 @@ export default function ListingDetailContent({ id }: { id: string }) {
     C: ['Visible screen wear,', 'Battery health 70%+,', 'Fully functional components,', 'Noticeable casing wear.'],
   };
 
-  const verificationReportItems: { title: string; description: string; passed: boolean }[] = [];
-  if (listing.trustLensStatus === 'PASSED' || verificationSummary) {
-    verificationReportItems.push(
-      { title: 'Display: Passed', description: 'Screen is scratch-free and fully responsive.', passed: true },
-      { title: 'Battery: 94%', description: 'Battery health tested at 94%, excellent condition.', passed: true },
-      { title: 'Camera: Passed', description: 'Camera photo tested at 90%, excellent condition.', passed: true },
-      { title: 'Buttons: Passed', description: 'Buttons is scratch-free and fully responsive.', passed: true },
-    );
-    if (verificationSummary?.checks) {
-      if (verificationSummary.checks.gsmaBlacklist !== 'NOT_RUN' && verificationSummary.checks.gsmaBlacklist !== 'NOT_APPLICABLE') {
-        verificationReportItems.push({
-          title: `GSMA Blacklist: ${verificationSummary.checks.gsmaBlacklist === 'CLEAN' ? 'Clean' : 'Flagged'}`,
-          description: 'Checked against global carrier blacklist databases.',
-          passed: verificationSummary.checks.gsmaBlacklist === 'CLEAN',
-        });
-      }
-      if (verificationSummary.isAppleDevice && verificationSummary.checks.icloudStatus !== 'NOT_RUN') {
-        verificationReportItems.push({
-          title: `iCloud Lock: ${verificationSummary.checks.icloudStatus === 'CLEAN' ? 'Clear' : 'Locked'}`,
-          description: 'Checked iCloud lock and Find My iPhone status.',
-          passed: verificationSummary.checks.icloudStatus === 'CLEAN',
-        });
-      }
+  const verificationReportItems: { title: string; description: string; passed: boolean | null }[] = [];
+
+  // Real pass/fail checks (GSMA blacklist, iCloud lock, stolen report).
+  if (verificationSummary?.checks) {
+    if (verificationSummary.checks.gsmaBlacklist !== 'NOT_RUN' && verificationSummary.checks.gsmaBlacklist !== 'NOT_APPLICABLE') {
+      verificationReportItems.push({
+        title: `GSMA Blacklist: ${verificationSummary.checks.gsmaBlacklist === 'CLEAN' ? 'Clean' : 'Flagged'}`,
+        description: 'Checked against global carrier blacklist databases.',
+        passed: verificationSummary.checks.gsmaBlacklist === 'CLEAN',
+      });
+    }
+    if (verificationSummary.checks.stolenReport !== 'NOT_RUN' && verificationSummary.checks.stolenReport !== 'NOT_APPLICABLE') {
+      verificationReportItems.push({
+        title: `Stolen Report: ${verificationSummary.checks.stolenReport === 'CLEAN' ? 'Clean' : 'Flagged'}`,
+        description: 'Cross-referenced with stolen device registries.',
+        passed: verificationSummary.checks.stolenReport === 'CLEAN',
+      });
+    }
+    if (verificationSummary.isAppleDevice && verificationSummary.checks.icloudStatus !== 'NOT_RUN') {
+      verificationReportItems.push({
+        title: `iCloud Lock: ${verificationSummary.checks.icloudStatus === 'CLEAN' ? 'Clear' : 'Locked'}`,
+        description: 'Checked iCloud lock and Find My iPhone status.',
+        passed: verificationSummary.checks.icloudStatus === 'CLEAN',
+      });
     }
   }
+
+  // Real device attributes returned by the checker (Model, Warranty, SIM-Lock,
+  // Activation, FMI, …) — parsed into individual rows, nothing hardcoded.
+  const deviceAttributeItems: { title: string; description: string; passed: boolean | null }[] =
+    (verificationSummary?.deviceAttributes ?? []).map((attr) => ({
+      title: attr.label,
+      description: attr.value,
+      passed: null,
+    }));
 
   return (
     <div className="min-h-screen bg-white">
@@ -724,14 +735,18 @@ export default function ListingDetailContent({ id }: { id: string }) {
         {/* ── Verification Report ── */}
         <section aria-labelledby="verification-heading" className="mb-10">
           <h2 id="verification-heading" className="text-xl font-bold text-gray-900 mb-6">Verification Report</h2>
-          {verificationReportItems.length > 0 ? (
+          {verificationReportItems.length > 0 || deviceAttributeItems.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-              {verificationReportItems.map(item => (
-                <div key={item.title} className="flex items-start gap-4">
-                  <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0', item.passed ? 'bg-[var(--color-green)]' : 'bg-red-500')}>
-                    {item.passed
-                      ? <CheckCircle2 className="w-5 h-5 text-white" aria-hidden="true" />
-                      : <XCircle className="w-5 h-5 text-white" aria-hidden="true" />}
+              {[...verificationReportItems, ...deviceAttributeItems].map(item => (
+                <div key={`${item.title}-${item.description}`} className="flex items-start gap-4">
+                  <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0',
+                    item.passed === null ? 'bg-[var(--color-surface-alt)]' :
+                    item.passed ? 'bg-[var(--color-green)]' : 'bg-red-500')}>
+                    {item.passed === null
+                      ? <Minus className="w-5 h-5 text-[var(--color-text-muted)]" aria-hidden="true" />
+                      : item.passed
+                        ? <CheckCircle2 className="w-5 h-5 text-white" aria-hidden="true" />
+                        : <XCircle className="w-5 h-5 text-white" aria-hidden="true" />}
                   </div>
                   <div>
                     <p className="font-bold text-gray-900 text-sm">{item.title}</p>
