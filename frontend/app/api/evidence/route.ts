@@ -46,13 +46,6 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   try {
-    // SECURITY: All evidence GET requests require authentication.
-    // Evidence data is seller-sensitive — never expose it to unauthenticated callers.
-    const authResult = getAccessToken(req);
-    if ('error' in authResult) {
-      return authResult.error;
-    }
-
     const { searchParams } = new URL(req.url);
     const listingId = searchParams.get('listingId');
     const sellerId = searchParams.get('sellerId');
@@ -60,8 +53,17 @@ export async function GET(req: NextRequest) {
     let url = `${EVIDENCE_SERVICE_URL}/evidence`;
 
     if (listingId) {
+      // Public product gallery: buyers and anonymous visitors must be able to
+      // see photos of published listings. The backend exposes
+      // GET /evidence/listing/:listingId publicly, so no auth is required here.
       url += `/listing/${listingId}`;
     } else if (sellerId) {
+      // Seller-private evidence management: requires authentication. Evidence
+      // data is seller-sensitive — never expose it to unauthenticated callers.
+      const authResult = getAccessToken(req);
+      if ('error' in authResult) {
+        return authResult.error;
+      }
       url += `/seller/${sellerId}`;
     } else {
       return NextResponse.json(
@@ -70,10 +72,16 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Always forward the verified auth token to the evidence service
+    // Only forward a verified auth token when one is present (the public
+    // listing-image path sends none). The evidence service accepts public
+    // listing reads without a token.
+    const authResult = getAccessToken(req);
     const headers: HeadersInit = {
-      'Authorization': `Bearer ${authResult.token}`,
+      'Content-Type': 'application/json',
     };
+    if (!('error' in authResult)) {
+      headers['Authorization'] = `Bearer ${authResult.token}`;
+    }
 
     const response = await fetch(url, { headers });
 
