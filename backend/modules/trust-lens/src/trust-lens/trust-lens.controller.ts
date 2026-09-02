@@ -48,7 +48,10 @@ export class TrustLensController {
   @Get(':listingId/summary')
   @Public()
   async publicSummary(@Param('listingId', ParseUUIDPipe) listingId: string) {
-    return this.trustlensService.getPublicCheckSummary(listingId);
+    // Always return a JSON body (never a bare null — Nest would emit an empty
+    // body that the frontend .json() parse would reject). Wrap so there is a
+    // stable { check } shape regardless of whether a check has run yet.
+    return { check: await this.trustlensService.getPublicCheckSummary(listingId) };
   }
 
   @Post()

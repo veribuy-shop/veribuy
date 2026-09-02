@@ -12,6 +12,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const TRUST_LENS_SERVICE_URL = getBackendUrl();
 const LISTING_SERVICE_URL = getBackendUrl();
+interface CheckSummaryShape {
+      imeiValid: boolean | null;
+      icloudLocked: boolean | null;
+      reportedStolen: boolean | null;
+      blacklisted: boolean | null;
+      fmiOn: boolean | null;
+      verifiedAt: string | null;
+    }
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface PublicVerificationSummary {
@@ -88,21 +97,18 @@ export async function GET(
     // their GSMA/iCloud/stolen rows in the Verification Report. This read is
     // best-effort — a failure must not 500 the whole summary; we just return
     // the listing-derived view and let the client keep polling.
-    let checkSummary: {
-      imeiValid: boolean | null;
-      icloudLocked: boolean | null;
-      reportedStolen: boolean | null;
-      blacklisted: boolean | null;
-      fmiOn: boolean | null;
-      verifiedAt: string | null;
-    } | null = null;
+    let checkSummary: CheckSummaryShape | null = null;
     try {
       const checkSummaryRes = await fetch(
         `${TRUST_LENS_SERVICE_URL}/trust-lens/${id}/summary`,
         { headers: { 'Content-Type': 'application/json' } },
       );
       if (checkSummaryRes.ok) {
-        checkSummary = await checkSummaryRes.json();
+        const text = await checkSummaryRes.text();
+        if (text) {
+          const parsed = JSON.parse(text) as { check?: CheckSummaryShape };
+          checkSummary = parsed?.check ?? null;
+        }
       }
     } catch {
       // Redis/backend summary unavailable — fall through to listing-derived view.
