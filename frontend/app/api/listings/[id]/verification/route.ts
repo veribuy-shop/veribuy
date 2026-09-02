@@ -19,6 +19,7 @@ interface CheckSummaryShape {
       blacklisted: boolean | null;
       fmiOn: boolean | null;
       verifiedAt: string | null;
+      deviceAttributes: Array<{ label: string; value: string }>;
     }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -47,6 +48,9 @@ export interface PublicVerificationSummary {
     icloudStatus: 'CLEAN' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN';
     stolenReport: 'CLEAN' | 'FLAGGED' | 'NOT_RUN';
   } | null;
+  /** Structured non-sensitive device attributes from the checker (e.g. Model,
+   * Warranty, SIM-Lock) — rendered as real rows in the Verification Report. */
+  deviceAttributes: Array<{ label: string; value: string }>;
   /** ISO timestamp of when the IMEI check was verified. */
   verifiedAt: string | null;
   completedAt: string | null;
@@ -166,6 +170,7 @@ export async function GET(
       liveStatus,
       liveStatusUpdatedAt,
       checks,
+      deviceAttributes: checkSummary?.deviceAttributes ?? [],
       verifiedAt: null, // Not exposed publicly — only in admin view
       completedAt: null,
     };

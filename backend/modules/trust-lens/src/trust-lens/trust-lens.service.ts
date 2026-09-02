@@ -231,6 +231,7 @@ export class TrustLensService {
         blacklisted: true,
         fmiOn: true,
         verifiedAt: true,
+        rawApiResponse: true,
       },
     });
 
@@ -245,7 +246,48 @@ export class TrustLensService {
       blacklisted: iv.blacklisted,
       fmiOn: iv.fmiOn,
       verifiedAt: iv.verifiedAt,
+      // Structured, non-sensitive device attributes parsed from the checker's
+      // "<Label>: <Value>" result strings. Each row is surfaced individually so
+      // the frontend renders real data (Model, Warranty, SIM-Lock, Activation,
+      // FMI, …) in its report UI instead of canned text. The raw IMEI/serial
+      // and full API payload are still never exposed.
+      deviceAttributes: this.extractDeviceAttributes(iv.rawApiResponse),
     };
+  }
+
+  /**
+   * Flatten the 3rd-party checker's human-readable result strings into a list of
+   * { label, value } rows. Results look like "Model: iPhone 11\nColor: Black".
+   * We split on the first ": " so labels/value stay intact and render cleanly in
+   * the frontend — all real data, nothing hardcoded.
+   */
+  private extractDeviceAttributes(raw: unknown): Array<{ label: string; value: string }> {
+    if (!raw || typeof raw !== 'object') {
+      return [];
+    }
+    const rows: Array<{ label: string; value: string }> = [];
+    const seen = new Set<string>();
+    for (const key of ['service3', 'service5']) {
+      const svc = (raw as Record<string, unknown>)[key];
+      const result = svc && typeof svc === 'object' ? (svc as Record<string, unknown>)['result'] : undefined;
+      if (typeof result !== 'string') {
+        continue;
+      }
+      for (const line of result.split(/\r?\n/)) {
+        const idx = line.indexOf(':');
+        if (idx <= 0) {
+          continue;
+        }
+        const label = line.slice(0, idx).trim();
+        const value = line.slice(idx + 1).trim();
+        if (!label || !value || seen.has(label)) {
+          continue;
+        }
+        seen.add(label);
+        rows.push({ label, value });
+      }
+    }
+    return rows;
   }
 
   async getAllVerificationRequests(pagination: PaginationDto): Promise<PaginatedResponse<any>> {
