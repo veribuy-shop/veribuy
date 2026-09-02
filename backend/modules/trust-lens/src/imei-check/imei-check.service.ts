@@ -189,16 +189,21 @@ export class ImeiCheckService {
           if (obj['fmiOn'] !== undefined) fmiOn = Boolean(obj['fmiOn']);
           if (obj['fmiON'] !== undefined) fmiOn = Boolean(obj['fmiON']);
 
-          // iCloud lock may come through as activation/icloud lock keys or
-          // via lost/FMI state — treat any of them as locked for Apple devices.
+          // iCloud / Activation Lock — the definitive lock state. This is NOT
+          // the same as Find My iPhone (FMI) being ON, which is a normal state
+          // on a clean, legitimately-owned device. Only an actual iCloud /
+          // activation-lock / lost-mode signal means the device is locked.
           const lockVal =
             obj['icloudLock'] ?? obj['icloud_lock'] ?? obj['iCloudLock'] ??
             obj['activationLock'] ?? obj['activation_lock'] ?? obj['lostMode'] ?? obj['lost_mode'];
           if (lockVal === true || lockVal === 'true' || lockVal === 1 || lockVal === 'locked') {
             icloudLocked = true;
+          } else if (lockVal !== undefined && lockVal !== null) {
+            const lockStr = String(lockVal).toLowerCase();
+            if (lockStr === 'locked' || lockStr === 'on' || lockStr === 'true' || lockStr === 'yes') {
+              icloudLocked = true;
+            }
           }
-          const lockStr = String(lockVal ?? '').toLowerCase();
-          if (lockStr.includes('locked') || lockStr.includes('on')) icloudLocked = true;
 
           // Service 3 can also surface blacklist/stolen state; merge it with the
           // GSMA result so both sources are captured.
@@ -215,8 +220,9 @@ export class ImeiCheckService {
         raw['service3Error'] = String(service3.reason);
       }
 
-      // fmiOn counts as iCloud locked for Apple devices
-      if (fmiOn === true) icloudLocked = true;
+      // NOTE: Find My iPhone being ON is NOT treated as iCloud-locked. FMI ON is
+      // a normal, expected state on a clean owned device; only an iCloud /
+      // activation lock above means the device is actually locked.
 
       // Service 5 — GSMA Blacklist (brand-agnostic live safety net)
       if (service5.status === 'fulfilled') {

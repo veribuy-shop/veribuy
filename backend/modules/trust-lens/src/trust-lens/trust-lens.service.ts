@@ -257,9 +257,12 @@ export class TrustLensService {
 
   /**
    * Flatten the 3rd-party checker's human-readable result strings into a list of
-   * { label, value } rows. Results look like "Model: iPhone 11\nColor: Black".
-   * We split on the first ": " so labels/value stay intact and render cleanly in
-   * the frontend — all real data, nothing hardcoded.
+   * { label, value } rows. The checker returns one big HTML-ish string where each
+   * field is separated by <br> and wrapped in <span> markup, e.g.
+   *   "Model: iPhone 11<br>Network: ...<br>Warranty Status: <span ...>Out Of</span>".
+   * We normalise <br> to lines, strip HTML so values are clean text, then split on
+   * the first ": " so every real attribute becomes its own structured row —
+   * nothing hardcoded.
    */
   private extractDeviceAttributes(raw: unknown): Array<{ label: string; value: string }> {
     if (!raw || typeof raw !== 'object') {
@@ -267,19 +270,46 @@ export class TrustLensService {
     }
     const rows: Array<{ label: string; value: string }> = [];
     const seen = new Set<string>();
+    const stripTag = (s: string): string =>
+      s
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
     for (const key of ['service3', 'service5']) {
       const svc = (raw as Record<string, unknown>)[key];
       const result = svc && typeof svc === 'object' ? (svc as Record<string, unknown>)['result'] : undefined;
       if (typeof result !== 'string') {
         continue;
       }
-      for (const line of result.split(/\r?\n/)) {
+      // Normalise all separators to newlines, then split into field lines.
+      const text = result.replace(/<br\s*\/?>/gi, '\n');
+      for (const rawLine of text.split(/\r?\n/)) {
+        const line = stripTag(rawLine);
+        // Skip image lines, empty lines, and lines without a "Label: Value".
+        if (
+          !line ||
+          line.startsWith('http') ||
+          line.includes('deviceImages') ||
+          line.includes('cdn-apple.com') ||
+          line.includes('drop-shadow') ||
+          line.includes('src ')
+        ) {
+          continue;
+        }
+        // Skip obvious non-fields (e.g. a stray ":" with no usable value).
         const idx = line.indexOf(':');
         if (idx <= 0) {
           continue;
         }
         const label = line.slice(0, idx).trim();
-        const value = line.slice(idx + 1).trim();
+        let value = line.slice(idx + 1).trim();
+        // The first "@" colon-bearing field (model attr) reads into the img URL;
+        // chop at the first URL if one bled into the value.
+        const urlIdx = value.search(/\s(https?:)?\/\/\S+/);
+        if (urlIdx > 0) {
+          value = value.slice(0, urlIdx).trim();
+        }
         if (!label || !value || seen.has(label)) {
           continue;
         }
