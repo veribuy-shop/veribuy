@@ -207,9 +207,9 @@ export class ImeiCheckService {
           const objStolen = obj['stolen'] ?? obj['reportedStolen'] ?? obj['reported_stolen'];
           if (objStolen === true || objStolen === 'true' || objStolen === 1) reportedStolen = true;
         }
-        const s3result = (service3.value.result ?? '').toLowerCase();
-        if (s3result.includes('blacklist') || s3result.includes('stolen')) blacklisted = true;
-        if (s3result.includes('stolen')) reportedStolen = true;
+        const s3result = this.statusValue(service3.value.result);
+        if (this.isBlocked(s3result)) blacklisted = true;
+        if (this.isStolen(s3result)) reportedStolen = true;
       } else {
         this.logger.warn(`ImeiCheck service 3 failed: ${String(service3.reason)}`);
         raw['service3Error'] = String(service3.reason);
@@ -314,20 +314,48 @@ export class ImeiCheckService {
       const stolen = obj['stolen'] ?? obj['reportedStolen'] ?? obj['reported_stolen'];
       if (stolen === true || stolen === 'true' || stolen === 1) reportedStolen = true;
 
-      const statusStr = ((obj['status'] as string) ?? '').toLowerCase();
-      if (statusStr === 'blacklisted' || statusStr === 'blocked') blacklisted = true;
-      if (statusStr === 'stolen') {
+      const statusValue = this.statusValue(obj['status']);
+      if (this.isBlocked(statusValue)) blacklisted = true;
+      if (this.isStolen(statusValue)) {
         blacklisted = true;
         reportedStolen = true;
       }
     }
-    const result = (response.result ?? '').toLowerCase();
-    if (result.includes('blacklist') || result.includes('blocked')) blacklisted = true;
-    if (result.includes('stolen')) {
+
+    // The human-readable `result` is a "<Label>: <Status>" string, e.g.
+    // "Blacklist Status: Clean". We must look at the STATUS VALUE, not the whole
+    // string — grepping the whole thing for "blacklist" would flag a clean device
+    // just because the label contains the word "Blacklist".
+    const resultValue = this.statusValue(response.result);
+    if (this.isBlocked(resultValue)) blacklisted = true;
+    if (this.isStolen(resultValue)) {
       blacklisted = true;
       reportedStolen = true;
     }
     return { blacklisted, reportedStolen };
+  }
+
+  /** The status token after the last ":", trimmed and lowercased ("Clean", "Blacklisted"). */
+  private statusValue(input: unknown): string {
+    const s = String(input ?? '').toLowerCase();
+    const idx = s.lastIndexOf(':');
+    return (idx >= 0 ? s.slice(idx + 1) : s).trim();
+  }
+
+  /** True when a status VALUE affirms blocked/blacklisted. Clean/No/green are false. */
+  private isBlocked(value: string): boolean {
+    return (
+      value === 'blacklisted' ||
+      value === 'blocked' ||
+      value === 'yes' ||
+      value === 'true' ||
+      value === 'locked'
+    );
+  }
+
+  /** True when a status VALUE affirms stolen / reported stolen. */
+  private isStolen(value: string): boolean {
+    return value === 'stolen' || value === 'reported' || value === 'yes' || value === 'true';
   }
 
   /**
