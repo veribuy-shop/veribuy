@@ -25,6 +25,17 @@ const SELLER_ID_VALIDATION_SELECT = {
   // imei / serialNumber excluded from default seller view
 } as const;
 
+/**
+ * Admins review the check on its face, so they get the actual IMEI/serial plus
+ * the full raw API payload for debugging (same fields the admin list view uses).
+ */
+const ADMIN_ID_VALIDATION_SELECT = {
+  ...SELLER_ID_VALIDATION_SELECT,
+  imei: true,
+  serialNumber: true,
+  rawApiResponse: true,
+} as const;
+
 @Injectable()
 export class TrustLensService {
   private readonly logger = new Logger(TrustLensService.name);
@@ -178,7 +189,7 @@ export class TrustLensService {
     });
   }
 
-  async getVerificationRequest(listingId: string) {
+  async getVerificationRequest(listingId: string, forAdmin = false) {
     return this.prisma.verificationRequest.findUnique({
       where: { listingId },
       include: {
@@ -194,7 +205,7 @@ export class TrustLensService {
           },
         },
         identifierValidation: {
-          select: SELLER_ID_VALIDATION_SELECT,
+          select: forAdmin ? ADMIN_ID_VALIDATION_SELECT : SELLER_ID_VALIDATION_SELECT,
         },
       },
     });
