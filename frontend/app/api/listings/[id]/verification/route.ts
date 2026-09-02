@@ -147,7 +147,10 @@ export async function GET(
 
     if (imeiCheckPerformed && checkSummary) {
       const clean = (v: boolean | null) => v === true;
-      const icloudLocked = clean(checkSummary.icloudLocked) || (isApple && clean(checkSummary.fmiOn));
+      // iCloud Lock reflects the actual activation/icloud lock state — NOT Find
+      // My iPhone being ON (which is normal on a clean device) or a false GSMA
+      // flag. FMI/blacklist each have their own report attribute instead.
+      const icloudLocked = clean(checkSummary.icloudLocked);
 
       checks = {
         gsmaBlacklist: clean(checkSummary.blacklisted) || clean(checkSummary.reportedStolen)
