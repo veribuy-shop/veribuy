@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import ContactSellerModal from '@/components/ContactSellerModal';
+import ConfirmModal from '@/components/confirm-modal';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import {
@@ -31,6 +32,7 @@ import {
   MessageCircle,
   Pencil,
   LayoutDashboard,
+  Trash2,
   ImageIcon,
   FileWarning,
 } from 'lucide-react';
@@ -241,6 +243,8 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const [error, setError] = useState('');
   const [showContactModal, setShowContactModal] = useState(false);
   const [showGradeTooltip, setShowGradeTooltip] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // PERF-04: Consolidate three independent fetches into a single useEffect
   // using Promise.all so they run in parallel. AbortController cancels
@@ -458,6 +462,28 @@ export default function ListingDetailContent({ id }: { id: string }) {
   /*  Render                                                           */
   /* ---------------------------------------------------------------- */
 
+  const handleDeleteListing = async () => {
+    if (!listing) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/listings/${listing.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        router.push('/dashboard');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Failed to delete listing. Please try again.');
+        setConfirmDelete(false);
+      }
+    } catch {
+      setError('Failed to delete listing. Please try again.');
+      setConfirmDelete(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const GRADE_CRITERIA: Record<ConditionGrade, string[]> = {
     A: ['Flawless screen condition,', 'Battery health 90%+,', 'Fully functional components,', 'Pristine casing.'],
@@ -623,6 +649,10 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   className="flex items-center justify-center gap-2 w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors">
                   <LayoutDashboard className="w-4 h-4" aria-hidden="true" />Go to Dashboard
                 </Link>
+                <button onClick={() => setConfirmDelete(true)}
+                  className="flex items-center justify-center gap-2 w-full px-6 py-3 border border-[var(--color-danger)]/40 text-[var(--color-danger)] rounded-xl font-medium hover:bg-[var(--color-danger)]/5 transition-colors">
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />Delete Listing
+                </button>
               </div>
             ) : listing.trustLensStatus === 'PASSED' ? (
               <div className="space-y-3">
@@ -807,6 +837,20 @@ export default function ListingDetailContent({ id }: { id: string }) {
           buyerId={user.id}
         />
       )}
+
+      {/* Delete Listing confirmation */}
+      <ConfirmModal
+        isOpen={confirmDelete && !!listing}
+        onClose={() => !deleting && setConfirmDelete(false)}
+        onConfirm={handleDeleteListing}
+        title="Delete Listing"
+        description="This will permanently delete your listing and remove it from the marketplace. This cannot be undone."
+        confirmLabel="Delete Listing"
+        cancelLabel="Cancel"
+        isLoading={deleting}
+        loadingLabel="Deleting…"
+        variant="danger"
+      />
     </div>
   );
 }

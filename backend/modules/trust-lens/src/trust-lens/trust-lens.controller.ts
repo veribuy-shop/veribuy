@@ -27,12 +27,13 @@ export class TrustLensController {
     @Param('listingId', ParseUUIDPipe) listingId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const verification = await this.trustlensService.getVerificationRequest(listingId);
+    const isAdmin = user.role === 'ADMIN';
+    const verification = await this.trustlensService.getVerificationRequest(listingId, isAdmin);
     if (!verification) {
       throw new NotFoundException('Verification request not found');
     }
     // Sellers can only view their own verification requests
-    if (user.role !== 'ADMIN' && verification.sellerId !== user.userId) {
+    if (!isAdmin && verification.sellerId !== user.userId) {
       throw new ForbiddenException('You can only view your own verification requests');
     }
     return verification;
