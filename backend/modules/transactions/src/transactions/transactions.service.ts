@@ -107,6 +107,55 @@ export class TransactionsService implements OnModuleInit {
       this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
     }
 
+    // Check if an existing PENDING order already exists for this buyer and listing
+    const existingPendingOrder = await this.prisma.order.findFirst({
+      where: {
+        buyerId,
+        listingId,
+        status: 'PENDING',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingPendingOrder && existingPendingOrder.paymentIntentId) {
+      try {
+        const paymentIntent = await this.stripe.paymentIntents.retrieve(
+          existingPendingOrder.paymentIntentId,
+        );
+
+        if (paymentIntent && paymentIntent.status === 'requires_payment_method') {
+          await this.stripe.paymentIntents.update(existingPendingOrder.paymentIntentId, {
+            amount: Math.round(totalAmount * 100),
+            currency: currency.toLowerCase(),
+          });
+
+          const updatedOrder = await this.prisma.order.update({
+            where: { id: existingPendingOrder.id },
+            data: {
+              listingTitle: listingTitle ?? existingPendingOrder.listingTitle,
+              listingDescription: listingDescription ?? existingPendingOrder.listingDescription,
+              listingCategory: listingCategory ?? existingPendingOrder.listingCategory,
+              amount: numericAmount,
+              protectionFee,
+              shippingFee: numericShipping > 0 ? numericShipping : null,
+              shippingService,
+              totalAmount,
+              currency,
+              shippingAddress: shippingAddress as any,
+            },
+          });
+
+          return {
+            order: updatedOrder,
+            clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id,
+          };
+        }
+      } catch (stripeErr) {
+        this.logger.warn(`Could not reuse existing PaymentIntent: ${(stripeErr as Error).message}`);
+      }
+    }
+
     // Create Stripe Payment Intent — charge the total (item + protection fee + shipping)
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount: Math.round(totalAmount * 100),
