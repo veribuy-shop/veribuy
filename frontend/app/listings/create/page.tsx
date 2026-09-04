@@ -4,7 +4,54 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
-import { Lightbulb, AlertTriangle } from 'lucide-react';
+import {
+  Lightbulb,
+  AlertTriangle,
+  ShieldCheck,
+  CheckCircle2,
+  HelpCircle,
+  Sparkles,
+  Smartphone,
+  Eye,
+  Info,
+  X,
+  Battery,
+  Layers,
+} from 'lucide-react';
+
+function validateImeiChecksum(imei: string): { valid: boolean; status: 'empty' | 'incomplete' | 'invalid' | 'valid'; message: string } {
+  const clean = imei.trim().replace(/[\s-]/g, '');
+  if (!clean) {
+    return { valid: false, status: 'empty', message: 'Enter your 15-digit device IMEI' };
+  }
+  if (!/^\d+$/.test(clean)) {
+    return { valid: false, status: 'invalid', message: 'IMEI must contain numbers only' };
+  }
+  if (clean.length < 15) {
+    return { valid: false, status: 'incomplete', message: `${clean.length}/15 digits entered` };
+  }
+  if (clean.length > 15) {
+    return { valid: false, status: 'invalid', message: 'IMEI must be exactly 15 digits' };
+  }
+
+  // Luhn algorithm verification
+  let sum = 0;
+  for (let i = 0; i < 15; i++) {
+    let digit = parseInt(clean.charAt(i), 10);
+    // Double every second digit from right-to-left (or odd indices 1, 3, 5... for 15-digit string)
+    if (i % 2 !== 0) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+  }
+
+  if (sum % 10 === 0) {
+    return { valid: true, status: 'valid', message: 'Valid 15-digit IMEI & checksum' };
+  } else {
+    return { valid: false, status: 'invalid', message: 'Check digit mismatch — please verify the digits' };
+  }
+}
 
 type DeviceType = string;
 type ConditionGrade = 'A' | 'B' | 'C';
@@ -113,6 +160,7 @@ export default function CreateListingPage() {
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
   const [deviceTypeOptions, setDeviceTypeOptions] = useState<DeviceTypeOption[]>([]);
+  const [showImeiGuide, setShowImeiGuide] = useState(false);
 
   // Fetch the accepted device types from the backend so the form mirrors the DB enum.
   useEffect(() => {
@@ -602,7 +650,12 @@ export default function CreateListingPage() {
           {/* Step 2: Condition */}
           {currentStep === 2 && (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Device Condition</h2>
+              <div>
+                <h2 className="text-xl font-semibold text-[var(--color-text)] mb-1">Device Condition</h2>
+                <p className="text-sm text-[var(--color-text-muted)]">
+                  Select the grade that best reflects your device. Honest grading prevents disputes and returns.
+                </p>
+              </div>
               
               <fieldset>
                 <legend className="block text-sm font-medium text-[var(--color-text)] mb-3">
@@ -610,44 +663,118 @@ export default function CreateListingPage() {
                   <span className="sr-only">(required)</span>
                 </legend>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Grade A */}
                   <button
                     type="button"
                     aria-pressed={formData.conditionGrade === 'A'}
                     onClick={() => updateFormData('conditionGrade', 'A')}
-                    className={`p-4 border-2 rounded-lg text-left transition ${
+                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${
                       formData.conditionGrade === 'A'
-                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10'
-                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 shadow-sm ring-1 ring-[var(--color-green)]'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40 bg-white'
                     }`}
                   >
-                    <div className="font-semibold text-lg mb-1">Grade A - Excellent</div>
-                    <div className="text-sm text-[var(--color-text-muted)]">Like new, minimal signs of use, fully functional</div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-[var(--color-green)]/20 text-[var(--color-green)]">
+                          Grade A
+                        </span>
+                        <Sparkles className="w-4 h-4 text-[var(--color-green)]" aria-hidden="true" />
+                      </div>
+                      <div className="font-bold text-lg text-[var(--color-text)] mb-1">Pristine / Like New</div>
+                      <p className="text-xs text-[var(--color-text-muted)] mb-3">Flawless cosmetic condition with minimal to zero signs of use.</p>
+                      
+                      <div className="space-y-1.5 text-xs text-[var(--color-text)] border-t border-[var(--color-border)]/60 pt-3">
+                        <div className="flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-[var(--color-green)] shrink-0" aria-hidden="true" />
+                          <span><strong>Screen:</strong> No scratches or blemishes</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-[var(--color-green)] shrink-0" aria-hidden="true" />
+                          <span><strong>Body:</strong> Flawless casing / edges</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Battery className="w-3.5 h-3.5 text-[var(--color-green)] shrink-0" aria-hidden="true" />
+                          <span><strong>Battery:</strong> 85% - 100% capacity</span>
+                        </div>
+                      </div>
+                    </div>
                   </button>
+
+                  {/* Grade B */}
                   <button
                     type="button"
                     aria-pressed={formData.conditionGrade === 'B'}
                     onClick={() => updateFormData('conditionGrade', 'B')}
-                    className={`p-4 border-2 rounded-lg text-left transition ${
+                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${
                       formData.conditionGrade === 'B'
-                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10'
-                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 shadow-sm ring-1 ring-[var(--color-green)]'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40 bg-white'
                     }`}
                   >
-                    <div className="font-semibold text-lg mb-1">Grade B - Good</div>
-                    <div className="text-sm text-[var(--color-text-muted)]">Normal wear, minor scratches, fully functional</div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-700">
+                          Grade B
+                        </span>
+                        <Smartphone className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                      </div>
+                      <div className="font-bold text-lg text-[var(--color-text)] mb-1">Good Condition</div>
+                      <p className="text-xs text-[var(--color-text-muted)] mb-3">Light normal wear. Fully functional with minor cosmetic marks.</p>
+                      
+                      <div className="space-y-1.5 text-xs text-[var(--color-text)] border-t border-[var(--color-border)]/60 pt-3">
+                        <div className="flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden="true" />
+                          <span><strong>Screen:</strong> Micro-scratches only</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden="true" />
+                          <span><strong>Body:</strong> Light scuffs or edge wear</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Battery className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden="true" />
+                          <span><strong>Battery:</strong> 80% - 84% capacity</span>
+                        </div>
+                      </div>
+                    </div>
                   </button>
+
+                  {/* Grade C */}
                   <button
                     type="button"
                     aria-pressed={formData.conditionGrade === 'C'}
                     onClick={() => updateFormData('conditionGrade', 'C')}
-                    className={`p-4 border-2 rounded-lg text-left transition ${
+                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${
                       formData.conditionGrade === 'C'
-                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10'
-                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/30'
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 shadow-sm ring-1 ring-[var(--color-green)]'
+                        : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40 bg-white'
                     }`}
                   >
-                    <div className="font-semibold text-lg mb-1">Grade C - Fair</div>
-                    <div className="text-sm text-[var(--color-text-muted)]">Visible wear, scratches/dents, fully functional</div>
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-700">
+                          Grade C
+                        </span>
+                        <Info className="w-4 h-4 text-amber-600" aria-hidden="true" />
+                      </div>
+                      <div className="font-bold text-lg text-[var(--color-text)] mb-1">Fair / Budget</div>
+                      <p className="text-xs text-[var(--color-text-muted)] mb-3">Visible cosmetic wear and scratches, but 100% working hardware.</p>
+                      
+                      <div className="space-y-1.5 text-xs text-[var(--color-text)] border-t border-[var(--color-border)]/60 pt-3">
+                        <div className="flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-hidden="true" />
+                          <span><strong>Screen:</strong> Visible light scratches</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-hidden="true" />
+                          <span><strong>Body:</strong> Noticeable marks/dents</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Battery className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-hidden="true" />
+                          <span><strong>Battery:</strong> 75% - 79% capacity</span>
+                        </div>
+                      </div>
+                    </div>
                   </button>
                 </div>
               </fieldset>
@@ -783,21 +910,107 @@ export default function CreateListingPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <label htmlFor="device-imei" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                    IMEI <span className="text-red-500" aria-hidden="true">*</span>
-                    <span className="sr-only">(required)</span>
-                  </label>
-                  <input
-                    id="device-imei"
-                    type="text"
-                    value={formData.imei}
-                    onChange={(e) => updateFormData('imei', e.target.value)}
-                    placeholder="15 digits"
-                    maxLength={15}
-                    aria-describedby="device-imei-hint"
-                    className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-                  />
-                  <p id="device-imei-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">Dial *#06# on the device to find IMEI</p>
+                  <div className="flex items-center justify-between mb-2">
+                    <label htmlFor="device-imei" className="block text-sm font-medium text-[var(--color-text)]">
+                      IMEI <span className="text-red-500" aria-hidden="true">*</span>
+                      <span className="sr-only">(required)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowImeiGuide(!showImeiGuide)}
+                      className="text-xs text-[var(--color-green)] hover:underline inline-flex items-center gap-1 font-medium"
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                      Where do I find my IMEI?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      id="device-imei"
+                      type="text"
+                      value={formData.imei}
+                      onChange={(e) => updateFormData('imei', e.target.value.replace(/[^\d]/g, '').slice(0, 15))}
+                      placeholder="15-digit IMEI (numbers only)"
+                      maxLength={15}
+                      aria-describedby="device-imei-hint"
+                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
+                        (() => {
+                          const check = validateImeiChecksum(formData.imei);
+                          if (check.status === 'valid') return 'border-[var(--color-green)] focus:ring-[var(--color-green)] pr-10';
+                          if (check.status === 'invalid') return 'border-amber-500 focus:ring-amber-500 pr-10';
+                          return 'border-[var(--color-border)] focus:ring-[var(--color-green)]';
+                        })()
+                      }`}
+                    />
+                    {(() => {
+                      const check = validateImeiChecksum(formData.imei);
+                      if (check.status === 'valid') {
+                        return (
+                          <div className="absolute right-3 top-2.5 text-[var(--color-green)]" title="Valid IMEI checksum">
+                            <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
+                          </div>
+                        );
+                      }
+                      if (check.status === 'invalid') {
+                        return (
+                          <div className="absolute right-3 top-2.5 text-amber-500" title="Check-digit mismatch">
+                            <AlertTriangle className="w-5 h-5" aria-hidden="true" />
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+
+                  {/* Real-time validation feedback */}
+                  <div id="device-imei-hint" className="mt-1.5 flex items-center justify-between text-xs">
+                    {(() => {
+                      const check = validateImeiChecksum(formData.imei);
+                      if (check.status === 'valid') {
+                        return <span className="text-[var(--color-green)] font-medium flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 inline" /> {check.message}</span>;
+                      }
+                      if (check.status === 'invalid') {
+                        return <span className="text-amber-600 font-medium">{check.message}</span>;
+                      }
+                      if (check.status === 'incomplete') {
+                        return <span className="text-[var(--color-text-muted)]">{check.message}</span>;
+                      }
+                      return <span className="text-[var(--color-text-muted)]">Dial *#06# on phone to find IMEI</span>;
+                    })()}
+                    <span className="text-[var(--color-text-muted)] ml-auto">{formData.imei.length}/15</span>
+                  </div>
+
+                  {/* IMEI Retrieval Help Popover/Drawer */}
+                  {showImeiGuide && (
+                    <div className="mt-3 p-4 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl relative text-xs text-[var(--color-text)]">
+                      <button
+                        type="button"
+                        onClick={() => setShowImeiGuide(false)}
+                        className="absolute top-2.5 right-2.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                        aria-label="Close IMEI guide"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <h4 className="font-bold text-sm mb-2 text-[var(--color-text)] flex items-center gap-1.5">
+                        <Smartphone className="w-4 h-4 text-[var(--color-green)]" />
+                        How to find your 15-digit IMEI:
+                      </h4>
+                      <div className="space-y-2 text-[var(--color-text-muted)]">
+                        <div>
+                          <strong className="text-[var(--color-text)]">Universal Dial Code:</strong> Open phone keypad and dial <code className="bg-white px-1.5 py-0.5 rounded border border-[var(--color-border)] font-mono text-[var(--color-green)] font-bold">*#06#</code>. The IMEI displays immediately.
+                        </div>
+                        <div>
+                          <strong className="text-[var(--color-text)]">Apple iPhone:</strong> Go to <span className="font-medium text-[var(--color-text)]">Settings → General → About</span> and scroll down to IMEI.
+                        </div>
+                        <div>
+                          <strong className="text-[var(--color-text)]">Android:</strong> Go to <span className="font-medium text-[var(--color-text)]">Settings → About phone → Status / IMEI</span>.
+                        </div>
+                        <div>
+                          <strong className="text-[var(--color-text)]">Physical Device:</strong> Check the SIM tray or original retail box barcode label.
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -809,11 +1022,11 @@ export default function CreateListingPage() {
                     type="text"
                     value={formData.serialNumber}
                     onChange={(e) => updateFormData('serialNumber', e.target.value)}
-                    placeholder="Device serial number"
+                    placeholder="Device serial number (optional for phones)"
                     aria-describedby="device-serial-hint"
                     className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   />
-                  <p id="device-serial-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">Found in Settings → About</p>
+                  <p id="device-serial-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">Found in Settings → About or on original box</p>
                 </div>
               </div>
 

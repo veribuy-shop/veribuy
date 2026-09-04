@@ -7,7 +7,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
-import { CircleCheck, CircleX, Truck, Clock } from 'lucide-react';
+import { CircleCheck, CircleX, Truck, Clock, ShieldCheck, Lock, RotateCcw, Award, CheckCircle } from 'lucide-react';
 import {
   calculateShippingFee,
   formatShippingService,
@@ -505,22 +505,53 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
       <button
         type="submit"
         disabled={!stripe || processing || !shippingQuote}
-        className={`w-full px-6 py-3 rounded-lg font-semibold text-white ${
+        className={`w-full px-6 py-3.5 rounded-xl font-bold text-white transition-all text-base shadow-sm ${
           !stripe || processing || !shippingQuote
             ? 'bg-[var(--color-border)] cursor-not-allowed'
-            : 'bg-[var(--color-accent)] hover:opacity-90'
+            : 'bg-[var(--color-accent)] hover:opacity-95 cursor-pointer hover:shadow'
         }`}
       >
         {processing
-          ? 'Processing...'
-          : `Pay ${formatPrice(totalPrice, listing.currency)}`
+          ? 'Processing Secure Escrow Payment...'
+          : `Pay ${formatPrice(totalPrice, listing.currency)} & Protect Order`
         }
       </button>
       {!shippingQuote && (
         <p className="text-xs text-center text-[var(--color-text-muted)]">
-          Enter your postcode to enable payment.
+          Enter a valid UK postcode above to calculate shipping and enable payment.
         </p>
       )}
+
+      {/* Trust & Buyer Guarantee Bar */}
+      <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text)]">
+          <ShieldCheck className="w-5 h-5 text-[var(--color-green)]" aria-hidden="true" />
+          <span>VeriBuy Complete Buyer Guarantee</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2.5 border-t border-[var(--color-border)]/60 text-xs text-[var(--color-text-muted)]">
+          <div className="flex items-start gap-2">
+            <Lock className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <strong className="text-[var(--color-text)] block">Escrow Protected</strong>
+              Funds released to seller only after you inspect the device.
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <RotateCcw className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <strong className="text-[var(--color-text)] block">7-Day Refund</strong>
+              Full protection if the device doesn&apos;t match verification.
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Truck className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <strong className="text-[var(--color-text)] block">Tracked Dispatch</strong>
+              Tracked Royal Mail delivery with milestone notifications.
+            </div>
+          </div>
+        </div>
+      </div>
     </form>
   );
 }
