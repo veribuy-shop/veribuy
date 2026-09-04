@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CircleCheck, CircleX, Package, ClipboardList } from 'lucide-react';
+import { CircleCheck, CircleX, Package, ClipboardList, ShieldCheck, Truck, Check, Lock, ChevronRight } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
 import { formatShippingService } from '@/lib/shipping';
 import { calculateProtectionFee, getBuyerProtectionFeePercent } from '@/lib/fees';
@@ -249,11 +249,115 @@ export default function OrderConfirmationPage() {
           )}
         </div>
 
-        {/* Order Status */}
+        {/* Escrow & Delivery Milestones Stepper */}
+        {order.status !== 'CANCELLED' && order.status !== 'REFUNDED' && (
+          <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6 shadow-sm">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-[var(--color-green)]" aria-hidden="true" />
+                <h2 className="text-lg font-bold text-[var(--color-text)]">Order & Escrow Milestones</h2>
+              </div>
+              <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(order.status)}`}>
+                {getStatusText(order.status)}
+              </span>
+            </div>
+
+            {/* Stepper bar */}
+            <div className="relative">
+              <div className="grid grid-cols-5 gap-2 text-center">
+                {/* Step 1: Payment in Escrow */}
+                <div className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                    order.status === 'PENDING'
+                      ? 'bg-[var(--color-warning)] text-white ring-4 ring-[var(--color-warning)]/20'
+                      : 'bg-[var(--color-green)] text-white'
+                  }`}>
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-semibold text-[var(--color-text)]">1. Escrow</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Payment held</span>
+                </div>
+
+                {/* Step 2: Preparing */}
+                <div className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                    order.status === 'ESCROW_HELD' || order.status === 'PAYMENT_RECEIVED'
+                      ? 'bg-blue-600 text-white ring-4 ring-blue-500/20'
+                      : order.shippedAt || order.deliveredAt || order.completedAt
+                      ? 'bg-[var(--color-green)] text-white'
+                      : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                  }`}>
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-semibold text-[var(--color-text)]">2. Preparing</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Seller packing</span>
+                </div>
+
+                {/* Step 3: Dispatched */}
+                <div className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                    order.status === 'SHIPPED'
+                      ? 'bg-blue-600 text-white ring-4 ring-blue-500/20'
+                      : order.deliveredAt || order.completedAt
+                      ? 'bg-[var(--color-green)] text-white'
+                      : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                  }`}>
+                    <Truck className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-semibold text-[var(--color-text)]">3. Dispatched</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">In transit</span>
+                </div>
+
+                {/* Step 4: Delivered */}
+                <div className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                    order.status === 'DELIVERED'
+                      ? 'bg-amber-600 text-white ring-4 ring-amber-500/20'
+                      : order.completedAt
+                      ? 'bg-[var(--color-green)] text-white'
+                      : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                  }`}>
+                    <CircleCheck className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-semibold text-[var(--color-text)]">4. Delivered</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">7-day check</span>
+                </div>
+
+                {/* Step 5: Completed */}
+                <div className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                    order.status === 'COMPLETED'
+                      ? 'bg-[var(--color-green)] text-white'
+                      : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                  }`}>
+                    <Check className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-semibold text-[var(--color-text)]">5. Payout</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Funds released</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-[var(--color-border)]/60 text-xs text-[var(--color-text-muted)] flex flex-wrap items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-[var(--color-green)] font-medium">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                Your funds remain safely locked in VeriBuy escrow until you verify the device.
+              </span>
+              <Link
+                href={`/orders/${order.id}/tracking`}
+                className="text-[var(--color-green)] font-semibold hover:underline inline-flex items-center gap-0.5"
+              >
+                View Detailed Tracking Timeline &rarr;
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* Order Status Summary */}
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-[var(--color-text)]">
-              Order Status
+              Order Details
             </h2>
             <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(order.status)}`}>
               {getStatusText(order.status)}
