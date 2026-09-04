@@ -714,7 +714,7 @@ function DashboardTab({
             {formatPrice(stats?.totalRevenue ? stats.totalRevenue / 0.05 : 0, 'GBP')}
           </p>
           {stats?.totalRevenue ? (
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">Based on 5% platform fee</p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">Based on 5% Buyer Protection fee</p>
           ) : (
             <p className="text-xs text-[var(--color-text-muted)] mt-1">No transactions yet</p>
           )}

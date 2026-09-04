@@ -164,6 +164,7 @@ export interface SafeListing {
 export interface SafeOrder {
   id: string;
   amount: number;
+  protectionFee: number | null;
   shippingFee: number | null;
   shippingService: string | null;
   totalAmount: number | null;
@@ -373,6 +374,7 @@ export function sanitizeOrder(raw: Record<string, any>): SafeOrder {
   return {
     id: raw.id ?? '',
     amount: Number(raw.amount ?? 0),
+    protectionFee: raw.protectionFee != null ? Number(raw.protectionFee) : null,
     shippingFee: raw.shippingFee != null ? Number(raw.shippingFee) : null,
     shippingService: raw.shippingService ?? null,
     totalAmount: raw.totalAmount != null ? Number(raw.totalAmount) : null,

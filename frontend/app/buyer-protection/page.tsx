@@ -12,24 +12,24 @@ export const metadata: Metadata = {
 export default function BuyerProtectionPage() {
   const protections = [
     {
+      icon: <Lock className="w-7 h-7 text-[var(--color-green)]" />,
+      title: '100% Escrow Payment Holding',
+      description: 'Your payment is held safely in escrow upon checkout and is only released to the seller after you receive and verify the item.',
+    },
+    {
       icon: <RefreshCcw className="w-7 h-7 text-[var(--color-green)]" />,
-      title: '7-Day Return Guarantee',
-      description: 'If your device doesn\'t match the listing description, you can return it within 7 days for a full refund. No questions asked.',
+      title: '7-Day Money-Back Guarantee',
+      description: 'If your device doesn\'t match the listing description or condition grade, you can return it within 7 days for a full refund.',
     },
     {
       icon: <ShieldCheck className="w-7 h-7 text-[var(--color-green)]" />,
-      title: 'Trust Lens Verified',
-      description: 'Every device has its IMEI checked against blacklist and stolen databases. Sellers provide timestamped photos as evidence, and select a condition grade (A/B/C).',
-    },
-    {
-      icon: <Lock className="w-7 h-7 text-[var(--color-green)]" />,
-      title: 'Secure Payments',
-      description: 'Your payment is held in escrow until you confirm delivery. Sellers only get paid when you\'re satisfied.',
+      title: 'Trust Lens IMEI & Hardware Verification',
+      description: 'Every device has its IMEI checked against GSMA blacklist, lost/stolen reports, and iCloud lock status. Timestamped evidence photos ensure full transparency.',
     },
     {
       icon: <Scale className="w-7 h-7 text-[var(--color-green)]" />,
-      title: 'Dispute Resolution',
-      description: 'If there\'s an issue, our support team will mediate and resolve disputes fairly using the Trust Lens evidence pack.',
+      title: 'Dedicated Dispute Resolution',
+      description: 'If there\'s an issue, our support team mediates and resolves disputes quickly and fairly using the Trust Lens evidence pack.',
     },
   ];
 
@@ -56,8 +56,8 @@ export default function BuyerProtectionPage() {
           >
             Buyer Protection
           </h1>
-          <p className="text-base md:text-lg text-white/80">
-            Shop with confidence - you&apos;re protected
+          <p className="text-base md:text-lg text-white/85 max-w-xl mx-auto">
+            Every purchase includes our 5% Buyer Protection coverage for complete security from checkout to delivery.
           </p>
         </div>
       </section>

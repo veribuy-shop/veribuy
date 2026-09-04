@@ -18,6 +18,10 @@ interface RawOrder {
   sellerId: string;
   listingId: string;
   amount: number;
+  protectionFee?: number | string | null;
+  shippingFee?: number | string | null;
+  shippingService?: string | null;
+  totalAmount?: number | string | null;
   currency: string;
   status: string;
   paymentIntentId: string | null;
@@ -83,7 +87,7 @@ export async function GET(request: NextRequest) {
       totalOrders: total,
       totalRevenue: paginatedOrders
         .filter((o: RawOrder) => ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED'].includes(o.status))
-        .reduce((sum: number, o: RawOrder) => sum + (Number(o.amount) * 0.05), 0), // 5% commission estimate
+        .reduce((sum: number, o: RawOrder) => sum + (o.protectionFee != null ? Number(o.protectionFee) : Number(o.amount) * 0.05), 0), // 5% Buyer Protection fee
       byStatus: paginatedOrders.reduce((acc: Record<string, number>, order: RawOrder) => {
         acc[order.status] = (acc[order.status] || 0) + 1;
         return acc;
