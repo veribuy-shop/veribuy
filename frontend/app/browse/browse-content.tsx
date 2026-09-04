@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useId, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { formatPrice } from '@/lib/currency';
 import {
   Smartphone,
@@ -10,6 +11,14 @@ import {
   Package,
   Search,
   SlidersHorizontal,
+  ShieldCheck,
+  Sparkles,
+  X,
+  RotateCcw,
+  Check,
+  Tag,
+  ArrowRight,
+  Filter,
 } from 'lucide-react';
 
 type DeviceType = 'SMARTPHONE' | 'TABLET' | 'SMARTWATCH';
@@ -32,22 +41,33 @@ interface Listing {
   imageUrl?: string;
 }
 
-const DEVICE_ICONS: Record<DeviceType, { icon: React.ReactNode; bg: string; label: string }> = {
-  SMARTPHONE: { icon: <Smartphone className="w-10 h-10 text-[var(--color-text-muted)]" />, bg: 'bg-[var(--color-surface-alt)]', label: 'Smartphone' },
-  TABLET:     { icon: <Tablet className="w-10 h-10 text-[var(--color-text-muted)]" />,     bg: 'bg-[var(--color-surface-alt)]', label: 'Tablet' },
-  SMARTWATCH: { icon: <Watch className="w-10 h-10 text-[var(--color-text-muted)]" />,      bg: 'bg-[var(--color-surface-alt)]', label: 'Smartwatch' },
-};
-
-const DEVICE_TYPES: { value: DeviceType; label: string }[] = [
-  { value: 'SMARTPHONE', label: 'Smartphones' },
-  { value: 'TABLET', label: 'Tablets' },
-  { value: 'SMARTWATCH', label: 'Smartwatches' },
+const DEVICE_CATEGORIES: { value: DeviceType | ''; label: string; icon: typeof Smartphone }[] = [
+  { value: '', label: 'All Devices', icon: Package },
+  { value: 'SMARTPHONE', label: 'Smartphones', icon: Smartphone },
+  { value: 'TABLET', label: 'Tablets', icon: Tablet },
+  { value: 'SMARTWATCH', label: 'Smartwatches', icon: Watch },
 ];
 
-/** Fallback icon config for device types no longer offered (legacy data). */
-const DEVICE_ICON_FALLBACK = { icon: <Package className="w-10 h-10 text-[var(--color-text-muted)]" />, bg: 'bg-[var(--color-surface-alt)]', label: 'Device' };
-const getDeviceIcon = (type: string) =>
-  DEVICE_ICONS[type as DeviceType] ?? DEVICE_ICON_FALLBACK;
+const GRADE_CONFIG: Record<ConditionGrade, { label: string; title: string; badgeClass: string; desc: string }> = {
+  A: {
+    label: 'Grade A',
+    title: 'Pristine / Like New',
+    badgeClass: 'bg-[var(--color-green)] text-white',
+    desc: 'Flawless condition, zero/minimal scratches',
+  },
+  B: {
+    label: 'Grade B',
+    title: 'Good Condition',
+    badgeClass: 'bg-blue-600 text-white',
+    desc: 'Minor cosmetic marks, 100% functional',
+  },
+  C: {
+    label: 'Grade C',
+    title: 'Fair / Budget',
+    badgeClass: 'bg-amber-600 text-white',
+    desc: 'Visible wear/scuffs, 100% functional',
+  },
+};
 
 export default function BrowseContent() {
   const [listings, setListings] = useState<Listing[]>([]);
@@ -63,12 +83,11 @@ export default function BrowseContent() {
     maxPrice: '',
   });
   const [sortBy, setSortBy] = useState('newest');
-  // PERF-10: Server-side pagination. page resets to 1 whenever filters/sort change.
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
 
-  // PERF-02: Debounce search input — only trigger a new fetch after 300ms of inactivity
-  // to avoid firing a network request on every keypress.
+  // Debounced search
   const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,7 +97,6 @@ export default function BrowseContent() {
   const maxPriceId = useId();
   const sortId = useId();
 
-  // Debounce the search field: update debouncedSearch 300ms after the user stops typing
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
@@ -89,13 +107,11 @@ export default function BrowseContent() {
     };
   }, [filters.search]);
 
-  // Re-fetch when any filter (except raw search — use debouncedSearch) or sortBy changes
   useEffect(() => {
     fetchListings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.deviceType, filters.conditionGrades, filters.verifiedOnly, filters.minPrice, filters.maxPrice, debouncedSearch, sortBy, page]);
 
-  // Reset to page 1 whenever filters or sort order change (but not when page itself changes).
   useEffect(() => {
     setPage(1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -116,16 +132,11 @@ export default function BrowseContent() {
         params.append('trustLensStatus', 'PASSED');
       }
 
-      // PERF-02: Use debouncedSearch (updated with 300ms delay) so we don't fire
-      // a fetch on every keypress.
       if (debouncedSearch) {
         params.append('search', debouncedSearch);
       }
 
-      // PERF-03: Push conditionGrades and price filtering to the API instead of
-      // filtering client-side after receiving all listings.
       if (filters.conditionGrades.length > 0) {
-        // Send as repeated params: conditionGrade=A&conditionGrade=B
         filters.conditionGrades.forEach(g => params.append('conditionGrade', g));
       }
 
@@ -137,7 +148,6 @@ export default function BrowseContent() {
         params.append('maxPrice', filters.maxPrice);
       }
 
-      // Pass sort order to API so results arrive pre-sorted
       if (sortBy === 'price-asc') {
         params.append('sortBy', 'price');
         params.append('sortOrder', 'asc');
@@ -149,10 +159,7 @@ export default function BrowseContent() {
         params.append('sortOrder', 'desc');
       }
 
-      // Only fetch ACTIVE listings for browse page
       params.append('status', 'ACTIVE');
-
-      // PERF-10: Pass current page to the API (default page size = 12)
       params.append('page', String(page));
       params.append('limit', '12');
 
@@ -167,22 +174,17 @@ export default function BrowseContent() {
       }
 
       const data = await response.json();
-      // Handle paginated response: { data: [...], pagination: {...} }
       const rawListings: Listing[] = Array.isArray(data) ? data : (data.data || []);
-
-      // SEC-14 / PERF-03: The N+1 per-listing evidence fetch has been removed.
-      // The listing API should include imageUrl directly on the listing object.
-      // If imageUrl is missing, the card gracefully falls back to a device-type icon.
       setListings(rawListings);
 
-      // PERF-10: Extract totalPages from the pagination envelope when present
-      if (!Array.isArray(data) && data.pagination?.totalPages) {
-        setTotalPages(data.pagination.totalPages);
+      if (!Array.isArray(data) && data.pagination) {
+        setTotalPages(data.pagination.totalPages || 1);
+        setTotalCount(data.pagination.total ?? rawListings.length);
       } else {
         setTotalPages(1);
+        setTotalCount(rawListings.length);
       }
     } catch (err: any) {
-      // Network-level failure (service unreachable) vs HTTP error
       const isNetworkError = err instanceof TypeError && err.message.includes('fetch');
       setError(isNetworkError
         ? 'Unable to reach the listings service. Please check your connection and try again.'
@@ -202,346 +204,517 @@ export default function BrowseContent() {
     }));
   };
 
-  // PERF-03: Filtering and sorting are now handled server-side (passed as API query params).
-  // listings already arrives filtered, sorted, and paginated from the backend.
-  const sortedListings = listings;
-
-  const getTrustBadge = (status: TrustLensStatus) => {
-    if (status === 'PASSED') {
-      return <span className="bg-[var(--color-success)] text-white text-xs px-2 py-0.5 rounded-full font-medium">Verified</span>;
-    }
-    if (status === 'IN_PROGRESS' || status === 'REQUIRES_REVIEW') {
-      return <span className="bg-[var(--color-accent)] text-[var(--color-text)] text-xs px-2 py-0.5 rounded-full font-medium">Under Review</span>;
-    }
-    return null;
+  const clearAllFilters = () => {
+    setFilters({
+      deviceType: '',
+      conditionGrades: [],
+      verifiedOnly: false,
+      search: '',
+      minPrice: '',
+      maxPrice: '',
+    });
   };
 
-  const getConditionBadge = (grade?: ConditionGrade) => {
-    if (!grade) return null;
-    
-    const config: Record<ConditionGrade, { bg: string; text: string }> = {
-      A: { bg: 'bg-[var(--color-primary)]', text: 'text-white' },
-      B: { bg: 'bg-[var(--color-green)]', text: 'text-white' },
-      C: { bg: 'bg-[var(--color-accent)]', text: 'text-[var(--color-text)]' },
-    };
+  const hasActiveFilters = Boolean(
+    filters.deviceType ||
+    filters.conditionGrades.length > 0 ||
+    !filters.verifiedOnly ||
+    filters.search ||
+    filters.minPrice ||
+    filters.maxPrice
+  );
 
-    return (
-      <span className={`${config[grade].bg} ${config[grade].text} text-xs px-2 py-0.5 rounded-full font-medium`}>
-        Grade {grade}
-      </span>
-    );
-  };
+  const activeFilterCount =
+    (filters.deviceType ? 1 : 0) +
+    filters.conditionGrades.length +
+    (!filters.verifiedOnly ? 1 : 0) +
+    (filters.search ? 1 : 0) +
+    (filters.minPrice || filters.maxPrice ? 1 : 0);
 
-  const FilterContent = () => (
-    <div className="space-y-6">
-      {/* Search */}
-      <div>
-        <label htmlFor={searchId} className="block font-semibold text-sm mb-2">Search</label>
-        <input
-          id={searchId}
-          type="search"
-          value={filters.search}
-          onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-          placeholder="Search devices..."
-          autoComplete="off"
-          className="w-full px-3 py-2 border border-[var(--color-border)] rounded-md text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-        />
-      </div>
+  return (
+    <div className="min-h-screen bg-[var(--color-surface)]">
+      {/* Header Banner */}
+      <div className="bg-white border-b border-[var(--color-border)] py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[var(--color-green)]/15 text-[var(--color-green)] border border-[var(--color-green)]/30">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Trust Lens™ Verified Marketplace
+                </span>
+                <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
+                  • GSMA Blacklist Checked & Escrow Protected
+                </span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-black text-[var(--color-text)] tracking-tight">
+                Explore Verified Devices
+              </h1>
+              <p className="text-sm text-[var(--color-text-muted)] mt-1 max-w-2xl">
+                Every smartphone, tablet, and smartwatch is hardware-authenticated with timestamped evidence before dispatch.
+              </p>
+            </div>
 
-      {/* Category */}
-      <div>
-        <h3 className="font-semibold text-sm mb-2" id="category-filter-heading">Category</h3>
-        <ul className="space-y-1 text-sm text-[var(--color-text-muted)]" aria-labelledby="category-filter-heading">
-          <li>
-            <button
-              onClick={() => setFilters(prev => ({ ...prev, deviceType: '' }))}
-              aria-pressed={!filters.deviceType}
-              className={`hover:text-[var(--color-text)] ${!filters.deviceType ? 'font-semibold text-[var(--color-green)]' : ''}`}
-            >
-              All Devices
-            </button>
-          </li>
-          {DEVICE_TYPES.map(type => (
-            <li key={type.value}>
-              <button
-                onClick={() => setFilters(prev => ({ ...prev, deviceType: type.value }))}
-                aria-pressed={filters.deviceType === type.value}
-                className={`hover:text-[var(--color-text)] ${filters.deviceType === type.value ? 'font-semibold text-[var(--color-green)]' : ''}`}
-              >
-                {type.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      {/* Condition Grade */}
-      <fieldset>
-        <legend className="font-semibold text-sm mb-2">Condition Grade</legend>
-        <ul className="space-y-2 text-sm">
-          {(['A', 'B', 'C'] as ConditionGrade[]).map((grade) => {
-            const labels = { A: 'Grade A — Excellent', B: 'Grade B — Good', C: 'Grade C — Fair' };
-            const gradeId = `condition-grade-${grade}`;
-            return (
-              <li key={grade}>
-                <label htmlFor={gradeId} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    id={gradeId}
-                    type="checkbox"
-                    checked={filters.conditionGrades.includes(grade)}
-                    onChange={() => toggleConditionGrade(grade)}
-                    className="rounded"
-                  />
-                  <span>{labels[grade]}</span>
-                </label>
-              </li>
-            );
-          })}
-        </ul>
-      </fieldset>
-
-      {/* Verification */}
-      <fieldset>
-        <legend className="font-semibold text-sm mb-2">Verification</legend>
-        <label htmlFor="verified-only" className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            id="verified-only"
-            type="checkbox"
-            checked={filters.verifiedOnly}
-            onChange={(e) => setFilters(prev => ({ ...prev, verifiedOnly: e.target.checked }))}
-            className="rounded"
-          />
-          <span>Trust Lens Verified only</span>
-        </label>
-      </fieldset>
-
-      {/* Price Range */}
-      <div>
-        <h3 className="font-semibold text-sm mb-2" id="price-range-heading">Price Range</h3>
-        <div className="flex gap-2" aria-labelledby="price-range-heading">
-          <div className="flex-1">
-            <label htmlFor={minPriceId} className="sr-only">Minimum price</label>
-            <input
-              id={minPriceId}
-              type="number"
-              placeholder="Min"
-              min={0}
-              value={filters.minPrice}
-              onChange={(e) => setFilters(prev => ({ ...prev, minPrice: e.target.value }))}
-              className="w-full px-2 py-1 border border-[var(--color-border)] rounded text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-            />
+            {/* Quick search input */}
+            <div className="w-full md:w-80 relative">
+              <label htmlFor={searchId} className="sr-only">Search verified devices</label>
+              <Search className="w-4 h-4 text-[var(--color-text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2" aria-hidden="true" />
+              <input
+                id={searchId}
+                type="search"
+                value={filters.search}
+                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                placeholder="Search iPhone, Galaxy, iPad..."
+                className="w-full pl-10 pr-10 py-2.5 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all"
+              />
+              {filters.search && (
+                <button
+                  type="button"
+                  onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
+                  aria-label="Clear search"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
-          <div className="flex-1">
-            <label htmlFor={maxPriceId} className="sr-only">Maximum price</label>
-            <input
-              id={maxPriceId}
-              type="number"
-              placeholder="Max"
-              min={0}
-              value={filters.maxPrice}
-              onChange={(e) => setFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
-              className="w-full px-2 py-1 border border-[var(--color-border)] rounded text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-            />
+
+          {/* Quick Category Tabs Strip */}
+          <div className="flex items-center gap-2 overflow-x-auto pt-6 pb-1 scrollbar-none">
+            {DEVICE_CATEGORIES.map((cat) => {
+              const Icon = cat.icon;
+              const isSelected = filters.deviceType === cat.value;
+              return (
+                <button
+                  key={cat.label}
+                  type="button"
+                  onClick={() => setFilters(prev => ({ ...prev, deviceType: isSelected && cat.value !== '' ? '' : cat.value }))}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
+                    isSelected
+                      ? 'bg-[var(--color-green)] text-white shadow-sm ring-2 ring-[var(--color-green)]/20'
+                      : 'bg-[var(--color-surface-alt)] text-[var(--color-text)] hover:bg-[var(--color-border)]/60 border border-[var(--color-border)]'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {cat.label}
+                </button>
+              );
+            })}
+
+            <div className="h-6 w-px bg-[var(--color-border)] mx-1 shrink-0" />
+
+            {/* Quick Condition Chips */}
+            <button
+              type="button"
+              onClick={() => toggleConditionGrade('A')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+                filters.conditionGrades.includes('A')
+                  ? 'bg-[var(--color-green)]/15 text-[var(--color-green)] border-[var(--color-green)] ring-1 ring-[var(--color-green)]'
+                  : 'bg-white text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Grade A (Pristine)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilters(prev => ({ ...prev, maxPrice: prev.maxPrice === '300' ? '' : '300' }))}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+                filters.maxPrice === '300'
+                  ? 'bg-[var(--color-green)]/15 text-[var(--color-green)] border-[var(--color-green)] ring-1 ring-[var(--color-green)]'
+                  : 'bg-white text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40'
+              }`}
+            >
+              <Tag className="w-3.5 h-3.5" />
+              Under £300
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Clear Filters */}
-      <button
-        onClick={() => setFilters({
-          deviceType: '',
-          conditionGrades: [],
-          verifiedOnly: true,
-          search: '',
-          minPrice: '',
-          maxPrice: '',
-        })}
-        className="w-full px-4 py-2 text-sm text-[var(--color-green)] border border-[var(--color-green)] rounded-md hover:bg-[var(--color-green)]/10"
-      >
-        Clear All Filters
-      </button>
-    </div>
-  );
+      {/* Main Content Area */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        {/* Mobile Filter & Sort Bar */}
+        <div className="lg:hidden flex items-center justify-between gap-3 mb-6">
+          <button
+            onClick={() => setFiltersOpen(!filtersOpen)}
+            aria-expanded={filtersOpen}
+            aria-controls={filterPanelId}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-[var(--color-border)] rounded-xl text-sm font-bold text-[var(--color-text)] shadow-sm"
+          >
+            <Filter className="w-4 h-4 text-[var(--color-green)]" />
+            <span>Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}</span>
+          </button>
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      {/* Mobile filter toggle — visible below lg */}
-      <div className="lg:hidden mb-4">
-        <button
-          onClick={() => setFiltersOpen(!filtersOpen)}
-          aria-expanded={filtersOpen}
-          aria-controls={filterPanelId}
-          className="flex items-center gap-2 px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm font-medium hover:bg-[var(--color-surface-alt)]"
-        >
-          <SlidersHorizontal aria-hidden="true" className="w-4 h-4" />
-          {filtersOpen ? 'Hide Filters' : 'Show Filters'}
-        </button>
-      </div>
-
-      <div className="flex gap-8">
-        {/* Sidebar Filters — always shown on lg+, togglable below */}
-        <aside
-          id={filterPanelId}
-          aria-label="Listing filters"
-          className={`w-full lg:w-64 lg:shrink-0 ${filtersOpen ? 'block' : 'hidden'} lg:block`}
-        >
-          <h2 className="font-bold text-lg mb-4">Filters</h2>
-          <FilterContent />
-        </aside>
-
-        {/* Listings Grid */}
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-            <h1 className="text-2xl font-bold text-[var(--color-text)]">
-              {filters.deviceType 
-                ? DEVICE_TYPES.find(t => t.value === filters.deviceType)?.label 
-                : 'All Devices'}
-              {sortedListings.length > 0 && (
-                <span className="ml-2 text-base text-[var(--color-text-muted)] font-normal">
-                  ({sortedListings.length} {sortedListings.length === 1 ? 'listing' : 'listings'})
-                </span>
-              )}
-            </h1>
-            <div>
-              <label htmlFor={sortId} className="sr-only">Sort listings by</label>
-              <select
-                id={sortId}
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-2 border border-[var(--color-border)] rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-              >
-                <option value="newest">Newest First</option>
-                <option value="price-asc">Price: Low to High</option>
-                <option value="price-desc">Price: High to Low</option>
-              </select>
-            </div>
+          <div className="relative">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-4 py-2.5 bg-white border border-[var(--color-border)] rounded-xl text-sm font-semibold text-[var(--color-text)] shadow-sm focus:ring-2 focus:ring-[var(--color-green)]"
+            >
+              <option value="newest">Newest First</option>
+              <option value="price-asc">Price: Low to High</option>
+              <option value="price-desc">Price: High to Low</option>
+            </select>
           </div>
+        </div>
 
-          {loading && (
-            <div role="status" className="text-center py-12">
-              <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)]"></div>
-              <span className="sr-only">Loading listings...</span>
-              <p aria-hidden="true" className="mt-4 text-[var(--color-text-muted)]">Loading listings...</p>
-            </div>
-          )}
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Desktop Filter Sidebar */}
+          <aside
+            id={filterPanelId}
+            aria-label="Listing filters"
+            className={`w-full lg:w-72 lg:shrink-0 ${filtersOpen ? 'block' : 'hidden'} lg:block`}
+          >
+            <div className="bg-white border border-[var(--color-border)] rounded-2xl p-6 shadow-sm sticky top-24 space-y-6">
+              <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-4">
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-[var(--color-green)]" />
+                  <h2 className="font-bold text-base text-[var(--color-text)]">Filters</h2>
+                  {activeFilterCount > 0 && (
+                    <span className="w-5 h-5 rounded-full bg-[var(--color-green)] text-white text-xs flex items-center justify-center font-bold">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </div>
 
-          {error && (
-            <div role="alert" className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-lg p-4 text-center">
-              <p className="text-[var(--color-danger)]">{error}</p>
-              <button
-                onClick={fetchListings}
-                className="mt-3 px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-
-          {!loading && !error && sortedListings.length === 0 && (
-            <div className="text-center py-12">
-              <div aria-hidden="true" className="mb-4 flex justify-center">
-                {filters.deviceType ? (
-                  <span className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-[var(--color-surface-alt)]">
-                    {getDeviceIcon(filters.deviceType).icon}
-                  </span>
-                ) : (
-                  <Search className="w-16 h-16 text-[var(--color-text-muted)]" />
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearAllFilters}
+                    type="button"
+                    className="text-xs font-semibold text-[var(--color-green)] hover:underline flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Reset
+                  </button>
                 )}
               </div>
-              <h3 className="text-xl font-semibold text-[var(--color-text)] mb-2">No listings found</h3>
-              <p className="text-[var(--color-text-muted)] mb-6">Try adjusting your filters or check back later</p>
-              <Link
-                href="/listings/create"
-                className="inline-block px-6 py-3 bg-[var(--color-primary)] text-white rounded-lg hover:opacity-90"
-              >
-                Create First Listing
-              </Link>
-            </div>
-          )}
 
-          {!loading && !error && sortedListings.length > 0 && (
-            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" aria-label="Device listings">
-              {sortedListings.map((listing) => (
-                <li key={listing.id}>
-                  <Link
-                    href={`/listings/${listing.id}`}
-                    className="block bg-white rounded-xl overflow-hidden transition-shadow border border-[var(--color-border)] hover:border-[var(--color-green)] hover:shadow-md h-full"
+              {/* Verification Filter */}
+              <div>
+                <label htmlFor="verified-only" className="flex items-center justify-between p-3 rounded-xl bg-[var(--color-surface-alt)] border border-[var(--color-border)] cursor-pointer hover:bg-[var(--color-border)]/40 transition-colors">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldCheck className="w-5 h-5 text-[var(--color-green)]" />
+                    <div>
+                      <span className="text-xs font-bold text-[var(--color-text)] block">Verified Only</span>
+                      <span className="text-[10px] text-[var(--color-text-muted)]">Trust Lens™ passed</span>
+                    </div>
+                  </div>
+                  <input
+                    id="verified-only"
+                    type="checkbox"
+                    checked={filters.verifiedOnly}
+                    onChange={(e) => setFilters(prev => ({ ...prev, verifiedOnly: e.target.checked }))}
+                    className="w-4 h-4 text-[var(--color-green)] rounded focus:ring-[var(--color-green)]"
+                  />
+                </label>
+              </div>
+
+              {/* Condition Grade Filter */}
+              <fieldset>
+                <legend className="font-bold text-xs uppercase tracking-wider text-[var(--color-text-muted)] mb-3">
+                  Condition Grade
+                </legend>
+                <div className="space-y-2.5">
+                  {(['A', 'B', 'C'] as ConditionGrade[]).map((grade) => {
+                    const cfg = GRADE_CONFIG[grade];
+                    const isChecked = filters.conditionGrades.includes(grade);
+                    const gradeId = `filter-grade-${grade}`;
+                    return (
+                      <label
+                        key={grade}
+                        htmlFor={gradeId}
+                        className={`flex items-start justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                          isChecked
+                            ? 'border-[var(--color-green)] bg-[var(--color-green)]/5'
+                            : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <input
+                            id={gradeId}
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleConditionGrade(grade)}
+                            className="mt-0.5 w-4 h-4 text-[var(--color-green)] rounded focus:ring-[var(--color-green)]"
+                          />
+                          <div>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded ${cfg.badgeClass}`}>
+                                {cfg.label}
+                              </span>
+                              <span className="text-xs font-bold text-[var(--color-text)]">{cfg.title}</span>
+                            </div>
+                            <p className="text-[11px] text-[var(--color-text-muted)]">{cfg.desc}</p>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              {/* Price Range */}
+              <div>
+                <h3 className="font-bold text-xs uppercase tracking-wider text-[var(--color-text-muted)] mb-3" id="price-range-heading">
+                  Price Range (£)
+                </h3>
+                <div className="flex items-center gap-2" aria-labelledby="price-range-heading">
+                  <div className="flex-1">
+                    <label htmlFor={minPriceId} className="sr-only">Min price</label>
+                    <input
+                      id={minPriceId}
+                      type="number"
+                      placeholder="Min £"
+                      min={0}
+                      value={filters.minPrice}
+                      onChange={(e) => setFilters(prev => ({ ...prev, minPrice: e.target.value }))}
+                      className="w-full px-3 py-2 border border-[var(--color-border)] rounded-xl text-xs focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                    />
+                  </div>
+                  <span className="text-xs text-[var(--color-text-muted)]">—</span>
+                  <div className="flex-1">
+                    <label htmlFor={maxPriceId} className="sr-only">Max price</label>
+                    <input
+                      id={maxPriceId}
+                      type="number"
+                      placeholder="Max £"
+                      min={0}
+                      value={filters.maxPrice}
+                      onChange={(e) => setFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
+                      className="w-full px-3 py-2 border border-[var(--color-border)] rounded-xl text-xs focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5 mt-2">
+                  {['150', '300', '500'].map((price) => (
+                    <button
+                      key={price}
+                      type="button"
+                      onClick={() => setFilters(prev => ({ ...prev, maxPrice: price }))}
+                      className="flex-1 py-1 text-[11px] font-medium text-[var(--color-text-muted)] bg-[var(--color-surface-alt)] hover:bg-[var(--color-border)] rounded-lg transition-colors"
+                    >
+                      &le; £{price}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* Listings Section */}
+          <div className="flex-1 min-w-0">
+            {/* Active Filters bar & Sort */}
+            <div className="bg-white border border-[var(--color-border)] rounded-2xl p-4 mb-6 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-[var(--color-text)]">
+                  {totalCount !== null ? `${totalCount} ${totalCount === 1 ? 'device' : 'devices'}` : 'Listings'}
+                </span>
+
+                {filters.deviceType && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[var(--color-surface-alt)] text-[var(--color-text)] border border-[var(--color-border)]">
+                    {DEVICE_CATEGORIES.find(c => c.value === filters.deviceType)?.label}
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, deviceType: '' }))} aria-label="Remove category filter">
+                      <X className="w-3 h-3 hover:text-red-500" />
+                    </button>
+                  </span>
+                )}
+
+                {filters.conditionGrades.map((g) => (
+                  <span key={g} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200">
+                    Grade {g}
+                    <button type="button" onClick={() => toggleConditionGrade(g)} aria-label={`Remove Grade ${g} filter`}>
+                      <X className="w-3 h-3 hover:text-red-500" />
+                    </button>
+                  </span>
+                ))}
+
+                {(filters.minPrice || filters.maxPrice) && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[var(--color-surface-alt)] text-[var(--color-text)] border border-[var(--color-border)]">
+                    £{filters.minPrice || '0'} - £{filters.maxPrice || '∞'}
+                    <button type="button" onClick={() => setFilters(prev => ({ ...prev, minPrice: '', maxPrice: '' }))} aria-label="Remove price filter">
+                      <X className="w-3 h-3 hover:text-red-500" />
+                    </button>
+                  </span>
+                )}
+              </div>
+
+              {/* Desktop Sort Dropdown */}
+              <div className="hidden lg:flex items-center gap-2">
+                <label htmlFor={sortId} className="text-xs text-[var(--color-text-muted)] font-medium">Sort by:</label>
+                <select
+                  id={sortId}
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="px-3 py-1.5 border border-[var(--color-border)] rounded-xl text-xs font-semibold text-[var(--color-text)] bg-white focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="price-asc">Price: Low to High</option>
+                  <option value="price-desc">Price: High to Low</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Loading Skeletons */}
+            {loading && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6" aria-label="Loading listings">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-[var(--color-border)] p-4 space-y-3 animate-pulse">
+                    <div className="aspect-[4/3] bg-gray-200 rounded-xl" />
+                    <div className="h-4 bg-gray-200 rounded w-2/3" />
+                    <div className="h-3 bg-gray-200 rounded w-1/2" />
+                    <div className="h-6 bg-gray-200 rounded w-1/3 pt-2" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <div role="alert" className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-2xl p-8 text-center">
+                <p className="text-sm font-semibold text-[var(--color-danger)] mb-4">{error}</p>
+                <button
+                  onClick={fetchListings}
+                  className="px-6 py-2.5 bg-[var(--color-primary)] text-white rounded-xl font-bold hover:opacity-90 text-sm shadow-sm"
+                >
+                  Retry Search
+                </button>
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!loading && !error && listings.length === 0 && (
+              <div className="bg-white border border-[var(--color-border)] rounded-2xl p-12 text-center shadow-sm">
+                <div className="w-16 h-16 rounded-2xl bg-[var(--color-surface-alt)] border border-[var(--color-border)] flex items-center justify-center mx-auto mb-4">
+                  <Search className="w-8 h-8 text-[var(--color-text-muted)]" />
+                </div>
+                <h3 className="text-xl font-bold text-[var(--color-text)] mb-2">No verified devices found</h3>
+                <p className="text-sm text-[var(--color-text-muted)] max-w-md mx-auto mb-6">
+                  We couldn&apos;t find any devices matching your current filter criteria. Try broadening your search or resetting filters.
+                </p>
+                <div className="flex flex-wrap gap-3 justify-center">
+                  <button
+                    onClick={clearAllFilters}
+                    className="px-6 py-2.5 bg-[var(--color-green)] text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm"
                   >
-                    {listing.imageUrl ? (
-                      <div className="h-48 overflow-hidden bg-[var(--color-surface-alt)]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={listing.imageUrl}
-                          alt={listing.title}
-                          loading="lazy"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className={`${getDeviceIcon(listing.deviceType).bg} h-48 flex items-center justify-center`}>
-                        <div className="text-center">
-                          <div aria-hidden="true" className="mb-1 flex justify-center">{getDeviceIcon(listing.deviceType).icon}</div>
-                          <p className="text-xs text-[var(--color-text-muted)] font-medium">
-                            {getDeviceIcon(listing.deviceType).label}
-                          </p>
+                    Clear All Filters
+                  </button>
+                  <Link
+                    href="/listings/create"
+                    className="px-6 py-2.5 bg-[var(--color-surface-alt)] text-[var(--color-text)] border border-[var(--color-border)] rounded-xl text-sm font-bold hover:bg-[var(--color-border)] transition-colors"
+                  >
+                    Sell Your Device
+                  </Link>
+                </div>
+              </div>
+            )}
+
+            {/* Device Listings Grid */}
+            {!loading && !error && listings.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6" aria-label="Device listings">
+                {listings.map((item) => {
+                  const grade = item.conditionGrade ? GRADE_CONFIG[item.conditionGrade] : null;
+                  const itemPrice = typeof item.price === 'string' ? parseFloat(item.price) : item.price;
+                  return (
+                    <Link
+                      key={item.id}
+                      href={`/listings/${item.id}`}
+                      className="group bg-white rounded-2xl border border-[var(--color-border)] hover:border-[var(--color-green)]/80 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col"
+                    >
+                      {/* Image container */}
+                      <div className="relative aspect-[4/3] bg-[var(--color-surface-alt)] overflow-hidden">
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.title}
+                            loading="lazy"
+                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center text-[var(--color-text-muted)]">
+                            <Smartphone className="w-12 h-12 stroke-[1.25] mb-1 opacity-60" />
+                            <span className="text-xs font-semibold capitalize">{item.deviceType.toLowerCase()}</span>
+                          </div>
+                        )}
+
+                        {/* Top Badges */}
+                        <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                          {grade && (
+                            <span className={`text-[11px] font-extrabold px-2.5 py-1 rounded-lg shadow-sm ${grade.badgeClass}`}>
+                              {grade.label}
+                            </span>
+                          )}
+                          {item.trustLensStatus === 'PASSED' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/95 text-[var(--color-green)] backdrop-blur-sm shadow-sm border border-emerald-100">
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              Verified
+                            </span>
+                          )}
                         </div>
                       </div>
-                    )}
-                    <div className="p-4">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        {getTrustBadge(listing.trustLensStatus)}
-                        {getConditionBadge(listing.conditionGrade)}
+
+                      {/* Content */}
+                      <div className="p-4 flex-1 flex flex-col justify-between">
+                        <div>
+                          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
+                            {item.brand} {item.model}
+                          </p>
+                          <h3 className="font-bold text-sm text-[var(--color-text)] line-clamp-2 leading-snug group-hover:text-[var(--color-green)] transition-colors mb-2">
+                            {item.title}
+                          </h3>
+                        </div>
+
+                        <div className="pt-3 border-t border-[var(--color-border)]/60 flex items-end justify-between mt-3">
+                          <div>
+                            <span className="text-xs text-[var(--color-text-muted)] block">Total Price</span>
+                            <span className="text-lg font-black text-[var(--color-text)]">
+                              {formatPrice(itemPrice, item.currency)}
+                            </span>
+                          </div>
+
+                          <span className="text-xs font-bold text-[var(--color-green)] group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
+                            View Device <ArrowRight className="w-3.5 h-3.5" />
+                          </span>
+                        </div>
                       </div>
-                      <h3 className="font-semibold text-sm mb-1 text-[var(--color-text)] line-clamp-2">
-                        {listing.title}
-                      </h3>
-                      <p className="text-xs text-[var(--color-text-muted)] mb-2">
-                        {listing.brand} {listing.model}
-                      </p>
-                      <div className="flex justify-between items-center">
-                        <p className="text-lg font-bold text-[var(--color-text)]">
-                          {formatPrice(listing.price, listing.currency)}
-                        </p>
-                        <span className="text-sm text-[var(--color-green)] hover:text-[var(--color-green-dark)] hover:underline" aria-hidden="true">
-                          View Details →
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
 
-          {/* PERF-10: Previous / Next pagination controls */}
-          {!loading && !error && totalPages > 1 && (
-            <nav
-              aria-label="Listings pagination"
-              className="flex items-center justify-center gap-4 mt-8"
-            >
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                aria-label="Previous page"
-                className="px-4 py-2 border border-[var(--color-border)] rounded-md text-sm font-medium hover:bg-[var(--color-surface-alt)] disabled:opacity-40 disabled:cursor-not-allowed"
+            {/* Pagination Controls */}
+            {!loading && !error && totalPages > 1 && (
+              <nav
+                aria-label="Listings pagination"
+                className="flex items-center justify-center gap-4 mt-10"
               >
-                <span aria-hidden="true">←</span> Previous
-              </button>
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  aria-label="Previous page"
+                  className="px-5 py-2.5 bg-white border border-[var(--color-border)] rounded-xl text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-alt)] disabled:opacity-40 disabled:cursor-not-allowed shadow-sm transition-colors"
+                >
+                  &larr; Previous
+                </button>
 
-              <span className="text-sm text-[var(--color-text-muted)]">
-                Page {page} of {totalPages}
-              </span>
+                <span className="text-xs font-semibold text-[var(--color-text-muted)] bg-white px-3.5 py-2 border border-[var(--color-border)] rounded-xl shadow-sm">
+                  Page {page} of {totalPages}
+                </span>
 
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                aria-label="Next page"
-                className="px-4 py-2 border border-[var(--color-border)] rounded-md text-sm font-medium hover:bg-[var(--color-surface-alt)] disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Next <span aria-hidden="true">→</span>
-              </button>
-            </nav>
-          )}
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                  aria-label="Next page"
+                  className="px-5 py-2.5 bg-white border border-[var(--color-border)] rounded-xl text-sm font-bold text-[var(--color-text)] hover:bg-[var(--color-surface-alt)] disabled:opacity-40 disabled:cursor-not-allowed shadow-sm transition-colors"
+                >
+                  Next &rarr;
+                </button>
+              </nav>
+            )}
+          </div>
         </div>
       </div>
     </div>
