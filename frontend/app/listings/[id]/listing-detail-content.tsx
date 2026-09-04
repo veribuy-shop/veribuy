@@ -8,6 +8,7 @@ import ContactSellerModal from '@/components/ContactSellerModal';
 import ConfirmModal from '@/components/confirm-modal';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
+import { getBuyerProtectionFeePercent, calculateProtectionFee } from '@/lib/fees';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -45,6 +46,8 @@ import {
   Trash2,
   ImageIcon,
   FileWarning,
+  Truck,
+  RotateCcw,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -599,183 +602,266 @@ export default function ListingDetailContent({ id }: { id: string }) {
         )}
 
         {/* ── Top 2-col: Image + Purchase ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-10 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 mb-12 items-start">
 
-          {/* LEFT: Image gallery */}
-          <div>
-            <div className="relative bg-[var(--color-surface-alt)] rounded-2xl overflow-hidden border border-[var(--color-border)] aspect-[4/3] flex items-center justify-center mb-3">
+          {/* LEFT: Image gallery (7 cols on lg) */}
+          <div className="lg:col-span-7">
+            <div className="relative bg-[var(--color-surface-alt)] rounded-2xl overflow-hidden border border-[var(--color-border)] aspect-[4/3] flex items-center justify-center mb-3 shadow-xs">
               {hasImages ? (
-                <img src={allImages[selectedImageIndex]?.fileUrl} alt={listing.title} className="w-full h-full object-contain" />
+                <img
+                  src={allImages[selectedImageIndex]?.fileUrl}
+                  alt={listing.title}
+                  className="w-full h-full object-contain p-2"
+                />
               ) : (
-                <div className="text-center">
+                <div className="text-center p-6">
                   <ImageIcon className="w-16 h-16 text-[var(--color-border)] mx-auto mb-2" aria-hidden="true" />
-                  <p className="text-sm text-[var(--color-text-muted)]">No images yet</p>
+                  <p className="text-sm text-[var(--color-text-muted)] font-medium">No verified photos uploaded yet</p>
                 </div>
               )}
+
               {allImages.length > 1 && (
                 <>
-                  <button type="button" onClick={() => navigateImage('prev')} aria-label="Previous image"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors">
-                    <ChevronLeft className="w-4 h-4 text-gray-600" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => navigateImage('prev')}
+                    aria-label="Previous image"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/95 shadow-md flex items-center justify-center hover:bg-white transition-all text-gray-700 hover:text-black border border-gray-100"
+                  >
+                    <ChevronLeft className="w-5 h-5" aria-hidden="true" />
                   </button>
-                  <button type="button" onClick={() => navigateImage('next')} aria-label="Next image"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-white shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors">
-                    <ChevronRight className="w-4 h-4 text-gray-600" aria-hidden="true" />
+                  <button
+                    type="button"
+                    onClick={() => navigateImage('next')}
+                    aria-label="Next image"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/95 shadow-md flex items-center justify-center hover:bg-white transition-all text-gray-700 hover:text-black border border-gray-100"
+                  >
+                    <ChevronRight className="w-5 h-5" aria-hidden="true" />
                   </button>
                 </>
               )}
-              <div className="absolute bottom-3 right-3 w-8 h-8 rounded-full bg-white/80 flex items-center justify-center shadow-sm">
-                <Eye className="w-4 h-4 text-gray-500" aria-hidden="true" />
-              </div>
+
+              {hasImages && (
+                <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-xs text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+                  <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>{selectedImageIndex + 1} / {allImages.length}</span>
+                </div>
+              )}
             </div>
+
             {/* Thumbnails */}
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {(hasImages ? allImages : Array(4).fill(null)).map((image, index) => (
-                <button key={image?.id ?? index} type="button"
-                  onClick={() => image && setSelectedImageIndex(index)}
-                  aria-pressed={selectedImageIndex === index}
-                  className={cn(
-                    'flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all bg-[var(--color-surface-alt)]',
-                    selectedImageIndex === index ? 'border-[var(--color-primary)]' : 'border-gray-200 hover:border-gray-300',
-                  )}>
-                  {image && <img src={image.fileUrl} alt="" className="w-full h-full object-cover" />}
-                </button>
-              ))}
-            </div>
+            {hasImages && allImages.length > 1 && (
+              <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin">
+                {allImages.map((image, index) => (
+                  <button
+                    key={image.id ?? index}
+                    type="button"
+                    onClick={() => setSelectedImageIndex(index)}
+                    aria-pressed={selectedImageIndex === index}
+                    className={cn(
+                      'flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition-all bg-[var(--color-surface-alt)] p-1 flex items-center justify-center',
+                      selectedImageIndex === index
+                        ? 'border-[var(--color-green)] ring-2 ring-[var(--color-green)]/20 shadow-xs'
+                        : 'border-[var(--color-border)] hover:border-gray-400 opacity-75 hover:opacity-100',
+                    )}
+                  >
+                    <img src={image.fileUrl} alt="" className="w-full h-full object-contain rounded-lg" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* RIGHT: Title, grade, price, buy */}
-          <div className="flex flex-col">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 leading-tight mb-4">{listing.title}</h1>
+          {/* RIGHT: Title, grade, price, buy (5 cols on lg, sticky) */}
+          <div className="lg:col-span-5 lg:sticky lg:top-24">
+            <div className="bg-white rounded-2xl border border-[var(--color-border)] p-6 shadow-sm">
+              <h1 className="text-2xl sm:text-3xl font-black text-gray-900 leading-tight mb-3">
+                {listing.title}
+              </h1>
 
-            {/* Grade pill + tooltip */}
-            {grade && listing.conditionGrade && (
-              <div className="relative mb-5 self-start">
-                <button type="button"
-                  onMouseEnter={() => setShowGradeTooltip(true)}
-                  onMouseLeave={() => setShowGradeTooltip(false)}
-                  onFocus={() => setShowGradeTooltip(true)}
-                  onBlur={() => setShowGradeTooltip(false)}
-                  className={cn('inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 text-sm font-semibold', grade.border, grade.text, grade.bg)}
-                  aria-describedby="grade-tooltip">
-                  Verified Grade {listing.conditionGrade}
-                  <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-xs leading-none" aria-hidden="true">i</span>
-                </button>
-                {showGradeTooltip && (
-                  <div id="grade-tooltip" role="tooltip"
-                    className="absolute left-full ml-3 top-0 z-20 bg-white border border-gray-200 rounded-xl shadow-lg p-4 w-56 text-left">
-                    <p className="text-xs font-bold text-gray-900 mb-1.5">Inspection Criteria:</p>
-                    {GRADE_CRITERIA[listing.conditionGrade].map((line, i) => (
-                      <p key={i} className="text-xs text-gray-600 leading-relaxed">{line}</p>
-                    ))}
+              {/* Condition Grade badge + responsive tooltip */}
+              {grade && listing.conditionGrade && (
+                <div className="relative mb-5 inline-block">
+                  <button
+                    type="button"
+                    onClick={() => setShowGradeTooltip(!showGradeTooltip)}
+                    onMouseEnter={() => setShowGradeTooltip(true)}
+                    onMouseLeave={() => setShowGradeTooltip(false)}
+                    onFocus={() => setShowGradeTooltip(true)}
+                    onBlur={() => setShowGradeTooltip(false)}
+                    className={cn(
+                      'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider transition-all',
+                      grade.border,
+                      grade.text,
+                      grade.bg,
+                    )}
+                    aria-describedby="grade-tooltip"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Verified Grade {listing.conditionGrade} ({grade.label})
+                    <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px] leading-none ml-0.5" aria-hidden="true">i</span>
+                  </button>
+                  {showGradeTooltip && (
+                    <div
+                      id="grade-tooltip"
+                      role="tooltip"
+                      className="absolute left-0 sm:left-full top-full sm:top-0 mt-2 sm:mt-0 sm:ml-3 z-30 bg-gray-900 text-white border border-gray-800 rounded-xl shadow-xl p-4 w-64 text-left"
+                    >
+                      <p className="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">
+                        Grade {listing.conditionGrade} Criteria:
+                      </p>
+                      <ul className="space-y-1.5 text-xs text-gray-300">
+                        {GRADE_CRITERIA[listing.conditionGrade].map((line, i) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                            <span>{line.replace(/,/g, '')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Price Display */}
+              <div className="mb-4 pb-4 border-b border-gray-100">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
+                    {formatPrice(listing.price, listing.currency)}
+                  </span>
+                </div>
+
+                {estimatedRetail && savingsPercent && savingsPercent > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="text-xs text-gray-400 line-through">
+                      MSRP {formatPrice(estimatedRetail, listing.currency)}
+                    </span>
+                    <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                      Save {formatPrice(estimatedRetail - numericPrice, listing.currency)} ({savingsPercent}%)
+                    </span>
                   </div>
                 )}
               </div>
-            )}
 
-            {/* VeriBuy Price */}
-            <div className="mb-1">
-              <p className="text-sm text-gray-500 font-medium">VeriBuy Price:</p>
-              <p className="text-4xl font-bold text-gray-900">{formatPrice(listing.price, listing.currency)}</p>
-            </div>
-
-            {/* Original + savings */}
-            {estimatedRetail && savingsPercent && savingsPercent > 0 ? (
-              <div className="flex flex-wrap items-center gap-3 mb-6 mt-1">
-                <span className="text-sm text-gray-400 line-through">Original Price: {formatPrice(estimatedRetail, listing.currency)}</span>
-                <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
-                  Savings: {formatPrice(estimatedRetail - numericPrice, listing.currency)} ({savingsPercent}%)
-                </span>
-              </div>
-            ) : <div className="mb-6" />}
-
-            {/* CTA */}
-            {isSeller ? (
-              <div className="space-y-3">
-                <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-sm text-sky-700 font-medium text-center">
-                  This is your listing
+              {/* Actions & CTAs */}
+              {isSeller ? (
+                <div className="space-y-3 mb-6">
+                  <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-xs font-bold text-sky-800 text-center uppercase tracking-wider">
+                    You are the seller of this listing
+                  </div>
+                  <Link
+                    href={`/listings/${listing.id}/edit`}
+                    className="flex items-center justify-center gap-2 w-full px-6 py-3.5 bg-[var(--color-primary)] text-white rounded-xl font-bold text-sm hover:bg-[var(--color-primary-dark)] transition-colors shadow-xs"
+                  >
+                    <Pencil className="w-4 h-4" aria-hidden="true" />
+                    Edit Listing
+                  </Link>
+                  <Link
+                    href="/dashboard"
+                    className="flex items-center justify-center gap-2 w-full px-6 py-3 bg-[var(--color-surface-alt)] text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-colors"
+                  >
+                    <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
+                    Go to Dashboard
+                  </Link>
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex items-center justify-center gap-2 w-full px-6 py-2.5 border border-red-200 text-red-600 rounded-xl font-medium text-xs hover:bg-red-50 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    Delete Listing
+                  </button>
                 </div>
-                <Link href={`/listings/${listing.id}/edit`}
-                  className="flex items-center justify-center gap-2 w-full px-6 py-3.5 bg-[var(--color-primary)] text-white rounded-xl font-bold hover:bg-[var(--color-primary-dark)] transition-colors">
-                  <Pencil className="w-4 h-4" aria-hidden="true" />Edit Listing
-                </Link>
-                <Link href="/dashboard"
-                  className="flex items-center justify-center gap-2 w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors">
-                  <LayoutDashboard className="w-4 h-4" aria-hidden="true" />Go to Dashboard
-                </Link>
-                <button onClick={() => setConfirmDelete(true)}
-                  className="flex items-center justify-center gap-2 w-full px-6 py-3 border border-[var(--color-danger)]/40 text-[var(--color-danger)] rounded-xl font-medium hover:bg-[var(--color-danger)]/5 transition-colors">
-                  <Trash2 className="w-4 h-4" aria-hidden="true" />Delete Listing
-                </button>
-              </div>
-            ) : listing.trustLensStatus === 'PASSED' ? (
-              <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    if (!user) {
-                      router.push(`/login?redirect=/checkout?listingId=${listing.id}`);
-                      return;
-                    }
-                    router.push(`/checkout?listingId=${listing.id}`);
-                  }}
-                  className="w-full px-6 py-4 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white rounded-xl font-bold text-lg transition-colors shadow-sm"
-                >
-                  Buy Now
-                </button>
-                <div className="flex items-center justify-center gap-1.5 text-sm text-gray-500">
-                  <ShieldCheck className="w-4 h-4 text-[var(--color-green)]" aria-hidden="true" />
-                  Verified by VeriBuy
-                  <CheckCircle2 className="w-4 h-4 text-[var(--color-green)]" aria-hidden="true" />
+              ) : listing.trustLensStatus === 'PASSED' ? (
+                <div className="space-y-3 mb-6">
+                  <button
+                    onClick={() => {
+                      if (!user) {
+                        router.push(`/login?redirect=/checkout?listingId=${listing.id}`);
+                        return;
+                      }
+                      router.push(`/checkout?listingId=${listing.id}`);
+                    }}
+                    className="w-full px-6 py-4 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white rounded-xl font-black text-base transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                  >
+                    <Lock className="w-5 h-5 text-white/90" />
+                    <span>Buy with Escrow Protection</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (!user) {
+                        router.push(`/login?redirect=/listings/${listing.id}`);
+                        return;
+                      }
+                      setShowContactModal(true);
+                    }}
+                    className="flex items-center justify-center gap-2 w-full px-6 py-3 border border-[var(--color-border)] text-gray-800 rounded-xl font-bold text-sm hover:border-[var(--color-green)] hover:text-[var(--color-green)] transition-colors"
+                  >
+                    <MessageCircle className="w-4 h-4" aria-hidden="true" />
+                    <span>Contact Seller</span>
+                  </button>
                 </div>
-                <button onClick={() => {
-                    if (!user) {
-                      router.push(`/login?redirect=/listings/${listing.id}`);
-                      return;
-                    }
-                    setShowContactModal(true);
-                  }}
-                  className="flex items-center justify-center gap-2 w-full px-6 py-3 border border-gray-200 text-gray-700 rounded-xl font-medium hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors">
-                  <MessageCircle className="w-4 h-4" aria-hidden="true" />Contact Seller
-                </button>
-              </div>
-            ) : (
-              <div className={cn('rounded-xl border px-4 py-4', trustStatus.bgClassName)}>
-                <div className="flex items-start gap-2.5">
-                  <TrustIcon className={cn('w-5 h-5 shrink-0 mt-0.5', trustStatus.textClassName)} aria-hidden="true" />
-                  <div>
-                    <p className={cn('text-sm font-semibold', trustStatus.textClassName)}>
-                      {listing.trustLensStatus === 'FAILED' ? 'Verification Failed' : 'Verification Checking'}
-                    </p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                      {listing.trustLensStatus === 'FAILED'
-                        ? 'This listing did not pass Trust Lens verification and cannot be purchased.'
-                        : 'Your device is being checked. Result will appear here shortly.'}
-                    </p>
-                    {imeiChecking && (
-                      <div className="flex items-center gap-1.5 mt-2 text-xs text-[var(--color-accent)]">
-                        <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-3 w-3 border-2 border-[var(--color-accent)] border-t-transparent"></div>
-                        <span>Running device check…</span>
-                      </div>
-                    )}
+              ) : (
+                <div className={cn('rounded-xl border p-4 mb-6', trustStatus.bgClassName)}>
+                  <div className="flex items-start gap-3">
+                    <TrustIcon className={cn('w-5 h-5 shrink-0 mt-0.5', trustStatus.textClassName)} aria-hidden="true" />
+                    <div>
+                      <p className={cn('text-sm font-bold', trustStatus.textClassName)}>
+                        {listing.trustLensStatus === 'FAILED' ? 'Verification Failed' : 'Verification In Progress'}
+                      </p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">
+                        {listing.trustLensStatus === 'FAILED'
+                          ? 'This device failed hardware/IMEI verification checks and cannot be purchased.'
+                          : 'Trust Lens™ automated checks are currently running. Purchase will become available once passed.'}
+                      </p>
+                      {imeiChecking && (
+                        <div className="flex items-center gap-2 mt-2.5 text-xs text-[var(--color-accent)] font-semibold">
+                          <div aria-hidden="true" className="inline-block motion-safe:animate-spin rounded-full h-3.5 w-3.5 border-2 border-[var(--color-accent)] border-t-transparent"></div>
+                          <span>Querying international registry databases…</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Quick specs */}
-            <div className="mt-6 pt-5 border-t border-gray-100 space-y-2 text-sm">
-              {[
-                { label: 'Brand', value: listing.brand },
-                { label: 'Model', value: listing.model },
-                ...(listing.storageCapacity ? [{ label: 'Storage', value: listing.storageCapacity }] : []),
-                ...(listing.color ? [{ label: 'Colour', value: listing.color }] : []),
-                { label: 'Views', value: String(listing.viewCount) },
-              ].map(row => (
-                <div key={row.label} className="flex justify-between">
-                  <span className="text-gray-500">{row.label}</span>
-                  <span className="font-medium text-gray-900">{row.value}</span>
+              {/* Purchase Trust Assurance Badges */}
+              <div className="space-y-2.5 pt-4 border-t border-gray-100 text-xs text-gray-600">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-[var(--color-green)] flex items-center justify-center shrink-0">
+                    <Lock className="w-3.5 h-3.5" />
+                  </div>
+                  <span><strong>100% Escrow Protection:</strong> Funds held until you test the device.</span>
                 </div>
-              ))}
+                <div className="flex items-center gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-[var(--color-green)] flex items-center justify-center shrink-0">
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </div>
+                  <span><strong>7-Day Money-Back Guarantee:</strong> Return if not as described.</span>
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-emerald-50 text-[var(--color-green)] flex items-center justify-center shrink-0">
+                    <Truck className="w-3.5 h-3.5" />
+                  </div>
+                  <span><strong>Tracked &amp; Insured:</strong> Signed delivery on all shipments.</span>
+                </div>
+              </div>
+
+              {/* Quick specs */}
+              <div className="mt-5 pt-4 border-t border-gray-100 space-y-2 text-xs">
+                {[
+                  { label: 'Brand', value: listing.brand },
+                  { label: 'Model', value: listing.model },
+                  ...(listing.storageCapacity ? [{ label: 'Storage', value: listing.storageCapacity }] : []),
+                  ...(listing.color ? [{ label: 'Colour', value: listing.color }] : []),
+                  { label: 'Views', value: String(listing.viewCount) },
+                ].map((row) => (
+                  <div key={row.label} className="flex justify-between items-center py-0.5">
+                    <span className="text-gray-400 font-medium">{row.label}</span>
+                    <span className="font-bold text-gray-900">{row.value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -961,24 +1047,37 @@ export default function ListingDetailContent({ id }: { id: string }) {
           </div>
         </section>
 
-        {/* ── Description + Specs ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10">
-          <section>
-            <h2 className="text-base font-bold text-gray-900 mb-3">Description</h2>
-            <p className="text-sm text-gray-600 whitespace-pre-line leading-relaxed">{listing.description}</p>
+        {/* ── Description & Specifications Grid ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+          {/* Description */}
+          <section className="bg-white rounded-2xl border border-[var(--color-border)] p-6 shadow-xs">
+            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[var(--color-green)]" />
+              <span>Seller Description</span>
+            </h2>
+            <div className="text-sm text-gray-600 whitespace-pre-line leading-relaxed bg-[var(--color-surface-alt)] rounded-xl p-4 border border-gray-100">
+              {listing.description || 'No additional description provided by the seller.'}
+            </div>
           </section>
-          <section>
-            <h2 className="text-base font-bold text-gray-900 mb-3">Specifications</h2>
-            <div className="space-y-2 text-sm">
-              {specs.map(spec => {
+
+          {/* Specifications */}
+          <section className="bg-white rounded-2xl border border-[var(--color-border)] p-6 shadow-xs">
+            <h2 className="text-base font-bold text-gray-900 mb-3 flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-[var(--color-green)]" />
+              <span>Device Specifications</span>
+            </h2>
+            <div className="divide-y divide-gray-100 text-sm">
+              {specs.map((spec) => {
                 const SpecIcon = spec.icon;
                 return (
-                  <div key={spec.label} className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-                      <SpecIcon className="w-3.5 h-3.5 text-gray-500" aria-hidden="true" />
+                  <div key={spec.label} className="flex items-center justify-between py-2.5">
+                    <div className="flex items-center gap-2.5 text-gray-500">
+                      <div className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
+                        <SpecIcon className="w-3.5 h-3.5 text-gray-600" aria-hidden="true" />
+                      </div>
+                      <span className="font-medium text-xs">{spec.label}</span>
                     </div>
-                    <span className="text-gray-500 w-20 shrink-0">{spec.label}</span>
-                    <span className="font-medium text-gray-900">{spec.value}</span>
+                    <span className="font-bold text-xs text-gray-900">{spec.value}</span>
                   </div>
                 );
               })}
@@ -986,27 +1085,51 @@ export default function ListingDetailContent({ id }: { id: string }) {
           </section>
         </div>
 
-        {/* ── Buyer Protection ── */}
-        <section className="bg-[var(--color-surface-alt)] rounded-2xl p-6 mb-6">
-          <h2 className="text-base font-bold text-gray-900 mb-4">Buyer Protection</h2>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* ── Buyer Protection Assurance Banner ── */}
+        <section className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-950 rounded-2xl p-6 sm:p-8 text-white mb-10 shadow-md">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-bold uppercase tracking-wider mb-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>VeriBuy Buyer Guarantee</span>
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                Shop Pre-Owned Tech With Absolute Confidence
+              </h2>
+              <p className="text-xs sm:text-sm text-emerald-100/80 mt-1 max-w-xl leading-relaxed">
+                Your payment is held safely in escrow until you inspect and approve your device. Zero risk of blacklisted, counterfeit, or stolen hardware.
+              </p>
+            </div>
+            <Link
+              href="/buyer-protection"
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-gray-900 font-bold text-xs uppercase tracking-wider hover:bg-emerald-50 transition-colors shrink-0 shadow-sm"
+            >
+              <span>Learn About Protection</span>
+              <ChevronRight className="w-4 h-4" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-white/10">
             {[
-              { icon: Lock,               text: 'Escrow payment protection' },
-              { icon: ShieldCheck,        text: 'Trust Lens device verification' },
-              { icon: Scale,              text: 'Dispute resolution support' },
-              { icon: BadgePoundSterling, text: 'Full refund if not as described' },
-            ].map(item => {
+              { icon: Lock, title: '100% Escrow Holding', desc: 'Seller receives funds only after you confirm delivery.' },
+              { icon: ShieldCheck, title: 'Trust Lens™ Verified', desc: 'IMEI, cloud locks, and blacklist databases audited.' },
+              { icon: RotateCcw, title: '7-Day Inspection Return', desc: 'Full money-back refund if item is misrepresented.' },
+              { icon: Scale, title: 'UK Dispute Support', desc: 'Dedicated resolution team for dispute escalation.' },
+            ].map((item) => {
               const ItemIcon = item.icon;
               return (
-                <li key={item.text} className="flex items-center gap-3 text-sm text-gray-700">
-                  <div className="w-8 h-8 rounded-lg bg-[var(--color-green)]/10 flex items-center justify-center shrink-0">
-                    <ItemIcon className="w-4 h-4 text-[var(--color-green)]" aria-hidden="true" />
+                <div key={item.title} className="flex items-start gap-3 bg-white/5 rounded-xl p-3.5 border border-white/10">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center shrink-0">
+                    <ItemIcon className="w-4 h-4" />
                   </div>
-                  {item.text}
-                </li>
+                  <div>
+                    <h3 className="text-xs font-bold text-white">{item.title}</h3>
+                    <p className="text-[11px] text-emerald-100/70 mt-0.5 leading-snug">{item.desc}</p>
+                  </div>
+                </div>
               );
             })}
-          </ul>
+          </div>
         </section>
 
       </div>

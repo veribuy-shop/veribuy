@@ -264,75 +264,75 @@ export default function OrderConfirmationPage() {
 
             {/* Stepper bar */}
             <div className="relative">
-              <div className="grid grid-cols-5 gap-2 text-center">
+              <div className="grid grid-cols-5 gap-1 sm:gap-2 text-center">
                 {/* Step 1: Payment in Escrow */}
                 <div className="flex flex-col items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 transition-colors ${
                     order.status === 'PENDING'
-                      ? 'bg-[var(--color-warning)] text-white ring-4 ring-[var(--color-warning)]/20'
+                      ? 'bg-[var(--color-warning)] text-white ring-2 sm:ring-4 ring-[var(--color-warning)]/20'
                       : 'bg-[var(--color-green)] text-white'
                   }`}>
-                    <Lock className="w-4 h-4" />
+                    <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
-                  <span className="text-xs font-semibold text-[var(--color-text)]">1. Escrow</span>
+                  <span className="text-[10px] sm:text-xs font-semibold text-[var(--color-text)] truncate max-w-full">1. Escrow</span>
                   <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Payment held</span>
                 </div>
 
                 {/* Step 2: Preparing */}
                 <div className="flex flex-col items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 transition-colors ${
                     order.status === 'ESCROW_HELD' || order.status === 'PAYMENT_RECEIVED'
-                      ? 'bg-blue-600 text-white ring-4 ring-blue-500/20'
+                      ? 'bg-blue-600 text-white ring-2 sm:ring-4 ring-blue-500/20'
                       : order.shippedAt || order.deliveredAt || order.completedAt
                       ? 'bg-[var(--color-green)] text-white'
                       : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}>
-                    <Package className="w-4 h-4" />
+                    <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
-                  <span className="text-xs font-semibold text-[var(--color-text)]">2. Preparing</span>
+                  <span className="text-[10px] sm:text-xs font-semibold text-[var(--color-text)] truncate max-w-full">2. Prepare</span>
                   <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Seller packing</span>
                 </div>
 
                 {/* Step 3: Dispatched */}
                 <div className="flex flex-col items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 transition-colors ${
                     order.status === 'SHIPPED'
-                      ? 'bg-blue-600 text-white ring-4 ring-blue-500/20'
+                      ? 'bg-blue-600 text-white ring-2 sm:ring-4 ring-blue-500/20'
                       : order.deliveredAt || order.completedAt
                       ? 'bg-[var(--color-green)] text-white'
                       : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}>
-                    <Truck className="w-4 h-4" />
+                    <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
-                  <span className="text-xs font-semibold text-[var(--color-text)]">3. Dispatched</span>
+                  <span className="text-[10px] sm:text-xs font-semibold text-[var(--color-text)] truncate max-w-full">3. Transit</span>
                   <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">In transit</span>
                 </div>
 
                 {/* Step 4: Delivered */}
                 <div className="flex flex-col items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 transition-colors ${
                     order.status === 'DELIVERED'
-                      ? 'bg-amber-600 text-white ring-4 ring-amber-500/20'
+                      ? 'bg-amber-600 text-white ring-2 sm:ring-4 ring-amber-500/20'
                       : order.completedAt
                       ? 'bg-[var(--color-green)] text-white'
                       : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}>
-                    <CircleCheck className="w-4 h-4" />
+                    <CircleCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
-                  <span className="text-xs font-semibold text-[var(--color-text)]">4. Delivered</span>
+                  <span className="text-[10px] sm:text-xs font-semibold text-[var(--color-text)] truncate max-w-full">4. Delivered</span>
                   <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">7-day check</span>
                 </div>
 
                 {/* Step 5: Completed */}
                 <div className="flex flex-col items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 transition-colors ${
+                  <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs mb-1 transition-colors ${
                     order.status === 'COMPLETED'
                       ? 'bg-[var(--color-green)] text-white'
                       : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}>
-                    <Check className="w-4 h-4" />
+                    <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
-                  <span className="text-xs font-semibold text-[var(--color-text)]">5. Payout</span>
+                  <span className="text-[10px] sm:text-xs font-semibold text-[var(--color-text)] truncate max-w-full">5. Payout</span>
                   <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Funds released</span>
                 </div>
               </div>
