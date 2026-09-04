@@ -17,7 +17,7 @@ const faqs = [
     },
     {
       question: 'Is my purchase protected?',
-      answer: 'Yes! All purchases are covered by our Buyer Protection guarantee. If the device doesn\'t match the listing description, you can return it within 7 days for a full refund.',
+      answer: 'Yes! All purchases are covered by our 5% Buyer Protection guarantee added at checkout. Your payment is held securely in escrow until delivery is confirmed, and you are covered by our 7-day money-back return policy if the device doesn\'t match the description.',
     },
     {
       question: 'How long does verification take?',
@@ -25,7 +25,11 @@ const faqs = [
     },
     {
       question: 'What are the seller fees?',
-      answer: 'We charge a 5% commission on successful sales. There are no listing fees or monthly subscriptions. You only pay when you sell.',
+      answer: 'Selling on VeriBuy is 100% free with 0% seller commission. There are no listing fees or monthly subscriptions. When your device sells, you receive the full listing price.',
+    },
+    {
+      question: 'What is the Buyer Protection fee?',
+      answer: 'We charge a 5% Buyer Protection fee added transparently at checkout. This fee funds complete escrow protection, Trust Lens device and IMEI checks, 7-day return coverage, and dedicated dispute resolution.',
     },
     {
       question: 'Can I cancel an order?',

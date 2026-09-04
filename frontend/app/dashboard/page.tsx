@@ -1001,7 +1001,7 @@ function DashboardContent() {
           {[
             { label: 'Total Earned', value: formatPrice(completedTotal, 'GBP'), sub: 'From completed sales', color: 'text-[var(--color-green)]' },
             { label: 'Pending Payout', value: formatPrice(pendingTotal, 'GBP'), sub: 'In escrow / in transit', color: 'text-[var(--color-warning)]' },
-            { label: 'Platform Fee (5%)', value: formatPrice(completedTotal * 0.05, 'GBP'), sub: 'Deducted from earnings', color: 'text-[var(--color-text-muted)]' },
+            { label: 'Selling Fee (0%)', value: '£0.00', sub: '0% seller commission — keep 100%', color: 'text-[var(--color-green)]' },
           ].map(card => (
             <div key={card.label} className="bg-white rounded-xl border border-[var(--color-border)] p-5">
               <p className="text-xs text-[var(--color-text-muted)] font-medium mb-2">{card.label}</p>

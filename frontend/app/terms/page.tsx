@@ -58,8 +58,10 @@ export default function TermsPage() {
           <section>
             <h2 className="text-2xl font-bold text-[var(--color-text)] mb-4">4. Fees and Payments</h2>
             <p>
-              VeriBuy charges a 5% commission on successful sales. Payment processing fees may apply. 
-              All fees are clearly displayed before completing a transaction.
+              VeriBuy charges 0% commission to sellers, allowing sellers to keep 100% of their sale price. 
+              A 5% Buyer Protection Fee is added to buyer purchases at checkout to fund secure escrow payment holding, 
+              Trust Lens device verification, tracked delivery protection, and dispute resolution services. 
+              All fees and breakdown amounts are clearly displayed before completing any transaction.
             </p>
           </section>
 

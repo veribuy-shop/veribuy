@@ -12,6 +12,7 @@ interface Order {
   amount: number;
   currency: string;
   status: string;
+  protectionFee?: number | null;
   shippingFee?: number | null;
   shippingService?: string | null;
   totalAmount?: number | null;
@@ -322,31 +323,53 @@ export default function OrderConfirmationPage() {
           <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">
             Payment Summary
           </h2>
-          <div className="space-y-2">
-            <div className="flex justify-between text-[var(--color-text)]">
-              <span>Subtotal</span>
-              <span>{formatPrice(order.amount, order.currency)}</span>
-            </div>
-            <div className="flex justify-between text-[var(--color-text)]">
-              <span>Shipping</span>
-              {order.shippingFee && order.shippingFee > 0 ? (
-                <span>{formatPrice(order.shippingFee, order.currency)}</span>
-              ) : (
-                <span className="text-[var(--color-success)]">Free</span>
-              )}
-            </div>
-            {order.shippingService && (
-              <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
-                <span>{formatShippingService(order.shippingService)}</span>
+          {(() => {
+            const protectionFee = order.protectionFee != null
+              ? Number(order.protectionFee)
+              : Math.round(Number(order.amount) * 0.05 * 100) / 100;
+            const shipping = order.shippingFee ? Number(order.shippingFee) : 0;
+            const total = order.totalAmount != null
+              ? Number(order.totalAmount)
+              : Math.round((Number(order.amount) + protectionFee + shipping) * 100) / 100;
+
+            return (
+              <div className="space-y-2">
+                <div className="flex justify-between text-[var(--color-text)]">
+                  <span>Item Subtotal</span>
+                  <span>{formatPrice(order.amount, order.currency)}</span>
+                </div>
+                <div className="flex justify-between text-[var(--color-text)]">
+                  <span>Buyer Protection (5%)</span>
+                  <span>{formatPrice(protectionFee, order.currency)}</span>
+                </div>
+                <div className="flex justify-between text-[var(--color-text)]">
+                  <span>Shipping</span>
+                  {shipping > 0 ? (
+                    <span>{formatPrice(shipping, order.currency)}</span>
+                  ) : (
+                    <span className="text-[var(--color-success)]">Free</span>
+                  )}
+                </div>
+                {order.shippingService && (
+                  <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+                    <span>{formatShippingService(order.shippingService)}</span>
+                  </div>
+                )}
+                <div className="border-t border-[var(--color-border)] pt-2 mt-2">
+                  <div className="flex justify-between text-lg font-bold text-[var(--color-text)]">
+                    <span>Total Paid</span>
+                    <span>{formatPrice(total, order.currency)}</span>
+                  </div>
+                </div>
+                {isSeller && (
+                  <div className="mt-3 pt-3 border-t border-dashed border-[var(--color-border)] flex justify-between text-sm font-semibold text-[var(--color-green)]">
+                    <span>Your Seller Payout:</span>
+                    <span>{formatPrice(order.amount, order.currency)} (100% — £0 selling fees)</span>
+                  </div>
+                )}
               </div>
-            )}
-            <div className="border-t border-[var(--color-border)] pt-2 mt-2">
-              <div className="flex justify-between text-lg font-bold text-[var(--color-text)]">
-                <span>Total</span>
-                <span>{formatPrice(order.totalAmount ?? order.amount, order.currency)}</span>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
           <div className="mt-4 p-3 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl">
             <p className="text-sm text-[var(--color-text)]">
               <strong>Buyer Protection:</strong> Your payment is held securely in escrow until you confirm receipt of the item.

@@ -139,7 +139,10 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
   };
 
   const itemPrice = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
-  const totalPrice = shippingQuote ? Math.round((itemPrice + shippingQuote.totalFee) * 100) / 100 : itemPrice;
+  const protectionFee = Math.round(itemPrice * 0.05 * 100) / 100;
+  const totalPrice = shippingQuote
+    ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
+    : Math.round((itemPrice + protectionFee) * 100) / 100;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -636,9 +639,10 @@ function CheckoutPageContent() {
   const itemPrice = listing
     ? typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price
     : 0;
+  const protectionFee = Math.round(itemPrice * 0.05 * 100) / 100;
   const totalPrice = shippingQuote
-    ? Math.round((itemPrice + shippingQuote.totalFee) * 100) / 100
-    : itemPrice;
+    ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
+    : Math.round((itemPrice + protectionFee) * 100) / 100;
 
   if (loading) {
     return (
@@ -733,6 +737,12 @@ function CheckoutPageContent() {
                   <span className="font-medium">{formatPrice(listing.price, listing.currency)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
+                  <span className="text-[var(--color-text-muted)]">Buyer Protection (5%):</span>
+                  <span className="font-medium text-[var(--color-text)]">
+                    {formatPrice(protectionFee, listing.currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
                   <span className="text-[var(--color-text-muted)]">Shipping:</span>
                   {shippingQuote ? (
                     <span className="font-medium text-[var(--color-text)]">
@@ -768,9 +778,14 @@ function CheckoutPageContent() {
                 </div>
               </div>
 
-              <div className="mt-6 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg p-4 text-sm text-[var(--color-text)]">
-                <strong>Buyer Protection</strong>
-                <p className="mt-1 text-[var(--color-text-muted)]">Your payment is held in escrow until you confirm receipt of the device.</p>
+              <div className="mt-6 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl p-4 text-sm text-[var(--color-text)]">
+                <div className="flex items-center gap-2 font-semibold text-[var(--color-green)] mb-1">
+                  <CircleCheck className="w-4 h-4" />
+                  <span>Buyer Protection Included</span>
+                </div>
+                <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+                  The 5% protection fee secures your payment in escrow, covers Trust Lens verification, and guarantees a 7-day refund if the device does not match.
+                </p>
               </div>
             </div>
           </div>

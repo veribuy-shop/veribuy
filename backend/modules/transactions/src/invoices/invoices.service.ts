@@ -15,6 +15,7 @@ export interface InvoiceOrderData {
   listingDescription: string | null;
   listingCategory: string | null;
   amount: string | number;
+  protectionFee?: string | number | null;
   shippingFee: string | number | null;
   shippingService: string | null;
   totalAmount: string | number;
@@ -93,6 +94,7 @@ export class InvoicesService {
           buyerId: order.buyerId,
           sellerId: order.sellerId,
           amount: order.amount as any,
+          protectionFee: (order.protectionFee ?? Math.round(Number(order.amount) * 0.05 * 100) / 100) as any,
           shippingFee: order.shippingFee as any ?? null,
           totalAmount: order.totalAmount as any ?? order.amount as any,
           // REG-04: Store VAT breakdown (0% until VeriBuy is VAT-registered)
@@ -235,9 +237,13 @@ export class InvoicesService {
         new Intl.NumberFormat('en-GB', { style: 'currency', currency: order.currency }).format(Number(val));
 
       const amountFormatted = fmtCurrency(order.amount);
+      const protectionFee = order.protectionFee != null
+        ? Number(order.protectionFee)
+        : Math.round(Number(order.amount) * 0.05 * 100) / 100;
+      const protectionFormatted = protectionFee > 0 ? fmtCurrency(protectionFee) : null;
       const shippingFee = order.shippingFee ? Number(order.shippingFee) : 0;
       const shippingFormatted = shippingFee > 0 ? fmtCurrency(shippingFee) : null;
-      const totalFormatted = fmtCurrency(order.totalAmount ?? order.amount);
+      const totalFormatted = fmtCurrency(order.totalAmount ?? (Number(order.amount) + protectionFee + shippingFee));
 
       const shippingLabel = order.shippingService === 'TRACKED_24'
         ? 'Royal Mail Tracked 24'
@@ -340,8 +346,24 @@ export class InvoicesService {
         .fillColor('#000000')
         .text(amountFormatted, 400, 250, { align: 'right' });
 
-      // ---- Shipping line (if applicable) ----
+      // ---- Buyer Protection Fee line ----
       let lineY = itemY + 10;
+      if (protectionFormatted) {
+        doc.moveTo(50, lineY).lineTo(545, lineY).strokeColor('#dddddd').stroke();
+        lineY += 10;
+
+        doc
+          .fontSize(10)
+          .font('Helvetica')
+          .fillColor('#000000')
+          .text('Buyer Protection Fee (5%)', 50, lineY)
+          .font('Helvetica-Bold')
+          .text(protectionFormatted, 400, lineY, { align: 'right' });
+
+        lineY += 20;
+      }
+
+      // ---- Shipping line (if applicable) ----
       if (shippingFormatted) {
         doc.moveTo(50, lineY).lineTo(545, lineY).strokeColor('#dddddd').stroke();
         lineY += 10;
@@ -413,8 +435,12 @@ export class InvoicesService {
       new Intl.NumberFormat('en-GB', { style: 'currency', currency: order.currency }).format(Number(val));
 
     const amountFormatted = fmtCurrency(order.amount);
+    const protectionFee = order.protectionFee != null
+      ? Number(order.protectionFee)
+      : Math.round(Number(order.amount) * 0.05 * 100) / 100;
+    const protectionFormatted = protectionFee > 0 ? fmtCurrency(protectionFee) : null;
     const shippingFee = order.shippingFee ? Number(order.shippingFee) : 0;
-    const totalFormatted = fmtCurrency(order.totalAmount ?? order.amount);
+    const totalFormatted = fmtCurrency(order.totalAmount ?? (Number(order.amount) + protectionFee + shippingFee));
 
     const shippingLabel = order.shippingService === 'TRACKED_24'
       ? 'Royal Mail Tracked 24'
@@ -427,6 +453,13 @@ export class InvoicesService {
     const headingText = isCreditNote ? 'Your VeriBuy Credit Note' : 'Your VeriBuy Invoice';
     const downloadLabel = isCreditNote ? 'Download Credit Note PDF' : 'Download Invoice PDF';
     const refLabel = isCreditNote ? 'Credit Note No.' : 'Invoice No.';
+
+    const protectionRow = protectionFormatted
+      ? `<tr>
+      <td style="padding: 8px; border: 1px solid #eee;"><strong>Buyer Protection Fee (5%)</strong></td>
+      <td style="padding: 8px; border: 1px solid #eee;">${protectionFormatted}</td>
+    </tr>`
+      : '';
 
     const shippingRow = shippingFee > 0
       ? `<tr>
@@ -451,6 +484,7 @@ export class InvoicesService {
       <td style="padding: 8px; border: 1px solid #eee;"><strong>Item Price</strong></td>
       <td style="padding: 8px; border: 1px solid #eee;">${amountFormatted}</td>
     </tr>
+    ${protectionRow}
     ${shippingRow}
     <tr>
       <td style="padding: 8px; border: 1px solid #eee; background: #f9f9f9;"><strong>Total</strong></td>

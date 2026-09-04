@@ -77,8 +77,11 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Buyer and seller cannot be the same user');
     }
 
-    // Compute total: item price + shipping
-    const totalAmount = Math.round((amount + shippingFee) * 100) / 100;
+    // 5% Buyer Protection Fee charged to buyer at checkout
+    const protectionFee = Math.round(amount * 0.05 * 100) / 100;
+
+    // Compute total: item price + 5% buyer protection fee + shipping
+    const totalAmount = Math.round((amount + protectionFee + shippingFee) * 100) / 100;
 
     // Snapshot listing details for invoice generation — fire-and-forget on failure
     let listingTitle: string | null = null;
@@ -93,7 +96,7 @@ export class TransactionsService implements OnModuleInit {
       this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
     }
 
-    // Create Stripe Payment Intent — charge the total (item + shipping)
+    // Create Stripe Payment Intent — charge the total (item + protection fee + shipping)
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount: Math.round(totalAmount * 100),
       currency: currency.toLowerCase(),
@@ -111,6 +114,7 @@ export class TransactionsService implements OnModuleInit {
         listingDescription,
         listingCategory,
         amount,
+        protectionFee,
         shippingFee: shippingFee || null,
         shippingService,
         totalAmount,
@@ -151,7 +155,10 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Order has no associated payment intent');
     }
 
-    const newTotal = Math.round((Number(order.amount) + dto.shippingFee) * 100) / 100;
+    const protectionFee = Number(
+      order.protectionFee ?? Math.round(Number(order.amount) * 0.05 * 100) / 100,
+    );
+    const newTotal = Math.round((Number(order.amount) + protectionFee + dto.shippingFee) * 100) / 100;
 
     // Update Stripe PaymentIntent amount
     await this.stripe.paymentIntents.update(order.paymentIntentId, {
@@ -593,13 +600,14 @@ export class TransactionsService implements OnModuleInit {
         break;
 
       case 'COMPLETED':
+        const sellerPayout = Math.round((Number(order.amount) + (Number(order.shippingFee) || 0)) * 100) / 100;
         await this.sendOrderNotification({
           orderId: order.id,
           buyerId: order.buyerId,
           sellerId: order.sellerId,
           recipientId: order.sellerId,
           subject: 'Order completed — escrow released',
-          content: `Order #${shortId} has been completed. The escrow of ${order.currency} ${order.totalAmount ?? order.amount} has been released. Thank you for selling on VeriBuy!`,
+          content: `Order #${shortId} has been completed. Your payout of ${order.currency} ${sellerPayout} has been released. Thank you for selling on VeriBuy!`,
         });
         await this.sendOrderNotification({
           orderId: order.id,
@@ -703,6 +711,7 @@ export class TransactionsService implements OnModuleInit {
       listingDescription: order.listingDescription ?? null,
       listingCategory: order.listingCategory ?? null,
       amount: order.amount,
+      protectionFee: order.protectionFee ?? Math.round(Number(order.amount) * 0.05 * 100) / 100,
       shippingFee: order.shippingFee ?? null,
       shippingService: order.shippingService ?? null,
       totalAmount: order.totalAmount ?? order.amount,

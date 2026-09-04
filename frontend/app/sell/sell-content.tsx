@@ -62,12 +62,12 @@ export default function SellContent() {
             </p>
           </div>
           <div className="bg-white rounded-xl p-6 md:p-8 text-center border border-[var(--color-border)]">
-            <div className="w-14 h-14 rounded-xl bg-[var(--color-accent)]/10 flex items-center justify-center mx-auto mb-4">
-              <Coins className="w-7 h-7 text-[var(--color-accent)]" aria-hidden="true" />
+            <div className="w-14 h-14 rounded-xl bg-[var(--color-green)]/10 flex items-center justify-center mx-auto mb-4">
+              <Coins className="w-7 h-7 text-[var(--color-green)]" aria-hidden="true" />
             </div>
-            <h3 className="text-xl font-bold text-[var(--color-text)] mb-3">Fair Fees</h3>
+            <h3 className="text-xl font-bold text-[var(--color-text)] mb-3">0% Selling Fees</h3>
             <p className="text-[var(--color-text-muted)]">
-              Only 5% commission. No listing fees, no monthly charges. Pay only when you sell
+              Keep 100% of your sale price. No commission, no listing fees, and no monthly charges
             </p>
           </div>
           <div className="bg-white rounded-xl p-6 md:p-8 text-center border border-[var(--color-border)]">
