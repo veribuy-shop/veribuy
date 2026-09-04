@@ -57,7 +57,7 @@ export default function BuyerProtectionPage() {
             Buyer Protection
           </h1>
           <p className="text-base md:text-lg text-white/85 max-w-xl mx-auto">
-            Every purchase includes our 5% Buyer Protection coverage for complete security from checkout to delivery.
+            Every purchase includes comprehensive Buyer Protection coverage for complete security from checkout to delivery.
           </p>
         </div>
       </section>

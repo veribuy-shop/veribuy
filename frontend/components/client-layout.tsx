@@ -21,8 +21,16 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthProvider>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:z-[100] focus:top-3 focus:left-3 focus:px-4 focus:py-2 focus:bg-[var(--color-primary)] focus:text-white focus:rounded-lg focus:shadow-lg focus:outline-none font-semibold text-sm"
+      >
+        Skip to main content
+      </a>
       <Header />
-      <main className="flex-1 flex flex-col">{children}</main>
+      <main id="main-content" className="flex-1 flex flex-col" tabIndex={-1}>
+        {children}
+      </main>
       <Footer />
     </AuthProvider>
   );
