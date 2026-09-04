@@ -45,6 +45,9 @@ interface PendingOrder {
   id: string;
   clientSecret: string;
   paymentIntentId: string;
+  protectionFee?: number | null;
+  amount?: number | null;
+  totalAmount?: number | null;
 }
 
 interface CheckoutFormProps {
@@ -140,7 +143,14 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
   };
 
   const itemPrice = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
-  const protectionFee = calculateProtectionFee(itemPrice);
+  const protectionFee =
+    pendingOrder.protectionFee != null
+      ? Number(pendingOrder.protectionFee)
+      : calculateProtectionFee(itemPrice);
+  const feePercent =
+    itemPrice > 0 && protectionFee > 0
+      ? Math.round((protectionFee / itemPrice) * 100)
+      : getBuyerProtectionFeePercent();
   const totalPrice = shippingQuote
     ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
     : Math.round((itemPrice + protectionFee) * 100) / 100;
@@ -610,6 +620,9 @@ function CheckoutPageContent() {
         id: orderWithPayment.id,
         clientSecret: orderWithPayment.clientSecret,
         paymentIntentId: orderWithPayment.paymentIntentId,
+        protectionFee: orderWithPayment.protectionFee != null ? Number(orderWithPayment.protectionFee) : null,
+        amount: orderWithPayment.amount != null ? Number(orderWithPayment.amount) : null,
+        totalAmount: orderWithPayment.totalAmount != null ? Number(orderWithPayment.totalAmount) : null,
       });
     } catch (err: any) {
       setError(err.message || 'Failed to load checkout');
@@ -640,8 +653,14 @@ function CheckoutPageContent() {
   const itemPrice = listing
     ? typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price
     : 0;
-  const feePercent = getBuyerProtectionFeePercent();
-  const protectionFee = calculateProtectionFee(itemPrice);
+  const protectionFee =
+    pendingOrder?.protectionFee != null
+      ? Number(pendingOrder.protectionFee)
+      : calculateProtectionFee(itemPrice);
+  const feePercent =
+    itemPrice > 0 && protectionFee > 0
+      ? Math.round((protectionFee / itemPrice) * 100)
+      : getBuyerProtectionFeePercent();
   const totalPrice = shippingQuote
     ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
     : Math.round((itemPrice + protectionFee) * 100) / 100;
