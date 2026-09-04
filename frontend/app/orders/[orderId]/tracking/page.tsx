@@ -3,7 +3,20 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, CircleX } from 'lucide-react';
+import {
+  Check,
+  CircleX,
+  ShieldCheck,
+  Truck,
+  Package,
+  Clock,
+  ArrowLeft,
+  Copy,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+} from 'lucide-react';
+import { formatPrice } from '@/lib/currency';
 
 interface Order {
   id: string;
@@ -51,6 +64,7 @@ export default function OrderTrackingPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const fetchOrderDetails = useCallback(async () => {
     if (!orderId) {
@@ -95,7 +109,6 @@ export default function OrderTrackingPage() {
         const data = await response.json();
         throw new Error(data.error || 'Failed to update order');
       }
-      // Re-fetch order to get updated state
       await fetchOrderDetails();
     } catch (err) {
       console.error('Error updating order:', err);
@@ -105,12 +118,19 @@ export default function OrderTrackingPage() {
     }
   };
 
+  const handleCopyTracking = (tracking: string) => {
+    navigator.clipboard.writeText(tracking);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
-    return new Date(dateString).toLocaleString('en-US', {
-      month: 'short',
+    return new Date(dateString).toLocaleString('en-GB', {
       day: 'numeric',
-      hour: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
       minute: '2-digit',
     });
   };
@@ -120,8 +140,8 @@ export default function OrderTrackingPage() {
 
     // Order Placed
     steps.push({
-      title: 'Order Placed',
-      description: 'Your order has been received',
+      title: 'Order Placed & Escrow Initiated',
+      description: 'Your order was registered and payment initialized',
       status: 'completed',
       timestamp: order.createdAt,
     });
@@ -129,15 +149,15 @@ export default function OrderTrackingPage() {
     // Payment Received
     if (order.paidAt) {
       steps.push({
-        title: 'Payment Secured',
-        description: 'Payment held safely in escrow',
+        title: 'Payment Secured in Escrow',
+        description: 'Funds safely locked in VeriBuy Escrow Vault',
         status: 'completed',
         timestamp: order.paidAt,
       });
     } else {
       steps.push({
-        title: 'Awaiting Payment',
-        description: 'Waiting for payment confirmation',
+        title: 'Awaiting Payment Clearance',
+        description: 'Waiting for bank/card settlement confirmation',
         status: order.status === 'PENDING' ? 'current' : 'upcoming',
       });
     }
@@ -145,20 +165,20 @@ export default function OrderTrackingPage() {
     // Processing/Preparing
     if (order.status === 'ESCROW_HELD' || order.status === 'PAYMENT_RECEIVED') {
       steps.push({
-        title: 'Being Prepared',
-        description: 'Seller is preparing your item for shipment',
+        title: 'Seller Preparing Device',
+        description: 'Seller is packing the verified device for dispatch',
         status: 'current',
       });
     } else if (order.shippedAt) {
       steps.push({
-        title: 'Prepared',
-        description: 'Item prepared and ready for shipping',
+        title: 'Device Packaged & Dispatched',
+        description: 'Device handed over to tracked courier service',
         status: 'completed',
       });
     } else {
       steps.push({
-        title: 'Being Prepared',
-        description: 'Waiting for seller to prepare item',
+        title: 'Device Preparation',
+        description: 'Waiting for seller to package item',
         status: 'upcoming',
       });
     }
@@ -166,15 +186,15 @@ export default function OrderTrackingPage() {
     // Shipped
     if (order.shippedAt) {
       steps.push({
-        title: 'Shipped',
-        description: 'Package is on its way to you',
+        title: 'In Transit with Courier',
+        description: 'Package is en route to your delivery address',
         status: order.deliveredAt ? 'completed' : 'current',
         timestamp: order.shippedAt,
       });
     } else {
       steps.push({
-        title: 'Shipping',
-        description: 'Awaiting shipment',
+        title: 'Courier Dispatch',
+        description: 'Waiting for courier pickup and tracking scan',
         status: 'upcoming',
       });
     }
@@ -182,15 +202,15 @@ export default function OrderTrackingPage() {
     // Delivered
     if (order.deliveredAt) {
       steps.push({
-        title: 'Delivered',
-        description: 'Package delivered successfully',
+        title: 'Package Delivered',
+        description: 'Courier confirmed delivery to destination',
         status: order.completedAt ? 'completed' : 'current',
         timestamp: order.deliveredAt,
       });
     } else {
       steps.push({
-        title: 'Delivery',
-        description: 'Awaiting delivery',
+        title: 'Delivery Confirmation',
+        description: 'Awaiting courier delivery drop-off',
         status: 'upcoming',
       });
     }
@@ -198,21 +218,21 @@ export default function OrderTrackingPage() {
     // Completed
     if (order.completedAt) {
       steps.push({
-        title: 'Completed',
-        description: 'Order completed and escrow released',
+        title: 'Order Complete & Escrow Released',
+        description: 'Buyer verified device satisfaction; escrow released to seller',
         status: 'completed',
         timestamp: order.completedAt,
       });
     } else if (order.deliveredAt) {
       steps.push({
-        title: 'Confirm Receipt',
-        description: 'Please confirm you received the item',
+        title: 'Buyer Inspection & Escrow Release',
+        description: 'Verify your device and confirm satisfaction to release escrow',
         status: 'current',
       });
     } else {
       steps.push({
-        title: 'Complete',
-        description: 'Waiting for delivery confirmation',
+        title: 'Escrow Release',
+        description: 'Final funds release upon buyer satisfaction confirmation',
         status: 'upcoming',
       });
     }
@@ -222,11 +242,14 @@ export default function OrderTrackingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
         <div role="status" className="text-center">
-          <div aria-hidden="true" className="motion-safe:animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--color-green)] mx-auto mb-4"></div>
+          <div
+            aria-hidden="true"
+            className="inline-block motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-emerald-500 border-t-transparent mb-4"
+          ></div>
           <span className="sr-only">Loading order tracking...</span>
-          <p aria-hidden="true" className="text-[var(--color-text-muted)]">Loading order tracking...</p>
+          <p className="text-neutral-400 text-sm">Loading order timeline...</p>
         </div>
       </div>
     );
@@ -234,22 +257,20 @@ export default function OrderTrackingPage() {
 
   if (error || !orderData) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div role="alert" className="text-center max-w-md">
+      <div className="min-h-screen bg-neutral-950 flex items-center justify-center px-4">
+        <div role="alert" className="text-center max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-8">
           <div aria-hidden="true" className="mb-4 flex justify-center">
-            <CircleX className="h-14 w-14 text-[var(--color-danger)]" />
+            <CircleX className="h-14 w-14 text-red-400" />
           </div>
-          <h1 className="text-2xl font-bold text-[var(--color-text)] mb-2">
-            Order Not Found
-          </h1>
-          <p className="text-[var(--color-text-muted)] mb-6">
-            {error || 'We could not find the order you are looking for.'}
+          <h1 className="text-xl md:text-2xl font-bold text-white mb-2">Order Not Found</h1>
+          <p className="text-neutral-400 text-sm mb-6">
+            {error || 'We could not locate this order in our records.'}
           </p>
           <Link
-            href="/browse"
-            className="inline-block bg-[var(--color-accent)] text-white px-6 py-3 rounded-xl hover:opacity-90 transition-opacity"
+            href="/orders"
+            className="inline-block bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-6 py-3 rounded-xl transition-colors"
           >
-            Back to Browse
+            Return to Orders
           </Link>
         </div>
       </div>
@@ -260,166 +281,208 @@ export default function OrderTrackingPage() {
   const timeline = getTimeline(order);
 
   return (
-    <div className="min-h-screen bg-white py-12">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* Header */}
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 py-8 md:py-12">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Navigation & Title */}
         <div className="mb-8">
           <Link
-            href={`/orders/${orderId}`}
-            className="text-[var(--color-green)] hover:text-[var(--color-green-dark)] mb-2 inline-block"
+            href="/orders"
+            className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 text-sm font-medium mb-3 transition-colors"
           >
-            <span aria-hidden="true">&larr;</span> Back to Order Details
+            <ArrowLeft className="w-4 h-4" /> Back to My Orders
           </Link>
-          <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">
-            Track Your Order
-          </h1>
-          <p className="text-[var(--color-text-muted)]">
-            Order #{orderId.slice(0, 8)}...
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Order Tracking & Escrow</h1>
+              <p className="text-neutral-400 text-sm mt-1">
+                Order <span className="font-mono text-neutral-300">#{order.id}</span>
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              Escrow Protection Active
+            </div>
+          </div>
         </div>
 
-        {/* Item Info */}
+        {/* Device Summary Card */}
         {listing && (
-          <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
-            <div className="flex gap-4">
-              {listing.imageUrls && listing.imageUrls.length > 0 && (
+          <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              {listing.imageUrls && listing.imageUrls.length > 0 ? (
                 <img
                   src={listing.imageUrls[0]}
                   alt={listing.title}
-                  className="w-20 h-20 object-cover rounded-xl"
+                  className="w-16 h-16 object-cover rounded-xl border border-neutral-700/60 bg-neutral-800 shrink-0"
                 />
+              ) : (
+                <div className="w-16 h-16 rounded-xl bg-neutral-800 border border-neutral-700/60 flex items-center justify-center shrink-0">
+                  <Package className="w-6 h-6 text-neutral-500" />
+                </div>
               )}
-              <div className="flex-1">
-                <h3 className="font-semibold text-[var(--color-text)] mb-1">
-                  {listing.title}
-                </h3>
-                <p className="text-sm text-[var(--color-text-muted)]">
-                  {listing.brand} {listing.model}
+              <div>
+                <h3 className="font-semibold text-white text-base leading-tight mb-1">{listing.title}</h3>
+                <p className="text-xs text-neutral-400">
+                  {listing.brand} &bull; {listing.model}
                 </p>
+              </div>
+            </div>
+
+            <div className="text-left sm:text-right border-t sm:border-t-0 border-neutral-800 pt-3 sm:pt-0 w-full sm:w-auto">
+              <span className="text-xs text-neutral-400 uppercase tracking-wider block">Order Value</span>
+              <span className="text-lg font-bold text-emerald-400">
+                {formatPrice(order.amount, order.currency)}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Tracking Number Card */}
+        {order.trackingNumber && (
+          <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-xs text-neutral-400 uppercase tracking-wider">Courier Tracking Number</span>
+                <p className="font-mono text-sm font-bold text-white">{order.trackingNumber}</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => handleCopyTracking(order.trackingNumber!)}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-300 text-xs font-medium transition-colors"
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  Copy Tracking ID
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {/* Timeline Stepper */}
+        <div className="bg-neutral-900/60 border border-neutral-800 rounded-3xl p-6 md:p-8 mb-6">
+          <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-emerald-400" /> Escrow & Fulfillment Timeline
+          </h2>
+
+          <ol className="space-y-6 md:space-y-8">
+            {timeline.map((step, index) => {
+              const isDone = step.status === 'completed';
+              const isCurrent = step.status === 'current';
+
+              return (
+                <li key={index} className="flex items-start gap-4 md:gap-6">
+                  {/* Step Marker */}
+                  <div className="flex flex-col items-center shrink-0">
+                    <div
+                      aria-hidden="true"
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                        isDone
+                          ? 'bg-emerald-500 text-neutral-950 shadow-lg shadow-emerald-950'
+                          : isCurrent
+                          ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500 motion-safe:animate-pulse'
+                          : 'bg-neutral-800 text-neutral-500 border border-neutral-700'
+                      }`}
+                    >
+                      {isDone ? <Check className="w-4 h-4 stroke-[3]" /> : index + 1}
+                    </div>
+                    {index < timeline.length - 1 && (
+                      <div
+                        aria-hidden="true"
+                        className={`w-0.5 min-h-[48px] mt-2 ${
+                          isDone ? 'bg-emerald-500/60' : 'bg-neutral-800'
+                        }`}
+                      />
+                    )}
+                  </div>
+
+                  {/* Step Description */}
+                  <div className="flex-1 pt-0.5">
+                    <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
+                      <h3
+                        className={`text-sm md:text-base font-bold ${
+                          isDone ? 'text-white' : isCurrent ? 'text-emerald-400' : 'text-neutral-500'
+                        }`}
+                      >
+                        {step.title}
+                      </h3>
+                      {step.timestamp && (
+                        <span className="text-xs text-neutral-500 font-mono">
+                          {formatDate(step.timestamp)}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs md:text-sm text-neutral-400 mt-1 leading-relaxed">
+                      {step.description}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
+        {/* Action Notifications & Buttons */}
+        {actionError && (
+          <div role="alert" className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-sm flex items-center gap-3 mb-6">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>{actionError}</span>
+          </div>
+        )}
+
+        {isBuyer && order.status === 'SHIPPED' && (
+          <div className="bg-gradient-to-br from-blue-950/40 via-neutral-900 to-neutral-900 border border-blue-500/30 rounded-3xl p-6 md:p-8">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                <Truck className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base md:text-lg font-bold text-white mb-1">Has your parcel arrived?</h3>
+                <p className="text-xs md:text-sm text-neutral-400 mb-5 leading-relaxed">
+                  Click below once you have physically received the package from the courier. Your 7-day inspection window will commence.
+                </p>
+                <button
+                  disabled={actionLoading}
+                  onClick={() => updateOrderStatus('DELIVERED')}
+                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-xl transition-all disabled:opacity-50"
+                >
+                  {actionLoading ? 'Updating Status...' : 'Confirm Delivery Received'}
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Order Timeline */}
-        <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
-          <h2 className="text-xl font-semibold text-[var(--color-text)] mb-6">
-            Order Progress
-          </h2>
-
-          <ol className="space-y-6">
-            {timeline.map((step, index) => (
-              <li key={index} className="flex gap-4">
-                {/* Icon */}
-                <div className="flex flex-col items-center">
-                  <div
-                    aria-hidden="true"
-                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      step.status === 'completed'
-                        ? 'bg-[var(--color-green)] text-white'
-                        : step.status === 'current'
-                        ? 'bg-[var(--color-accent)] text-white motion-safe:animate-pulse'
-                        : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
-                    }`}
-                  >
-                    {step.status === 'completed' ? <Check className="h-5 w-5" /> : <span className="text-sm">&#9675;</span>}
-                  </div>
-                  {index < timeline.length - 1 && (
-                    <div
-                      aria-hidden="true"
-                      className={`w-0.5 flex-1 min-h-[40px] ${
-                        step.status === 'completed' ? 'bg-[var(--color-green)]' : 'bg-[var(--color-border)]'
-                      }`}
-                    ></div>
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 pb-6">
-                  <p
-                    className={`font-semibold ${
-                      step.status === 'upcoming'
-                        ? 'text-[var(--color-text-muted)]'
-                        : 'text-[var(--color-text)]'
-                    }`}
-                  >
-                    {step.title}
-                    <span className="sr-only">
-                      {step.status === 'completed' ? ' — completed' : step.status === 'current' ? ' — in progress' : ' — upcoming'}
-                    </span>
-                  </p>
-                  <p
-                    className={`text-sm ${
-                      step.status === 'upcoming' ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-muted)]'
-                    }`}
-                  >
-                    {step.description}
-                  </p>
-                  {step.timestamp && (
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                      {formatDate(step.timestamp)}
-                    </p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        {/* Tracking Number */}
-        {order.trackingNumber && (
-          <div className="mt-6 bg-white rounded-xl border border-[var(--color-border)] p-6">
-            <h3 className="text-lg font-semibold text-[var(--color-text)] mb-2">
-              Tracking Number
-            </h3>
-            <p className="font-mono text-[var(--color-text)] bg-[var(--color-surface-alt)] px-4 py-2 rounded border border-[var(--color-border)] inline-block">
-              {order.trackingNumber}
-            </p>
-          </div>
-        )}
-
-        {/* Actions */}
-        {actionError && (
-          <div role="alert" className="mt-4 p-3 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-xl text-[var(--color-danger)] text-sm">
-            {actionError}
-          </div>
-        )}
-
-        {isBuyer && order.status === 'SHIPPED' && (
-          <div className="mt-6 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl p-6">
-            <h3 id="confirm-delivery-heading" className="text-lg font-semibold text-[var(--color-text)] mb-2">
-              Has your order arrived?
-            </h3>
-            <p id="confirm-delivery-desc" className="text-[var(--color-text-muted)] mb-4">
-              Confirm that you have received the item. This will notify the seller and move the order to delivered status.
-            </p>
-            <button
-              disabled={actionLoading}
-              aria-describedby="confirm-delivery-desc"
-              className="bg-[var(--color-accent)] text-white px-6 py-3 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => updateOrderStatus('DELIVERED')}
-            >
-              {actionLoading ? 'Confirming...' : 'Confirm Delivery'}
-            </button>
-          </div>
-        )}
-
         {isBuyer && order.status === 'DELIVERED' && (
-          <div className="mt-6 bg-[var(--color-success)]/10 border border-[var(--color-success)]/20 rounded-xl p-6">
-            <h3 id="release-escrow-heading" className="text-lg font-semibold text-[var(--color-text)] mb-2">
-              Everything as expected?
-            </h3>
-            <p id="release-escrow-desc" className="text-[var(--color-text-muted)] mb-4">
-              Confirm receipt to complete the order and release escrow funds to the seller. Only do this once you are satisfied with the item.
-            </p>
-            <button
-              disabled={actionLoading}
-              aria-describedby="release-escrow-desc"
-              className="bg-[var(--color-accent)] text-white px-6 py-3 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={() => updateOrderStatus('COMPLETED')}
-            >
-              {actionLoading ? 'Processing...' : 'Confirm Receipt & Release Escrow'}
-            </button>
+          <div className="bg-gradient-to-br from-emerald-950/50 via-neutral-900 to-neutral-900 border border-emerald-500/30 rounded-3xl p-6 md:p-8">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base md:text-lg font-bold text-white mb-1">Device Inspected & Satisfied?</h3>
+                <p className="text-xs md:text-sm text-neutral-400 mb-5 leading-relaxed">
+                  Releasing escrow signifies that the hardware condition matches the Trust Lens™ certificate. Once confirmed, funds will be immediately disbursed to the seller.
+                </p>
+                <button
+                  disabled={actionLoading}
+                  onClick={() => updateOrderStatus('COMPLETED')}
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-950 transition-all disabled:opacity-50"
+                >
+                  {actionLoading ? 'Processing Escrow Release...' : 'Confirm Receipt & Release Escrow'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ShieldCheck,
+  ShieldAlert,
   ShieldX,
   Clock,
   AlertTriangle,
@@ -15,6 +16,11 @@ import {
   ArrowRight,
   Smartphone,
   Loader2,
+  Share2,
+  Check,
+  Cpu,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -43,56 +49,88 @@ const CHECK_CONFIG: Record<
   CheckResult,
   { icon: typeof CheckCircle2; label: string; className: string; bgClassName: string }
 > = {
-  CLEAN: { icon: CheckCircle2, label: 'Passed', className: 'text-emerald-600', bgClassName: 'bg-emerald-50 border-emerald-200' },
-  FLAGGED: { icon: XCircle, label: 'Flagged', className: 'text-red-600', bgClassName: 'bg-red-50 border-red-200' },
-  LOCKED: { icon: Lock, label: 'Locked', className: 'text-red-600', bgClassName: 'bg-red-50 border-red-200' },
-  NOT_APPLICABLE: { icon: Minus, label: 'N/A', className: 'text-[var(--color-text-muted)]', bgClassName: 'bg-gray-50 border-gray-200' },
-  NOT_RUN: { icon: Minus, label: 'Not checked', className: 'text-[var(--color-text-muted)]', bgClassName: 'bg-gray-50 border-gray-200' },
+  CLEAN: {
+    icon: CheckCircle2,
+    label: 'Clean & Verified',
+    className: 'text-emerald-400',
+    bgClassName: 'bg-emerald-500/10 border-emerald-500/30',
+  },
+  FLAGGED: {
+    icon: XCircle,
+    label: 'Flagged / Blacklisted',
+    className: 'text-red-400',
+    bgClassName: 'bg-red-500/10 border-red-500/30',
+  },
+  LOCKED: {
+    icon: Lock,
+    label: 'Activation Locked',
+    className: 'text-red-400',
+    bgClassName: 'bg-red-500/10 border-red-500/30',
+  },
+  NOT_APPLICABLE: {
+    icon: Minus,
+    label: 'Not Applicable',
+    className: 'text-neutral-400',
+    bgClassName: 'bg-neutral-800 border-neutral-700',
+  },
+  NOT_RUN: {
+    icon: Minus,
+    label: 'Not Checked',
+    className: 'text-neutral-400',
+    bgClassName: 'bg-neutral-800 border-neutral-700',
+  },
 };
 
 const STATUS_CONFIG: Record<
   TrustLensStatus,
-  { icon: typeof ShieldCheck; title: string; description: string; className: string; bgClassName: string; textClassName: string }
+  {
+    icon: typeof ShieldCheck;
+    title: string;
+    description: string;
+    badgeClass: string;
+    borderClass: string;
+    textClass: string;
+  }
 > = {
   PASSED: {
     icon: ShieldCheck,
-    title: 'Verification Passed',
-    description: 'Your device passed all automated checks and is now live on the marketplace.',
-    className: 'bg-emerald-600',
-    bgClassName: 'bg-emerald-50 border-emerald-200',
-    textClassName: 'text-emerald-700',
+    title: 'Trust Lens™ Certified',
+    description: 'This device passed all automated GSMA blacklist, activation lock, and serial integrity checks.',
+    badgeClass: 'bg-emerald-500 text-neutral-950',
+    borderClass: 'border-emerald-500/30 bg-emerald-950/20',
+    textClass: 'text-emerald-400',
   },
   REQUIRES_REVIEW: {
     icon: AlertTriangle,
-    title: 'Pending Human Review',
-    description: 'One or more checks need closer inspection by our team. Your listing is queued for admin review.',
-    className: 'bg-orange-600',
-    bgClassName: 'bg-orange-50 border-orange-200',
-    textClassName: 'text-orange-700',
+    title: 'Pending Manual Review',
+    description: 'Automated telemetry flagged minor inconsistencies. Our verification team is inspecting the evidence.',
+    badgeClass: 'bg-amber-500 text-neutral-950',
+    borderClass: 'border-amber-500/30 bg-amber-950/20',
+    textClass: 'text-amber-400',
   },
   FAILED: {
     icon: ShieldX,
     title: 'Verification Failed',
-    description: 'Your device did not pass verification and cannot be listed for sale.',
-    className: 'bg-red-500',
-    bgClassName: 'bg-red-50 border-red-200',
-    textClassName: 'text-red-700',
+    description: 'This hardware was flagged on global blacklist registries and is prohibited from being sold on VeriBuy.',
+    badgeClass: 'bg-red-500 text-white',
+    borderClass: 'border-red-500/30 bg-red-950/20',
+    textClass: 'text-red-400',
   },
   IN_PROGRESS: {
     icon: Clock,
-    title: 'Running Device Check',
-    description: 'We are checking your device against carrier blacklists and brand databases. This usually takes under a minute.',
-    className: 'bg-yellow-600',
-    bgClassName: 'bg-yellow-50 border-yellow-200',
-    textClassName: 'text-yellow-700',
+    title: 'Executing Diagnostics',
+    description: 'Querying GSMA database, Apple GSX, and carrier registries in real time.',
+    badgeClass: 'bg-blue-500 text-neutral-950',
+    borderClass: 'border-blue-500/30 bg-blue-950/20',
+    textClass: 'text-blue-400',
   },
   PENDING: {
     icon: Clock,
-    title: 'Starting Verification',
-    description: 'Your check is being queued. This usually takes a few seconds.',
-    className: 'bg-gray-500',
-    bgClassName: 'bg-gray-50 border-gray-200',
-    textClassName: 'text-gray-600',
+    title: 'Queued for Verification',
+    description: 'Diagnostic job has been registered and is waiting for execution.',
+    badgeClass: 'bg-neutral-500 text-neutral-950',
+    borderClass: 'border-neutral-700 bg-neutral-900',
+    textClass: 'text-neutral-400',
   },
 };
 
@@ -104,7 +142,7 @@ function VerificationReportContent({ id }: { id: string }) {
   const router = useRouter();
   const [summary, setSummary] = useState<VerificationSummary | null>(null);
   const [error, setError] = useState('');
-  const [enoughInfo, setEnoughInfo] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -119,8 +157,6 @@ function VerificationReportContent({ id }: { id: string }) {
       const live: TrustLensStatus = data.liveStatus ?? (data.status as TrustLensStatus) ?? 'PENDING';
       const done = isTerminal(live) || !data.imeiCheckPerformed;
       if (done) {
-        // Give the terminal state a moment to render before stopping.
-        setEnoughInfo(true);
         polling = false;
       }
       return done;
@@ -135,7 +171,7 @@ function VerificationReportContent({ id }: { id: string }) {
         polling = false;
         return;
       }
-      // Adaptive backoff while the check runs; stop the instant it completes.
+
       const MAX_POLL_MS = 60_000;
       const startedAt = Date.now();
       while (polling && Date.now() - startedAt < MAX_POLL_MS) {
@@ -160,6 +196,14 @@ function VerificationReportContent({ id }: { id: string }) {
     };
   }, [id]);
 
+  const handleShare = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const live: TrustLensStatus | 'PENDING' =
     summary?.liveStatus ?? (summary?.status as TrustLensStatus) ?? 'PENDING';
   const Status = STATUS_CONFIG[live];
@@ -167,139 +211,220 @@ function VerificationReportContent({ id }: { id: string }) {
   const running = !isTerminal(live);
   const unstarted = !summary?.imeiCheckPerformed && !running;
 
-  /* ---------------------------------------------------------------- */
-  /*  Render                                                           */
-  /* ---------------------------------------------------------------- */
-
   return (
-    <div className="min-h-screen bg-[var(--color-surface)] py-10">
-      <div className="max-w-2xl mx-auto px-4">
-        {/* Header */}
+    <div className="min-h-screen bg-neutral-950 text-neutral-100 py-10 md:py-16">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        {/* Certificate Brand Header */}
         <div className="text-center mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-[var(--color-text)] mb-2">
-            Device Verification
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-3">
+            <Sparkles className="w-3.5 h-3.5" /> Trust Lens™ Diagnostic Certificate
+          </div>
+          <h1 className="text-2xl md:text-4xl font-bold text-white tracking-tight">
+            Hardware Verification Report
           </h1>
-          <p className="text-[var(--color-text-muted)]">
-            {running
-              ? 'We are running your IMEI check now'
-              : 'Your Trust Lens verification report'}
+          <p className="text-neutral-400 text-sm md:text-base mt-2">
+            Cryptographically sealed diagnostic audit powered by VeriBuy
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-[var(--color-border)] shadow-sm overflow-hidden mb-6">
-          {/* Status band */}
-          <div className={cn('px-6 py-6 border-b', Status.bgClassName)}>
-            <div className="flex items-center gap-4">
-              <div className={cn('w-14 h-14 rounded-full flex items-center justify-center shrink-0', Status.className)}>
-                {running ? (
-                  <Loader2 className="w-7 h-7 text-white motion-safe:animate-spin" aria-hidden="true" />
-                ) : (
-                  <StatusIcon className="w-7 h-7 text-white" aria-hidden="true" />
-                )}
+        {/* Certificate Card */}
+        <div className="bg-neutral-900/80 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl mb-8 backdrop-blur-sm">
+          {/* Status Banner */}
+          <div className={cn('p-6 md:p-8 border-b', Status.borderClass)}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div
+                  className={cn(
+                    'w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-lg',
+                    Status.badgeClass
+                  )}
+                >
+                  {running ? (
+                    <Loader2 className="w-7 h-7 motion-safe:animate-spin" aria-hidden="true" />
+                  ) : (
+                    <StatusIcon className="w-7 h-7 stroke-[2.5]" aria-hidden="true" />
+                  )}
+                </div>
+                <div>
+                  <h2 className={cn('text-lg md:text-xl font-bold tracking-tight', Status.textClass)}>
+                    {Status.title}
+                  </h2>
+                  <p className="text-xs md:text-sm text-neutral-300 mt-1 max-w-md">
+                    {Status.description}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className={cn('text-lg font-bold', Status.textClassName)}>{Status.title}</h2>
-                <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{Status.description}</p>
-              </div>
+
+              {/* Polling / Live indicator */}
+              {running && (
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-mono self-start sm:self-auto">
+                  <span className="w-2 h-2 rounded-full bg-blue-400 motion-safe:animate-ping" />
+                  Live Polling GSMA API
+                </div>
+              )}
             </div>
           </div>
 
           {/* Pre-check notice */}
           {unstarted && (
-            <div className="px-6 py-4 bg-[var(--color-warning)]/10 border-b border-[var(--color-warning)]/30 flex items-start gap-2.5">
-              <AlertTriangle className="w-5 h-5 shrink-0 text-[var(--color-warning)]" aria-hidden="true" />
-              <p className="text-xs text-[var(--color-text)]">
-                The automated check could not be started. Your listing was created, but it will remain
-                unavailable for purchase until it can be verified.
+            <div className="px-6 py-4 bg-amber-500/10 border-b border-amber-500/20 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" aria-hidden="true" />
+              <p className="text-xs text-amber-200">
+                Automated carrier verification has not run yet. This device remains in escrow pending completion.
               </p>
             </div>
           )}
 
-          {/* Checks */}
-          <div className="px-6 py-6 space-y-4">
-            {summary?.imeiCheckPerformed && summary?.checks ? (
-              <div className="space-y-3">
-                {[
-                  { label: 'GSMA Blacklist', help: 'Checked against global carrier blacklist databases', result: summary.checks.gsmaBlacklist },
-                  { label: 'Stolen Device Report', help: 'Cross-referenced with stolen device registries', result: summary.checks.stolenReport },
-                  ...(summary.isAppleDevice
-                    ? [{ label: 'iCloud / Find My', help: 'Checked iCloud lock and Find My status', result: summary.checks.icloudStatus }]
-                    : []),
-                ].map((check) => {
-                  const cfg = CHECK_CONFIG[check.result];
-                  const CheckIcon = cfg.icon;
-                  return (
-                    <div key={check.label} className="flex items-center gap-3 p-4 rounded-xl border border-[var(--color-border)] bg-white">
-                      <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0', cfg.bgClassName)}>
-                        <CheckIcon className={cn('w-5 h-5', cfg.className)} aria-hidden="true" />
+          {/* Registry Checks List */}
+          <div className="p-6 md:p-8 space-y-6">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-400 mb-4 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Carrier & Database Registry Audits
+              </h3>
+
+              {summary?.imeiCheckPerformed && summary?.checks ? (
+                <div className="space-y-3">
+                  {[
+                    {
+                      label: 'GSMA Global Blacklist',
+                      desc: 'Cross-referenced against global lost & stolen carrier registers across 44 countries',
+                      result: summary.checks.gsmaBlacklist,
+                    },
+                    {
+                      label: 'Police & Insurance Stolen Register',
+                      desc: 'Checked against national police crime registries and insurance claims',
+                      result: summary.checks.stolenReport,
+                    },
+                    ...(summary.isAppleDevice
+                      ? [
+                          {
+                            label: 'Apple iCloud & Activation Lock',
+                            desc: 'GSX check confirms Find My iPhone is fully disabled and ready for fresh setup',
+                            result: summary.checks.icloudStatus,
+                          },
+                        ]
+                      : []),
+                  ].map((check) => {
+                    const cfg = CHECK_CONFIG[check.result];
+                    const CheckIcon = cfg.icon;
+                    return (
+                      <div
+                        key={check.label}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800 hover:border-neutral-700 transition-colors"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={cn(
+                              'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 sm:mt-0',
+                              cfg.bgClassName
+                            )}
+                          >
+                            <CheckIcon className={cn('w-4 h-4', cfg.className)} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-white">{check.label}</p>
+                            <p className="text-xs text-neutral-400 mt-0.5">{check.desc}</p>
+                          </div>
+                        </div>
+
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border self-start sm:self-auto shrink-0',
+                            cfg.bgClassName,
+                            cfg.className
+                          )}
+                        >
+                          {cfg.label}
+                        </span>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-[var(--color-text)]">{check.label}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">{check.help}</p>
+                    );
+                  })}
+                </div>
+              ) : running ? (
+                <div className="text-center py-12">
+                  <Loader2 className="w-8 h-8 text-emerald-400 motion-safe:animate-spin mx-auto mb-3" />
+                  <p className="text-sm text-neutral-300 font-medium">Scanning GSMA & Carrier Registries...</p>
+                  <p className="text-xs text-neutral-500 mt-1">This audit completes automatically in 15-30 seconds</p>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-neutral-400 text-sm">
+                  <Minus className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
+                  No check telemetry available.
+                </div>
+              )}
+            </div>
+
+            {/* Extracted Device Attributes */}
+            {summary?.deviceAttributes && summary.deviceAttributes.length > 0 && (
+              <div className="pt-4 border-t border-neutral-800">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-400 mb-4 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-400" /> Extracted Hardware Specs
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {summary.deviceAttributes.map((attr) => (
+                    <div
+                      key={attr.label}
+                      className="p-3.5 rounded-2xl bg-neutral-950/60 border border-neutral-800 flex items-center gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center text-neutral-400 shrink-0">
+                        <Smartphone className="w-4 h-4" />
                       </div>
-                      <span className={cn('text-sm font-bold', cfg.className)}>{cfg.label}</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[11px] uppercase tracking-wider text-neutral-500 block">
+                          {attr.label}
+                        </span>
+                        <span className="text-xs font-bold text-white truncate block">
+                          {attr.value}
+                        </span>
+                      </div>
                     </div>
-                  );
-                })}
-                {(summary.deviceAttributes?.length ?? 0) > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                    {summary.deviceAttributes!.map((attr) => (
-                      <div key={attr.label} className="flex items-start gap-3 p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shrink-0">
-                          <Smartphone className="w-4 h-4 text-[var(--color-primary)]" aria-hidden="true" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs text-[var(--color-text-muted)]">{attr.label}</p>
-                          <p className="text-sm font-semibold text-[var(--color-text)] truncate" title={attr.value}>{attr.value}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : running ? (
-              <div className="text-center py-8" role="status">
-                <div
-                  aria-hidden="true"
-                  className="inline-block motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-[var(--color-border)] border-t-[var(--color-accent)]"
-                />
-                <p aria-hidden="true" className="mt-4 text-sm text-[var(--color-text-muted)]">
-                  Checking your device…
-                </p>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Minus className="w-10 h-10 text-[var(--color-border)] mx-auto mb-3" aria-hidden="true" />
-                <p className="text-sm text-[var(--color-text-muted)]">No check results available yet.</p>
+                  ))}
+                </div>
               </div>
             )}
 
+            {/* Error banner if any */}
             {error && (
-              <div className="text-center text-sm text-[var(--color-danger)]">{error}</div>
+              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs text-center">
+                {error}
+              </div>
             )}
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-col sm:flex-row gap-3">
+        {/* Action Controls */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
             type="button"
             onClick={() => router.push(`/listings/${id}`)}
-            className="flex items-center justify-center gap-2 flex-1 px-6 py-3 bg-[var(--color-primary)] text-white rounded-xl font-semibold hover:bg-[var(--color-primary-dark)] transition-colors"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-950 transition-colors"
           >
-            View Listing <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            View Verified Listing <ArrowRight className="w-4 h-4" />
           </button>
+
+          <button
+            type="button"
+            onClick={handleShare}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 font-semibold text-sm rounded-xl transition-colors"
+          >
+            {copied ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-400" /> Certificate Link Copied
+              </>
+            ) : (
+              <>
+                <Share2 className="w-4 h-4" /> Share Certificate
+              </>
+            )}
+          </button>
+
           <Link
             href="/dashboard"
-            className="flex items-center justify-center px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-medium hover:bg-gray-200 transition-colors"
+            className="inline-flex items-center justify-center px-6 py-3.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-white font-medium text-sm rounded-xl transition-colors"
           >
             Go to Dashboard
           </Link>
         </div>
-
-        <p className="text-center text-xs text-[var(--color-text-muted)] mt-6">
-          This is your Verification Report. Buyers can view a summary of these checks on your listing.
-        </p>
       </div>
     </div>
   );
