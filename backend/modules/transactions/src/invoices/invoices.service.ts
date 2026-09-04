@@ -5,6 +5,7 @@ import * as PDFDocument from 'pdfkit';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
+import { getBuyerProtectionFeeRate } from '../transactions/transactions.service';
 
 export interface InvoiceOrderData {
   id: string;
@@ -85,6 +86,7 @@ export class InvoicesService {
 
       // 3. Persist the invoice record (immutability trigger prevents future edits
       //    to financial fields — only emailSentAt may be updated after creation)
+      const rate = getBuyerProtectionFeeRate();
       const invoice = await (this.prisma as any).invoice.create({
         data: {
           orderId: order.id,
@@ -94,7 +96,7 @@ export class InvoicesService {
           buyerId: order.buyerId,
           sellerId: order.sellerId,
           amount: order.amount as any,
-          protectionFee: (order.protectionFee ?? Math.round(Number(order.amount) * 0.05 * 100) / 100) as any,
+          protectionFee: (order.protectionFee ?? Math.round(Number(order.amount) * rate * 100) / 100) as any,
           shippingFee: order.shippingFee as any ?? null,
           totalAmount: order.totalAmount as any ?? order.amount as any,
           // REG-04: Store VAT breakdown (0% until VeriBuy is VAT-registered)
@@ -237,9 +239,11 @@ export class InvoicesService {
         new Intl.NumberFormat('en-GB', { style: 'currency', currency: order.currency }).format(Number(val));
 
       const amountFormatted = fmtCurrency(order.amount);
+      const rate = getBuyerProtectionFeeRate();
+      const feePercent = Math.round(rate * 100);
       const protectionFee = order.protectionFee != null
         ? Number(order.protectionFee)
-        : Math.round(Number(order.amount) * 0.05 * 100) / 100;
+        : Math.round(Number(order.amount) * rate * 100) / 100;
       const protectionFormatted = protectionFee > 0 ? fmtCurrency(protectionFee) : null;
       const shippingFee = order.shippingFee ? Number(order.shippingFee) : 0;
       const shippingFormatted = shippingFee > 0 ? fmtCurrency(shippingFee) : null;
@@ -356,7 +360,7 @@ export class InvoicesService {
           .fontSize(10)
           .font('Helvetica')
           .fillColor('#000000')
-          .text('Buyer Protection Fee (5%)', 50, lineY)
+          .text(`Buyer Protection Fee (${feePercent}%)`, 50, lineY)
           .font('Helvetica-Bold')
           .text(protectionFormatted, 400, lineY, { align: 'right' });
 
@@ -435,9 +439,11 @@ export class InvoicesService {
       new Intl.NumberFormat('en-GB', { style: 'currency', currency: order.currency }).format(Number(val));
 
     const amountFormatted = fmtCurrency(order.amount);
+    const rate = getBuyerProtectionFeeRate();
+    const feePercent = Math.round(rate * 100);
     const protectionFee = order.protectionFee != null
       ? Number(order.protectionFee)
-      : Math.round(Number(order.amount) * 0.05 * 100) / 100;
+      : Math.round(Number(order.amount) * rate * 100) / 100;
     const protectionFormatted = protectionFee > 0 ? fmtCurrency(protectionFee) : null;
     const shippingFee = order.shippingFee ? Number(order.shippingFee) : 0;
     const totalFormatted = fmtCurrency(order.totalAmount ?? (Number(order.amount) + protectionFee + shippingFee));
@@ -456,7 +462,7 @@ export class InvoicesService {
 
     const protectionRow = protectionFormatted
       ? `<tr>
-      <td style="padding: 8px; border: 1px solid #eee;"><strong>Buyer Protection Fee (5%)</strong></td>
+      <td style="padding: 8px; border: 1px solid #eee;"><strong>Buyer Protection Fee (${feePercent}%)</strong></td>
       <td style="padding: 8px; border: 1px solid #eee;">${protectionFormatted}</td>
     </tr>`
       : '';

@@ -14,6 +14,7 @@ import {
   type ShippingService,
   type ShippingQuote,
 } from '@/lib/shipping';
+import { calculateProtectionFee, getBuyerProtectionFeePercent } from '@/lib/fees';
 
 // SEC-15: Fail loudly if the Stripe publishable key is absent rather than
 // silently passing an empty string, which would produce confusing Stripe errors.
@@ -139,7 +140,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
   };
 
   const itemPrice = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
-  const protectionFee = Math.round(itemPrice * 0.05 * 100) / 100;
+  const protectionFee = calculateProtectionFee(itemPrice);
   const totalPrice = shippingQuote
     ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
     : Math.round((itemPrice + protectionFee) * 100) / 100;
@@ -639,7 +640,8 @@ function CheckoutPageContent() {
   const itemPrice = listing
     ? typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price
     : 0;
-  const protectionFee = Math.round(itemPrice * 0.05 * 100) / 100;
+  const feePercent = getBuyerProtectionFeePercent();
+  const protectionFee = calculateProtectionFee(itemPrice);
   const totalPrice = shippingQuote
     ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
     : Math.round((itemPrice + protectionFee) * 100) / 100;
@@ -737,7 +739,7 @@ function CheckoutPageContent() {
                   <span className="font-medium">{formatPrice(listing.price, listing.currency)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-[var(--color-text-muted)]">Buyer Protection (5%):</span>
+                  <span className="text-[var(--color-text-muted)]">Buyer Protection ({feePercent}%):</span>
                   <span className="font-medium text-[var(--color-text)]">
                     {formatPrice(protectionFee, listing.currency)}
                   </span>
@@ -784,7 +786,7 @@ function CheckoutPageContent() {
                   <span>Buyer Protection Included</span>
                 </div>
                 <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                  The 5% protection fee secures your payment in escrow, covers Trust Lens verification, and guarantees a 7-day refund if the device does not match.
+                  The {feePercent}% protection fee secures your payment in escrow, covers Trust Lens verification, and guarantees a 7-day refund if the device does not match.
                 </p>
               </div>
             </div>

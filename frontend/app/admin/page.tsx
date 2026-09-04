@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
+import { getBuyerProtectionFeePercent, getBuyerProtectionFeeRate } from '@/lib/fees';
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -90,6 +91,7 @@ interface Order {
   amount: number;
   currency: string;
   status: string;
+  protectionFee?: number | null;
   shippingFee?: number | null;
   shippingService?: string | null;
   totalAmount?: number | null;
@@ -407,12 +409,13 @@ function AdminDashboardContent() {
 
     // Count all revenue-generating statuses (same as stats route)
     const REVENUE_STATUSES = ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'];
+    const feeRate = getBuyerProtectionFeeRate();
     orders.filter(o => REVENUE_STATUSES.includes(o.status)).forEach(order => {
       const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
       if (revenueMap.has(orderDate)) {
         const current = revenueMap.get(orderDate)!;
         revenueMap.set(orderDate, {
-          revenue: current.revenue + Number(order.amount) * 0.05,
+          revenue: current.revenue + (order.protectionFee != null ? Number(order.protectionFee) : Number(order.amount) * feeRate),
           orders: current.orders + 1,
         });
       }
@@ -464,6 +467,7 @@ function AdminDashboardContent() {
   const generateTopSellers = (orders: Order[]) => {
     const REVENUE_STATUSES = ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'];
     const sellerMap = new Map<string, { label: string; revenue: number; orders: number }>();
+    const feeRate = getBuyerProtectionFeeRate();
     orders.filter(o => REVENUE_STATUSES.includes(o.status)).forEach(order => {
       // Use displayName if enriched, fall back to truncated sellerId
       const key = order.seller?.displayName
@@ -471,7 +475,7 @@ function AdminDashboardContent() {
       const current = sellerMap.get(key) || { label: key, revenue: 0, orders: 0 };
       sellerMap.set(key, {
         label: key,
-        revenue: current.revenue + Number(order.amount) * 0.05,
+        revenue: current.revenue + (order.protectionFee != null ? Number(order.protectionFee) : Number(order.amount) * feeRate),
         orders: current.orders + 1,
       });
     });
@@ -711,10 +715,10 @@ function DashboardTab({
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-5">
           <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Total GMV:</p>
           <p className="text-3xl font-bold text-[var(--color-text)]">
-            {formatPrice(stats?.totalRevenue ? stats.totalRevenue / 0.05 : 0, 'GBP')}
+            {formatPrice(stats?.totalRevenue ? stats.totalRevenue / getBuyerProtectionFeeRate() : 0, 'GBP')}
           </p>
           {stats?.totalRevenue ? (
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">Based on 5% Buyer Protection fee</p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">Based on {getBuyerProtectionFeePercent()}% Buyer Protection fee</p>
           ) : (
             <p className="text-xs text-[var(--color-text-muted)] mt-1">No transactions yet</p>
           )}
@@ -2229,13 +2233,13 @@ function OrdersTab({
             <p className="text-3xl font-bold text-[var(--color-text)] mt-2">{stats.totalOrders}</p>
           </div>
           <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
-            <p className="text-sm text-[var(--color-text-muted)]">Platform Revenue (5%)</p>
+            <p className="text-sm text-[var(--color-text-muted)]">Platform Revenue ({getBuyerProtectionFeePercent()}%)</p>
             <p className="text-3xl font-bold text-[var(--color-green)] mt-2">{formatPrice(stats.totalRevenue, 'GBP')}</p>
           </div>
           <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
             <p className="text-sm text-[var(--color-text-muted)]">Avg. Item Price</p>
             <p className="text-3xl font-bold text-[var(--color-text)] mt-2">
-              {stats.totalOrders > 0 ? formatPrice((stats.totalRevenue / stats.totalOrders) / 0.05, 'GBP') : '£0.00'}
+              {stats.totalOrders > 0 ? formatPrice((stats.totalRevenue / stats.totalOrders) / getBuyerProtectionFeeRate(), 'GBP') : '£0.00'}
             </p>
           </div>
         </div>

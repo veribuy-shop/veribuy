@@ -7,6 +7,7 @@ import {
   sanitizeListing,
   sanitizeAdminProfile,
 } from '@/lib/sanitize';
+import { getBuyerProtectionFeeRate } from '@/lib/fees';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 const USER_SERVICE_URL = getBackendUrl();
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
       totalOrders: total,
       totalRevenue: paginatedOrders
         .filter((o: RawOrder) => ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED'].includes(o.status))
-        .reduce((sum: number, o: RawOrder) => sum + (o.protectionFee != null ? Number(o.protectionFee) : Number(o.amount) * 0.05), 0), // 5% Buyer Protection fee
+        .reduce((sum: number, o: RawOrder) => sum + (o.protectionFee != null ? Number(o.protectionFee) : Number(o.amount) * getBuyerProtectionFeeRate()), 0),
       byStatus: paginatedOrders.reduce((acc: Record<string, number>, order: RawOrder) => {
         acc[order.status] = (acc[order.status] || 0) + 1;
         return acc;
