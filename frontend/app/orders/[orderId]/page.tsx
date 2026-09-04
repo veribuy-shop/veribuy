@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CircleCheck, CircleX, Package, ClipboardList } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
 import { formatShippingService } from '@/lib/shipping';
+import { calculateProtectionFee, getBuyerProtectionFeePercent } from '@/lib/fees';
 
 interface Order {
   id: string;
@@ -324,9 +325,10 @@ export default function OrderConfirmationPage() {
             Payment Summary
           </h2>
           {(() => {
+            const feePercent = getBuyerProtectionFeePercent();
             const protectionFee = order.protectionFee != null
               ? Number(order.protectionFee)
-              : Math.round(Number(order.amount) * 0.05 * 100) / 100;
+              : calculateProtectionFee(Number(order.amount));
             const shipping = order.shippingFee ? Number(order.shippingFee) : 0;
             const total = order.totalAmount != null
               ? Number(order.totalAmount)
@@ -339,7 +341,7 @@ export default function OrderConfirmationPage() {
                   <span>{formatPrice(order.amount, order.currency)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--color-text)]">
-                  <span>Buyer Protection (5%)</span>
+                  <span>Buyer Protection ({feePercent}%)</span>
                   <span>{formatPrice(protectionFee, order.currency)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--color-text)]">

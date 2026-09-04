@@ -1,16 +1,23 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Check, ShieldCheck, ArrowRight, Lock, Sparkles } from 'lucide-react';
+import { Check, ShieldCheck, ArrowRight, Sparkles } from 'lucide-react';
+import { getBuyerProtectionFeePercent, calculateProtectionFee } from '@/lib/fees';
+import { formatPrice } from '@/lib/currency';
 
 export const metadata: Metadata = {
   title: 'Pricing & Fees',
-  description: 'Simple, transparent pricing on VeriBuy. 0% seller fees — sellers keep 100% of their money. 5% Buyer Protection fee at checkout.',
+  description: 'Simple, transparent pricing on VeriBuy. 0% seller fees — sellers keep 100% of their money. Transparent Buyer Protection fee at checkout.',
   alternates: {
     canonical: '/pricing',
   },
 };
 
 export default function PricingPage() {
+  const feePercent = getBuyerProtectionFeePercent();
+  const examplePrice = 500;
+  const exampleFee = calculateProtectionFee(examplePrice);
+  const exampleTotal = Math.round((examplePrice + exampleFee) * 100) / 100;
+
   return (
     <div className="min-h-screen bg-white">
       {/* Hero */}
@@ -36,7 +43,7 @@ export default function PricingPage() {
             Simple, Fair Pricing
           </h1>
           <p className="text-base md:text-lg text-white/85 max-w-2xl mx-auto">
-            Sellers keep 100% of their sale price. Buyers get complete peace of mind with 5% Buyer Protection.
+            Sellers keep 100% of their sale price. Buyers get complete peace of mind with {feePercent}% Buyer Protection.
           </p>
         </div>
       </section>
@@ -99,7 +106,7 @@ export default function PricingPage() {
             </div>
             <div>
               <div className="text-center mb-6 pt-2">
-                <div className="text-5xl font-extrabold text-[var(--color-accent-dark)] mb-2">5%</div>
+                <div className="text-5xl font-extrabold text-[var(--color-accent-dark)] mb-2">{feePercent}%</div>
                 <h3 className="text-2xl font-bold text-[var(--color-text)]">Buyer Protection</h3>
                 <p className="text-sm text-[var(--color-text-muted)] mt-1">Added transparently at checkout</p>
               </div>
@@ -145,7 +152,7 @@ export default function PricingPage() {
             </div>
             <div>
               <h3 className="text-xl font-bold text-[var(--color-text)]">How Pricing Works in Practice</h3>
-              <p className="text-xs md:text-sm text-[var(--color-text-muted)]">Example transaction for a device listed at £500.00</p>
+              <p className="text-xs md:text-sm text-[var(--color-text-muted)]">Example transaction for a device listed at {formatPrice(examplePrice, 'GBP')}</p>
             </div>
           </div>
 
@@ -156,7 +163,7 @@ export default function PricingPage() {
               <div className="space-y-2.5 text-sm text-[var(--color-text-muted)]">
                 <div className="flex justify-between">
                   <span>Listing Price:</span>
-                  <span className="font-semibold text-[var(--color-text)]">£500.00</span>
+                  <span className="font-semibold text-[var(--color-text)]">{formatPrice(examplePrice, 'GBP')}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>VeriBuy Selling Fee (0%):</span>
@@ -164,7 +171,7 @@ export default function PricingPage() {
                 </div>
                 <div className="border-t border-[var(--color-border)] pt-2.5 flex justify-between text-[var(--color-text)] font-bold text-base">
                   <span>Seller Receives:</span>
-                  <span className="text-[var(--color-green)]">£500.00 (100%)</span>
+                  <span className="text-[var(--color-green)]">{formatPrice(examplePrice, 'GBP')} (100%)</span>
                 </div>
               </div>
             </div>
@@ -175,11 +182,11 @@ export default function PricingPage() {
               <div className="space-y-2.5 text-sm text-[var(--color-text-muted)]">
                 <div className="flex justify-between">
                   <span>Item Subtotal:</span>
-                  <span className="font-semibold text-[var(--color-text)]">£500.00</span>
+                  <span className="font-semibold text-[var(--color-text)]">{formatPrice(examplePrice, 'GBP')}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Buyer Protection Fee (5%):</span>
-                  <span className="font-semibold text-[var(--color-text)]">£25.00</span>
+                  <span>Buyer Protection Fee ({feePercent}%):</span>
+                  <span className="font-semibold text-[var(--color-text)]">{formatPrice(exampleFee, 'GBP')}</span>
                 </div>
                 <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
                   <span>Shipping:</span>
@@ -187,7 +194,7 @@ export default function PricingPage() {
                 </div>
                 <div className="border-t border-[var(--color-border)] pt-2.5 flex justify-between text-[var(--color-text)] font-bold text-base">
                   <span>Buyer Pays:</span>
-                  <span className="text-[var(--color-accent-dark)]">£525.00 + shipping</span>
+                  <span className="text-[var(--color-accent-dark)]">{formatPrice(exampleTotal, 'GBP')} + shipping</span>
                 </div>
               </div>
             </div>

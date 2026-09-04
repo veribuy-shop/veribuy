@@ -35,6 +35,14 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   CANCELLED:        [],
 };
 
+export function getBuyerProtectionFeeRate(): number {
+  const raw = process.env.BUYER_PROTECTION_FEE_PERCENT || process.env.BUYER_PROTECTION_FEE_RATE;
+  if (!raw) return 0.05;
+  const parsed = parseFloat(raw);
+  if (isNaN(parsed) || parsed < 0) return 0.05;
+  return parsed >= 1 ? parsed / 100 : parsed;
+}
+
 @Injectable()
 export class TransactionsService implements OnModuleInit {
   private readonly logger = new Logger(TransactionsService.name);
@@ -77,10 +85,11 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Buyer and seller cannot be the same user');
     }
 
-    // 5% Buyer Protection Fee charged to buyer at checkout
-    const protectionFee = Math.round(amount * 0.05 * 100) / 100;
+    // Buyer Protection Fee (configurable via env variable, default 5%)
+    const rate = getBuyerProtectionFeeRate();
+    const protectionFee = Math.round(amount * rate * 100) / 100;
 
-    // Compute total: item price + 5% buyer protection fee + shipping
+    // Compute total: item price + buyer protection fee + shipping
     const totalAmount = Math.round((amount + protectionFee + shippingFee) * 100) / 100;
 
     // Snapshot listing details for invoice generation — fire-and-forget on failure
@@ -155,8 +164,9 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Order has no associated payment intent');
     }
 
+    const rate = getBuyerProtectionFeeRate();
     const protectionFee = Number(
-      order.protectionFee ?? Math.round(Number(order.amount) * 0.05 * 100) / 100,
+      order.protectionFee ?? Math.round(Number(order.amount) * rate * 100) / 100,
     );
     const newTotal = Math.round((Number(order.amount) + protectionFee + dto.shippingFee) * 100) / 100;
 
@@ -711,7 +721,7 @@ export class TransactionsService implements OnModuleInit {
       listingDescription: order.listingDescription ?? null,
       listingCategory: order.listingCategory ?? null,
       amount: order.amount,
-      protectionFee: order.protectionFee ?? Math.round(Number(order.amount) * 0.05 * 100) / 100,
+      protectionFee: order.protectionFee ?? Math.round(Number(order.amount) * getBuyerProtectionFeeRate() * 100) / 100,
       shippingFee: order.shippingFee ?? null,
       shippingService: order.shippingService ?? null,
       totalAmount: order.totalAmount ?? order.amount,
