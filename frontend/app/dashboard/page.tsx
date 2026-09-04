@@ -64,7 +64,10 @@ interface Listing {
 
 interface Order {
   id: string;
-  listingId?: string;
+  listingId?: string | null;
+  listingTitle?: string | null;
+  listingDescription?: string | null;
+  listingCategory?: string | null;
   amount: number;
   currency: string;
   status: string;
@@ -626,6 +629,8 @@ function DashboardContent() {
                     const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.PENDING;
                     const isCompleted = order.status === 'COMPLETED';
                     const isRated = ratedOrders.has(order.id);
+                    const targetListingId = order.listingId || order.listing?.id;
+                    const displayTitle = order.listing?.title ?? order.listingTitle ?? (`${order.listing?.brand ?? ''} ${order.listing?.model ?? ''}`.trim() || 'Device');
                     return (
                       <tr key={order.id} className="hover:bg-[var(--color-surface-alt)]/50">
                         <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">
@@ -635,7 +640,7 @@ function DashboardContent() {
                           {new Date(order.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                         </td>
                         <td className="px-4 py-3 text-[var(--color-text)] font-medium text-xs truncate max-w-[140px]">
-                          {order.listing?.title ?? (`${order.listing?.brand ?? ''} ${order.listing?.model ?? ''}`.trim() || 'Device')}
+                          {displayTitle}
                         </td>
                         <td className="px-4 py-3 text-xs font-semibold text-[var(--color-text)]">
                           {formatPrice(order.amount, order.currency)}
@@ -653,8 +658,8 @@ function DashboardContent() {
                             >
                               <Star className="w-3 h-3" aria-hidden="true" /> Rate
                             </button>
-                          ) : order.status === 'PENDING' ? (
-                            <Link href={`/checkout?listingId=${order.listingId || order.listing?.id}`} className="text-xs font-semibold text-[var(--color-accent-dark)] hover:underline">
+                          ) : order.status === 'PENDING' && targetListingId ? (
+                            <Link href={`/checkout?listingId=${targetListingId}`} className="text-xs font-semibold text-[var(--color-accent-dark)] hover:underline">
                               Resume
                             </Link>
                           ) : (
@@ -802,6 +807,8 @@ function DashboardContent() {
                 const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.PENDING;
                 const isCompleted = order.status === 'COMPLETED';
                 const isRated = ratedOrders.has(order.id);
+                const targetListingId = order.listingId || order.listing?.id;
+                const displayTitle = order.listing?.title ?? order.listingTitle ?? (`${order.listing?.brand ?? ''} ${order.listing?.model ?? ''}`.trim() || 'Device');
                 const actionLabel =
                   order.status === 'PENDING' ? 'Resume Checkout' :
                   order.status === 'SHIPPED' ? 'Track Shipment' :
@@ -809,8 +816,8 @@ function DashboardContent() {
                   isCompleted && !isRated ? 'Rate Seller' :
                   isCompleted && isRated ? 'Rated' : 'View Details';
                 const actionHref =
-                  order.status === 'PENDING'
-                    ? `/checkout?listingId=${order.listingId || order.listing?.id}`
+                  order.status === 'PENDING' && targetListingId
+                    ? `/checkout?listingId=${targetListingId}`
                     : `/orders/${order.id}`;
                 return (
                   <tr key={order.id} className="hover:bg-[var(--color-surface-alt)]/50">
@@ -821,7 +828,7 @@ function DashboardContent() {
                       {new Date(order.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </td>
                     <td className="px-4 py-3 text-[var(--color-text)] font-medium text-xs truncate max-w-[200px]">
-                      {order.listing?.title ?? (`${order.listing?.brand ?? ''} ${order.listing?.model ?? ''}`.trim() || 'Device')}
+                      {displayTitle}
                     </td>
                     <td className="px-4 py-3 text-xs font-semibold text-[var(--color-text)]">
                       {formatPrice(order.amount, order.currency)}
