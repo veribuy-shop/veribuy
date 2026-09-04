@@ -710,8 +710,16 @@ export default function ListingDetailContent({ id }: { id: string }) {
               </div>
             ) : listing.trustLensStatus === 'PASSED' ? (
               <div className="space-y-3">
-                <button onClick={() => router.push(`/checkout?listingId=${listing.id}`)}
-                  className="w-full px-6 py-4 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white rounded-xl font-bold text-lg transition-colors shadow-sm">
+                <button
+                  onClick={() => {
+                    if (!user) {
+                      router.push(`/login?redirect=/checkout?listingId=${listing.id}`);
+                      return;
+                    }
+                    router.push(`/checkout?listingId=${listing.id}`);
+                  }}
+                  className="w-full px-6 py-4 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white rounded-xl font-bold text-lg transition-colors shadow-sm"
+                >
                   Buy Now
                 </button>
                 <div className="flex items-center justify-center gap-1.5 text-sm text-gray-500">

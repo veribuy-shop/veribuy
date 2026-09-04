@@ -87,10 +87,12 @@ export class TransactionsService implements OnModuleInit {
 
     // Buyer Protection Fee (configurable via env variable, default 5%)
     const rate = getBuyerProtectionFeeRate();
-    const protectionFee = Math.round(amount * rate * 100) / 100;
+    const numericAmount = Number(amount) || 0;
+    const numericShipping = Number(shippingFee) || 0;
+    const protectionFee = Math.round(numericAmount * rate * 100) / 100;
 
     // Compute total: item price + buyer protection fee + shipping
-    const totalAmount = Math.round((amount + protectionFee + shippingFee) * 100) / 100;
+    const totalAmount = Math.round((numericAmount + protectionFee + numericShipping) * 100) / 100;
 
     // Snapshot listing details for invoice generation — fire-and-forget on failure
     let listingTitle: string | null = null;
@@ -122,9 +124,9 @@ export class TransactionsService implements OnModuleInit {
         listingTitle,
         listingDescription,
         listingCategory,
-        amount,
+        amount: numericAmount,
         protectionFee,
-        shippingFee: shippingFee || null,
+        shippingFee: numericShipping > 0 ? numericShipping : null,
         shippingService,
         totalAmount,
         currency,

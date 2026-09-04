@@ -97,18 +97,26 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const data = await response.json();
+    let data: any = null;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
 
     if (!response.ok) {
-      console.error('Transaction service error:', data);
+      console.error('Transaction service error:', data || response.statusText);
+      const errMsg =
+        (data && (data.message || data.error)) ||
+        `Failed to create order (${response.status})`;
       return NextResponse.json(
-        { error: data.message || data.error || 'Failed to create order' },
+        { error: Array.isArray(errMsg) ? errMsg.join(', ') : String(errMsg) },
         { status: response.status }
       );
     }
 
     // Validate response contains required fields
-    if (!data.clientSecret || !data.paymentIntentId) {
+    if (!data?.clientSecret || !data?.paymentIntentId) {
       console.error('Invalid response from transaction service:', data);
       return NextResponse.json(
         { error: 'Invalid response from payment service. Please try again.' },
@@ -125,10 +133,10 @@ export async function POST(req: NextRequest) {
     };
 
     return NextResponse.json(sanitizeOrderWithPayment(flat));
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating order:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: error?.message || 'Internal server error' },
       { status: 500 }
     );
   }
