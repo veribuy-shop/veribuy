@@ -582,8 +582,8 @@ function CheckoutPageContent() {
       return;
     }
 
-    if (!listingId) {
-      setError('No listing ID provided');
+    if (!listingId || listingId === 'undefined' || listingId === 'null') {
+      setError('No listing ID provided. Please select an item to purchase.');
       setLoading(false);
       return;
     }

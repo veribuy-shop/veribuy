@@ -163,6 +163,10 @@ export interface SafeListing {
 
 export interface SafeOrder {
   id: string;
+  listingId?: string | null;
+  listingTitle?: string | null;
+  listingDescription?: string | null;
+  listingCategory?: string | null;
   amount: number;
   protectionFee: number | null;
   shippingFee: number | null;
@@ -373,6 +377,10 @@ export function sanitizeListing(raw: Record<string, any>): SafeListing {
 export function sanitizeOrder(raw: Record<string, any>): SafeOrder {
   return {
     id: raw.id ?? '',
+    listingId: raw.listingId ?? raw.listing_id ?? null,
+    listingTitle: raw.listingTitle ?? raw.listing_title ?? null,
+    listingDescription: raw.listingDescription ?? raw.listing_description ?? null,
+    listingCategory: raw.listingCategory ?? raw.listing_category ?? null,
     amount: Number(raw.amount ?? 0),
     protectionFee: raw.protectionFee != null ? Number(raw.protectionFee) : null,
     shippingFee: raw.shippingFee != null ? Number(raw.shippingFee) : null,
