@@ -6,7 +6,7 @@ import { formatPrice } from '@/lib/currency';
 
 export const metadata: Metadata = {
   title: 'Pricing & Fees',
-  description: 'Simple, transparent pricing on VeriBuy. 0% seller fees — sellers keep 100% of their money. Transparent Buyer Protection fee at checkout.',
+  description: 'Simple, transparent pricing on VeriBuy. 0% seller fees — sellers keep 100% of their money. Transparent, variable Buyer Protection fee at checkout.',
   alternates: {
     canonical: '/pricing',
   },
@@ -43,7 +43,7 @@ export default function PricingPage() {
             Simple, Fair Pricing
           </h1>
           <p className="text-base md:text-lg text-white/85 max-w-2xl mx-auto">
-            Sellers keep 100% of their sale price. Buyers get complete peace of mind with {feePercent}% Buyer Protection.
+            Sellers keep 100% of their sale price. Buyers get complete peace of mind with our variable Buyer Protection fee calculated at checkout.
           </p>
         </div>
       </section>
@@ -106,9 +106,9 @@ export default function PricingPage() {
             </div>
             <div>
               <div className="text-center mb-6 pt-2">
-                <div className="text-5xl font-extrabold text-[var(--color-accent-dark)] mb-2">{feePercent}%</div>
+                <div className="text-4xl md:text-5xl font-extrabold text-[var(--color-accent-dark)] mb-2">Variable Rate</div>
                 <h3 className="text-2xl font-bold text-[var(--color-text)]">Buyer Protection</h3>
-                <p className="text-sm text-[var(--color-text-muted)] mt-1">Added transparently at checkout</p>
+                <p className="text-sm text-[var(--color-text-muted)] mt-1">Calculated dynamically at checkout</p>
               </div>
               <ul className="space-y-3.5 text-[var(--color-text-muted)] text-sm md:text-base">
                 <li className="flex items-start gap-3">
@@ -185,7 +185,7 @@ export default function PricingPage() {
                   <span className="font-semibold text-[var(--color-text)]">{formatPrice(examplePrice, 'GBP')}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Buyer Protection Fee ({feePercent}%):</span>
+                  <span>Buyer Protection Fee (e.g. ~{feePercent}%):</span>
                   <span className="font-semibold text-[var(--color-text)]">{formatPrice(exampleFee, 'GBP')}</span>
                 </div>
                 <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
@@ -199,6 +199,9 @@ export default function PricingPage() {
               </div>
             </div>
           </div>
+          <p className="mt-4 text-xs text-[var(--color-text-muted)] text-center md:text-left">
+            * Buyer protection fee is a dynamic variable rate calculated transparently during checkout based on order tier and device category.
+          </p>
         </div>
       </section>
     </div>
