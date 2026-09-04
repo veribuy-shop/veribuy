@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CircleCheck, CircleX } from 'lucide-react';
+import { CircleCheck, CircleX, KeyRound, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -20,20 +20,21 @@ export default function ResetPasswordInner() {
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
-        <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
-          <div className="w-16 h-16 bg-[var(--color-danger)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CircleX className="w-8 h-8 text-[var(--color-danger)]" aria-hidden="true" />
+      <div className="min-h-[80vh] bg-[var(--color-surface-alt)] flex items-center justify-center px-4 py-12">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-[var(--color-border)] p-8 sm:p-10 text-center shadow-xl">
+          <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-red-100">
+            <CircleX className="w-8 h-8" aria-hidden="true" />
           </div>
-          <h1 className="text-2xl font-bold text-[var(--color-text)] mb-3">Invalid link</h1>
-          <p className="text-[var(--color-text-muted)] mb-6">
-            This password reset link is missing or invalid. Please request a new one.
+          <h1 className="text-2xl font-black text-gray-900 mb-2">Invalid or Expired Link</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mb-6 leading-relaxed">
+            This password reset link is invalid or has expired. Please request a new link to proceed.
           </p>
           <Link
             href="/forgot-password"
-            className="inline-block bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-8 py-3 rounded-lg font-semibold transition-colors"
+            className="inline-flex items-center gap-2 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white px-8 py-3.5 rounded-xl font-bold text-sm transition-all shadow-md"
           >
-            Request new link
+            <span>Request New Reset Link</span>
+            <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
       </div>
@@ -42,8 +43,13 @@ export default function ResetPasswordInner() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (hasSubmitted.current) return;
+
+    if (newPassword.length < 8) {
+      setErrorMessage('Password must be at least 8 characters.');
+      setStatus('error');
+      return;
+    }
 
     if (newPassword !== confirmPassword) {
       setErrorMessage('Passwords do not match.');
@@ -64,8 +70,7 @@ export default function ResetPasswordInner() {
 
       if (response.ok) {
         setStatus('success');
-        // Redirect to login after 3 seconds
-        setTimeout(() => router.push('/login'), 3000);
+        setTimeout(() => router.push('/login'), 2500);
       } else {
         const data = await response.json();
         setErrorMessage(data.message || 'Password reset failed. The link may have expired.');
@@ -80,46 +85,46 @@ export default function ResetPasswordInner() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-surface)] flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-white rounded-xl border border-[var(--color-border)] p-8 text-center">
+    <div className="min-h-[80vh] bg-[var(--color-surface-alt)] flex items-center justify-center px-4 py-12">
+      <div className="max-w-md w-full bg-white rounded-3xl border border-[var(--color-border)] p-8 sm:p-10 text-center shadow-xl">
         {status === 'success' ? (
           <>
-            <div className="w-16 h-16 bg-[var(--color-green)]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CircleCheck className="w-8 h-8 text-[var(--color-green)]" aria-hidden="true" />
+            <div className="w-16 h-16 bg-emerald-50 text-[var(--color-green)] rounded-2xl flex items-center justify-center mx-auto mb-6 border border-emerald-100 shadow-sm">
+              <CircleCheck className="w-8 h-8" aria-hidden="true" />
             </div>
-            <h1 className="text-2xl font-bold text-[var(--color-text)] mb-3">Password reset!</h1>
-            <p className="text-[var(--color-text-muted)] mb-6">
-              Your password has been updated. Redirecting you to sign in…
+            <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">Password Reset!</h1>
+            <p className="text-xs sm:text-sm text-gray-500 mb-6 leading-relaxed">
+              Your password has been successfully updated. Redirecting you to sign in…
             </p>
             <Link
               href="/login"
-              className="inline-block bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-8 py-3 rounded-lg font-semibold transition-colors"
+              className="inline-flex items-center gap-2 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white px-8 py-3.5 rounded-xl font-bold text-sm transition-all shadow-md"
             >
-              Sign in now
+              <span>Sign In Now</span>
+              <ArrowRight className="w-4 h-4" />
             </Link>
           </>
         ) : (
           <>
-            <h1 className="text-2xl font-bold mb-2 text-center">Set new password</h1>
-            <p className="text-[var(--color-text-muted)] text-center mb-8 text-sm">
-              Choose a strong password for your VeriBuy account.
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-[var(--color-green)] flex items-center justify-center mx-auto mb-4 border border-emerald-100">
+              <KeyRound className="w-7 h-7" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight mb-2">Set New Password</h1>
+            <p className="text-xs sm:text-sm text-gray-500 mb-6 leading-relaxed">
+              Choose a strong, secure password for your VeriBuy account.
             </p>
 
-            <div aria-live="polite" aria-atomic="true">
-              {status === 'error' && (
-                <div
-                  role="alert"
-                  className="bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 text-[var(--color-danger)] px-4 py-3 rounded-lg mb-4 text-sm text-left"
-                >
-                  {errorMessage}
-                </div>
-              )}
-            </div>
+            {status === 'error' && (
+              <div role="alert" className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-700 mb-4 text-left">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4 text-left" noValidate>
               <div>
-                <label htmlFor="new-password" className="block text-sm font-medium mb-1">
-                  New password
+                <label htmlFor="new-password" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                  New Password
                 </label>
                 <input
                   id="new-password"
@@ -129,13 +134,14 @@ export default function ResetPasswordInner() {
                   required
                   minLength={8}
                   autoComplete="new-password"
-                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] text-sm"
+                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] text-sm text-gray-900 bg-white placeholder-gray-400 shadow-xs"
                   placeholder="At least 8 characters"
                 />
               </div>
+
               <div>
-                <label htmlFor="confirm-password" className="block text-sm font-medium mb-1">
-                  Confirm new password
+                <label htmlFor="confirm-password" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                  Confirm New Password
                 </label>
                 <input
                   id="confirm-password"
@@ -144,23 +150,34 @@ export default function ResetPasswordInner() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   autoComplete="new-password"
-                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] text-sm"
-                  placeholder="••••••••"
+                  className="w-full px-4 py-3 border border-[var(--color-border)] rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] text-sm text-gray-900 bg-white placeholder-gray-400 shadow-xs"
+                  placeholder="Re-enter password"
                 />
               </div>
+
               <button
                 type="submit"
                 disabled={status === 'submitting'}
                 aria-disabled={status === 'submitting'}
-                className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full py-3.5 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white rounded-xl font-bold text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
               >
-                {status === 'submitting' ? 'Resetting...' : 'Reset password'}
+                {status === 'submitting' ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Resetting password...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Update Password</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-[var(--color-text-muted)]">
-              <Link href="/forgot-password" className="text-[var(--color-green)] font-medium hover:underline">
-                Request a new link
+            <div className="mt-8 pt-6 border-t border-gray-100 text-center text-xs text-gray-500">
+              <Link href="/forgot-password" className="text-[var(--color-green)] font-bold hover:underline">
+                Request a new reset link
               </Link>
             </div>
           </>
