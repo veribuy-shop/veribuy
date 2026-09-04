@@ -64,6 +64,7 @@ interface Listing {
 
 interface Order {
   id: string;
+  listingId?: string;
   amount: number;
   currency: string;
   status: string;
@@ -73,7 +74,7 @@ interface Order {
   completedAt?: string;
   buyer?: { displayName: string; email: string } | null;
   seller?: { displayName: string; email: string } | null;
-  listing?: { title: string; brand: string; model: string } | null;
+  listing?: { id?: string; title: string; brand: string; model: string } | null;
 }
 
 interface VerificationRequest {
@@ -430,14 +431,23 @@ function DashboardContent() {
     .filter(o => REVENUE_STATUSES.includes(o.status))
     .reduce((sum, o) => sum + Number(o.amount), 0);
 
-  const totalSpent = buyerOrders
+  // Deduplicate pending checkout attempts for the same listing (keep the newest one)
+  const displayBuyerOrders = buyerOrders.filter((order, index, self) => {
+    if (order.status !== 'PENDING') return true;
+    const firstPendingIndex = self.findIndex(
+      o => (o.listingId === order.listingId || (o.listing?.title && o.listing.title === order.listing?.title)) && o.status === 'PENDING',
+    );
+    return index === firstPendingIndex;
+  });
+
+  const totalSpent = displayBuyerOrders
     .filter(o => REVENUE_STATUSES.includes(o.status))
     .reduce((sum, o) => sum + Number(o.amount), 0);
 
   const activeListings = listings.filter(l => l.status === 'ACTIVE').length;
   const chartData = buildSalesChart(sellerOrders);
   const recentSellerOrders = [...sellerOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
-  const recentBuyerOrders = [...buyerOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
+  const recentBuyerOrders = [...displayBuyerOrders].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 5);
   const needsShipment = sellerOrders.filter(o => o.status === 'ESCROW_HELD');
   const inspecting = verifications.filter(v => v.status === 'IN_PROGRESS').length;
   const awaitingInspection = verifications.filter(v => v.status === 'PENDING').length;
@@ -643,6 +653,10 @@ function DashboardContent() {
                             >
                               <Star className="w-3 h-3" aria-hidden="true" /> Rate
                             </button>
+                          ) : order.status === 'PENDING' ? (
+                            <Link href={`/checkout?listingId=${order.listingId || order.listing?.id}`} className="text-xs font-semibold text-[var(--color-accent-dark)] hover:underline">
+                              Resume
+                            </Link>
                           ) : (
                             <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium">
                               {order.status === 'SHIPPED' ? 'Track' : isRated ? 'Rated' : 'Details'}
@@ -784,15 +798,20 @@ function DashboardContent() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]/30">
-              {buyerOrders.map(order => {
+              {displayBuyerOrders.map(order => {
                 const badge = STATUS_BADGE[order.status] ?? STATUS_BADGE.PENDING;
                 const isCompleted = order.status === 'COMPLETED';
                 const isRated = ratedOrders.has(order.id);
                 const actionLabel =
+                  order.status === 'PENDING' ? 'Resume Checkout' :
                   order.status === 'SHIPPED' ? 'Track Shipment' :
                   order.status === 'DELIVERED' ? 'Confirm Receipt' :
                   isCompleted && !isRated ? 'Rate Seller' :
                   isCompleted && isRated ? 'Rated' : 'View Details';
+                const actionHref =
+                  order.status === 'PENDING'
+                    ? `/checkout?listingId=${order.listingId || order.listing?.id}`
+                    : `/orders/${order.id}`;
                 return (
                   <tr key={order.id} className="hover:bg-[var(--color-surface-alt)]/50">
                     <td className="px-5 py-3 font-mono text-xs text-[var(--color-text-muted)]">
@@ -821,7 +840,7 @@ function DashboardContent() {
                           <Star className="w-3 h-3" aria-hidden="true" /> Rate Seller <ChevronRight className="w-3 h-3" aria-hidden="true" />
                         </button>
                       ) : (
-                        <Link href={`/orders/${order.id}`} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1">
+                        <Link href={actionHref} className="text-xs text-[var(--color-green)] hover:text-[var(--color-green-dark)] font-medium flex items-center gap-1">
                           {actionLabel} <ChevronRight className="w-3 h-3" aria-hidden="true" />
                         </Link>
                       )}
