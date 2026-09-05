@@ -445,7 +445,7 @@ export default function OrderConfirmationPage() {
                   <span>{formatPrice(order.amount, order.currency)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--color-text)]">
-                  <span>Buyer Protection ({feePercent}%)</span>
+                  <span>Buyer Protection Fee</span>
                   <span>{formatPrice(protectionFee, order.currency)}</span>
                 </div>
                 <div className="flex justify-between text-[var(--color-text)]">

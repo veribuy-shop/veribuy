@@ -155,7 +155,7 @@ export default function CheckoutScreen() {
           </View>
           <View className="flex-row justify-between mb-2">
             <View>
-              <Text className="text-sm text-text-muted">Buyer Protection Fee ({feePercent}%)</Text>
+              <Text className="text-sm text-text-muted">Buyer Protection Fee</Text>
               <Text className="text-[10px] text-text-muted">Escrow &amp; 48hr inspection warranty</Text>
             </View>
             <Text className="text-sm font-medium text-indigo-700">{formatPrice(protectionFee, currency)}</Text>
