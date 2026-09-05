@@ -339,7 +339,7 @@ export default function OrderDetailScreen() {
               </Text>
             </View>
             <View className="flex-row justify-between py-1">
-              <Text className="text-sm text-text-muted">5% Buyer Protection Fee</Text>
+              <Text className="text-sm text-text-muted">Buyer Protection Fee</Text>
               <Text className="text-sm font-medium text-text">
                 {formatPrice(protectionFee, order.currency)}
               </Text>

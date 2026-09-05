@@ -795,7 +795,7 @@ function CheckoutPageContent() {
                   <span className="font-medium">{formatPrice(listing.price, listing.currency)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-[var(--color-text-muted)]">Buyer Protection ({feePercent}%):</span>
+                  <span className="text-[var(--color-text-muted)]">Buyer Protection Fee:</span>
                   <span className="font-medium text-[var(--color-text)]">
                     {formatPrice(protectionFee, listing.currency)}
                   </span>
