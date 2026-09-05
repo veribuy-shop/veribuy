@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
-import { getBuyerProtectionFeePercent, getBuyerProtectionFeeRate } from '@/lib/fees';
+import { getBuyerProtectionFeePercent, setBuyerProtectionFeePercent } from '@/lib/fees';
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -19,47 +19,29 @@ import {
   Menu,
   X,
   Search,
-  CreditCard,
-  Package,
   CheckCircle2,
-  Clock,
-  Check,
-  XCircle,
   LogOut,
   RefreshCw,
   Server,
   Database,
   Shield,
-  Bell,
-  Globe,
   Save,
   AlertTriangle,
-  ArrowUpRight,
-  TrendingUp,
-  RotateCcw,
-  Sparkles,
-  Layers,
-  Smartphone,
   ChevronRight,
-  Filter,
+  Sun,
+  Moon,
+  ArrowLeft,
+  Percent,
 } from 'lucide-react';
 import ConfirmModal from '@/components/confirm-modal';
 import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
-  AreaChart,
-  Area,
 } from 'recharts';
 
 // ============================================================================
@@ -93,6 +75,7 @@ interface Listing {
 
 interface Order {
   id: string;
+  listingId?: string | null;
   amount: number;
   currency: string;
   status: string;
@@ -120,32 +103,7 @@ interface VerificationRequest {
   updatedAt: string;
 }
 
-interface DashboardStats {
-  totalUsers: number;
-  totalListings: number;
-  activeListings: number;
-  pendingVerification: number;
-  totalOrders: number;
-  totalRevenue: number;
-  byStatus: Record<string, number>;
-}
-
-interface AnalyticsData {
-  revenueByDay: { date: string; revenue: number; orders: number }[];
-  ordersByStatus: { status: string; count: number; value: number }[];
-  deviceTypes: { type: string; count: number }[];
-  userGrowth: { date: string; users: number }[];
-  topSellers: { seller: string; revenue: number; orders: number }[];
-}
-
 type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'users' | 'analytics' | 'health' | 'settings';
-
-interface ServiceHealth {
-  name: string;
-  status: 'healthy' | 'unhealthy' | 'degraded';
-  responseTime: number;
-  details?: Record<string, unknown>;
-}
 
 // ============================================================================
 // MAIN COMPONENT
@@ -159,10 +117,9 @@ function AdminDashboardContent() {
   const initialTab = validTabs.includes(searchParams.get('tab') as TabId) ? (searchParams.get('tab') as TabId) : 'dashboard';
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Data state
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [listings, setListings] = useState<Listing[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -176,12 +133,34 @@ function AdminDashboardContent() {
   const [orderSearch, setOrderSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
 
+  // Platform settings state
+  const [feeRateInput, setFeeRateInput] = useState<number>(getBuyerProtectionFeePercent());
+  const [feeSaveSuccess, setFeeSaveSuccess] = useState(false);
+
   // Action states
   const [actionLoading, setActionLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Refund modal state
   const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
+
+  // Load theme preference
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem('veribuy_admin_theme');
+      if (savedTheme === 'dark') {
+        setIsDarkMode(true);
+      }
+    } catch {}
+  }, []);
+
+  const toggleTheme = () => {
+    const next = !isDarkMode;
+    setIsDarkMode(next);
+    try {
+      localStorage.setItem('veribuy_admin_theme', next ? 'dark' : 'light');
+    } catch {}
+  };
 
   const fetchAll = useCallback(async () => {
     if (!user) return;
@@ -203,25 +182,25 @@ function AdminDashboardContent() {
       const usersVal = settleOk(usersRes);
       if (usersVal?.ok) {
         const d = await usersVal.json();
-        setUsers(Array.isArray(d) ? d : (d.data ?? []));
+        setUsers(Array.isArray(d) ? d : d.data ?? []);
       }
 
       const listVal = settleOk(listingsRes);
       if (listVal?.ok) {
         const d = await listVal.json();
-        setListings(Array.isArray(d) ? d : (d.data ?? []));
+        setListings(Array.isArray(d) ? d : d.data ?? []);
       }
 
       const ordVal = settleOk(ordersRes);
       if (ordVal?.ok) {
         const d = await ordVal.json();
-        setOrders(Array.isArray(d.orders) ? d.orders : (Array.isArray(d) ? d : []));
+        setOrders(Array.isArray(d.orders) ? d.orders : Array.isArray(d) ? d : []);
       }
 
       const verVal = settleOk(verRes);
       if (verVal?.ok) {
         const d = await verVal.json();
-        setVerifications(Array.isArray(d) ? d : (d.data ?? []));
+        setVerifications(Array.isArray(d) ? d : d.data ?? []);
       }
     } catch (err) {
       console.error('Failed to load admin data:', err);
@@ -234,7 +213,6 @@ function AdminDashboardContent() {
     fetchAll();
   }, [fetchAll]);
 
-  // Sync tab with URL
   const handleTabClick = (tab: TabId) => {
     setActiveTab(tab);
     setSidebarOpen(false);
@@ -243,7 +221,13 @@ function AdminDashboardContent() {
     router.replace(`/admin?${params.toString()}`, { scroll: false });
   };
 
-  // Verification review action
+  const handleSaveFeeSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    setBuyerProtectionFeePercent(Number(feeRateInput));
+    setFeeSaveSuccess(true);
+    setTimeout(() => setFeeSaveSuccess(false), 3000);
+  };
+
   const handleVerificationReview = async (id: string, action: 'PASSED' | 'FAILED') => {
     setActionLoading(true);
     setActionMessage(null);
@@ -267,7 +251,6 @@ function AdminDashboardContent() {
     }
   };
 
-  // User role toggle
   const handleToggleUserRole = async (targetUser: User) => {
     const newRole = targetUser.role === 'ADMIN' ? 'USER' : 'ADMIN';
     setActionLoading(true);
@@ -289,7 +272,6 @@ function AdminDashboardContent() {
     }
   };
 
-  // Listing status change
   const handleUpdateListingStatus = async (listingId: string, newStatus: string) => {
     setActionLoading(true);
     setActionMessage(null);
@@ -310,7 +292,6 @@ function AdminDashboardContent() {
     }
   };
 
-  // Order refund action
   const handleExecuteRefund = async () => {
     if (!refundOrderId) return;
     setActionLoading(true);
@@ -381,61 +362,127 @@ function AdminDashboardContent() {
   });
 
   const filteredOrders = orders.filter((o) => {
-    const matchesFilter = orderStatusFilter === 'ALL' || o.status === orderStatusFilter;
+    const matchesFilter =
+      orderStatusFilter === 'ALL' ||
+      (orderStatusFilter === 'PAID' && ['ESCROW_HELD', 'PAYMENT_RECEIVED', 'SHIPPED', 'DELIVERED', 'COMPLETED'].includes(o.status)) ||
+      (orderStatusFilter === 'PENDING' && o.status === 'PENDING') ||
+      o.status === orderStatusFilter;
     const term = orderSearch.toLowerCase();
     const matchesSearch =
       !term ||
       o.id.toLowerCase().includes(term) ||
+      (o.listingId && o.listingId.toLowerCase().includes(term)) ||
       (o.buyer?.displayName && o.buyer.displayName.toLowerCase().includes(term)) ||
       (o.seller?.displayName && o.seller.displayName.toLowerCase().includes(term));
     return matchesFilter && matchesSearch;
   });
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 flex flex-col md:flex-row">
+    <div
+      className={cn(
+        'min-h-screen flex flex-col md:flex-row transition-colors duration-150',
+        isDarkMode ? 'bg-neutral-950 text-neutral-100' : 'bg-slate-50 text-slate-900'
+      )}
+    >
       {/* Mobile Top Header */}
-      <div className="md:hidden flex items-center justify-between p-4 bg-neutral-900 border-b border-neutral-800">
+      <div
+        className={cn(
+          'md:hidden flex items-center justify-between p-4 border-b',
+          isDarkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-slate-200'
+        )}
+      >
+        <Link href="/" className="flex items-center gap-2">
+          <span className="font-extrabold text-slate-900">Veri<span className="text-emerald-600">Buy</span></span>
+          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">ADMIN</span>
+        </Link>
         <div className="flex items-center gap-2">
-          <span className="font-extrabold text-white">Veri<span className="text-emerald-400">Buy</span></span>
-          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/30">ADMIN</span>
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            className={cn(
+              'p-2 rounded-xl border',
+              isDarkMode ? 'bg-neutral-800 border-neutral-700 text-amber-400' : 'bg-slate-100 border-slate-200 text-slate-700'
+            )}
+          >
+            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className={cn(
+              'p-2 rounded-xl',
+              isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-700'
+            )}
+          >
+            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="p-2 rounded-xl bg-neutral-800 text-neutral-300 hover:text-white"
-        >
-          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
       </div>
 
       {/* Sidebar Navigation */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-64 bg-neutral-900/95 border-r border-neutral-800 backdrop-blur-md p-6 flex flex-col justify-between transition-transform duration-200 md:translate-x-0 md:static',
+          'fixed inset-y-0 left-0 z-40 w-64 border-r p-6 flex flex-col justify-between transition-transform duration-200 md:translate-x-0 md:static backdrop-blur-md',
+          isDarkMode ? 'bg-neutral-900/95 border-neutral-800' : 'bg-white/95 border-slate-200 shadow-sm',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         <div>
-          {/* Logo */}
-          <div className="hidden md:flex items-center justify-between mb-8">
-            <Link href="/" className="flex items-center gap-2">
-              <span className="text-xl font-extrabold text-white">Veri<span className="text-emerald-400">Buy</span></span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded border border-emerald-500/30">ADMIN</span>
+          {/* Logo & Theme Switcher */}
+          <div className="hidden md:flex items-center justify-between mb-6">
+            <Link href="/" className="flex items-center gap-2" title="Back to Marketplace">
+              <span className={cn('text-xl font-extrabold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                Veri<span className="text-emerald-600">Buy</span>
+              </span>
+              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
+                ADMIN
+              </span>
             </Link>
+            <button
+              onClick={toggleTheme}
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+              className={cn(
+                'p-2 rounded-xl border transition-colors',
+                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-amber-400' : 'bg-slate-100 border-slate-200 text-slate-600'
+              )}
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
           </div>
 
-          {/* Admin Tag */}
-          <div className="bg-neutral-950/70 border border-neutral-800 rounded-2xl p-3.5 mb-6 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold text-xs">
+          {/* Back to Marketplace */}
+          <Link
+            href="/"
+            className={cn(
+              'w-full flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold mb-5 border transition-all',
+              isDarkMode
+                ? 'bg-neutral-950 border-neutral-800 text-emerald-400 hover:bg-neutral-800'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+            )}
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Marketplace</span>
+          </Link>
+
+          {/* Admin Badge */}
+          <div
+            className={cn(
+              'border rounded-2xl p-3.5 mb-6 flex items-center gap-3',
+              isDarkMode ? 'bg-neutral-950/70 border-neutral-800' : 'bg-slate-50 border-slate-200'
+            )}
+          >
+            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
               <Shield className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold text-white truncate">{user?.name || 'Administrator'}</p>
-              <span className="text-[11px] text-emerald-400">Superuser Access</span>
+              <p className={cn('text-xs font-bold truncate', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                {user?.name || 'Administrator'}
+              </p>
+              <span className="text-[11px] text-emerald-600 font-semibold">Superuser Access</span>
             </div>
           </div>
 
-          {/* Navigation Items */}
-          <nav className="space-y-1.5" aria-label="Admin Navigation">
+          {/* Nav Items */}
+          <nav className="space-y-1" aria-label="Admin Navigation">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -446,12 +493,14 @@ function AdminDashboardContent() {
                   className={cn(
                     'w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-150',
                     isActive
-                      ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-950 font-semibold'
-                      : 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-semibold'
+                      : isDarkMode
+                      ? 'text-neutral-400 hover:text-white hover:bg-neutral-800/60'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={cn('w-4 h-4', isActive ? 'text-white' : 'text-neutral-400')} />
+                    <Icon className={cn('w-4 h-4', isActive ? 'text-white' : isDarkMode ? 'text-neutral-400' : 'text-slate-500')} />
                     <span>{item.label}</span>
                   </div>
                   {item.count !== undefined && item.count > 0 && (
@@ -462,7 +511,9 @@ function AdminDashboardContent() {
                           ? 'bg-red-500 text-white motion-safe:animate-pulse'
                           : isActive
                           ? 'bg-emerald-700 text-white'
-                          : 'bg-neutral-800 text-neutral-300'
+                          : isDarkMode
+                          ? 'bg-neutral-800 text-neutral-300'
+                          : 'bg-slate-200 text-slate-700'
                       )}
                     >
                       {item.count}
@@ -475,16 +526,29 @@ function AdminDashboardContent() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="pt-6 border-t border-neutral-800 space-y-2">
+        <div
+          className={cn(
+            'pt-6 border-t space-y-2',
+            isDarkMode ? 'border-neutral-800' : 'border-slate-200'
+          )}
+        >
           <button
             onClick={() => fetchAll()}
-            className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-semibold transition-colors"
+            className={cn(
+              'w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold border transition-colors',
+              isDarkMode
+                ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-300'
+                : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-sm'
+            )}
           >
             <RefreshCw className={cn('w-3.5 h-3.5', loading && 'motion-safe:animate-spin')} /> Refresh Telemetry
           </button>
           <button
             onClick={() => logout()}
-            className="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-neutral-400 hover:text-red-400 hover:bg-neutral-800 text-xs transition-colors"
+            className={cn(
+              'w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs transition-colors',
+              isDarkMode ? 'text-neutral-400 hover:text-red-400 hover:bg-neutral-800' : 'text-slate-500 hover:text-red-600 hover:bg-slate-100'
+            )}
           >
             <LogOut className="w-4 h-4" /> Sign Out
           </button>
@@ -500,8 +564,8 @@ function AdminDashboardContent() {
             className={cn(
               'p-4 rounded-2xl text-xs font-semibold flex items-center gap-2 mb-6 border transition-all',
               actionMessage.type === 'success'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                : 'bg-red-500/10 border-red-500/30 text-red-400'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-red-50 border-red-200 text-red-700'
             )}
           >
             {actionMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
@@ -509,10 +573,10 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* Top Operations Header */}
+        {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            <h1 className={cn('text-2xl sm:text-3xl font-bold tracking-tight', isDarkMode ? 'text-white' : 'text-slate-900')}>
               {activeTab === 'dashboard' && 'Operations Command Center'}
               {activeTab === 'verification' && 'Trust Lens™ Verification Queue'}
               {activeTab === 'listings' && 'Inventory Moderation'}
@@ -522,14 +586,19 @@ function AdminDashboardContent() {
               {activeTab === 'health' && 'System Health & Infrastructure'}
               {activeTab === 'settings' && 'Global Marketplace Settings'}
             </h1>
-            <p className="text-neutral-400 text-sm mt-1">
-              VeriBuy Central Operations &bull; PostgreSQL, Redis Cache, Carrier GSMA Registries
+            <p className={cn('text-sm mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+              VeriBuy Operations &bull; PostgreSQL 17, Redis Cache, GSMA Carrier Gateways
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
+            <div
+              className={cn(
+                'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-mono font-semibold',
+                isDarkMode ? 'bg-neutral-900 border-neutral-800 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+              )}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
               API: 200 OK
             </div>
           </div>
@@ -540,44 +609,85 @@ function AdminDashboardContent() {
           <div className="space-y-8">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
-                <span className="text-xs text-neutral-400 uppercase tracking-wider block mb-1">Total Platform GMV</span>
-                <p className="text-2xl font-bold text-emerald-400">{formatPrice(totalRevenue, 'GBP')}</p>
-                <span className="text-xs text-neutral-500 mt-2 block">{orders.length} total orders processed</span>
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Total Platform GMV
+                </span>
+                <p className="text-2xl font-bold text-emerald-600">{formatPrice(totalRevenue, 'GBP')}</p>
+                <span className={cn('text-xs mt-2 block', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
+                  {orders.length} total orders recorded
+                </span>
               </div>
 
-              <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
-                <span className="text-xs text-neutral-400 uppercase tracking-wider block mb-1">Pending Verification</span>
-                <p className="text-2xl font-bold text-amber-400">{pendingVerifications.length}</p>
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Pending Verification
+                </span>
+                <p className="text-2xl font-bold text-amber-600">{pendingVerifications.length}</p>
                 <button
                   onClick={() => setActiveTab('verification')}
-                  className="text-xs text-emerald-400 hover:underline mt-2 inline-flex items-center gap-1"
+                  className="text-xs text-emerald-600 hover:underline mt-2 inline-flex items-center gap-1 font-semibold"
                 >
                   Review queue <ChevronRight className="w-3 h-3" />
                 </button>
               </div>
 
-              <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
-                <span className="text-xs text-neutral-400 uppercase tracking-wider block mb-1">Live Listings</span>
-                <p className="text-2xl font-bold text-white">{activeListingsCount}</p>
-                <span className="text-xs text-neutral-500 mt-2 block">{listings.length} total inventory</span>
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Live Listings
+                </span>
+                <p className={cn('text-2xl font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>{activeListingsCount}</p>
+                <span className={cn('text-xs mt-2 block', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
+                  {listings.length} total catalog items
+                </span>
               </div>
 
-              <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
-                <span className="text-xs text-neutral-400 uppercase tracking-wider block mb-1">Registered Users</span>
-                <p className="text-2xl font-bold text-white">{users.length}</p>
-                <span className="text-xs text-emerald-400 mt-2 block">
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Registered Accounts
+                </span>
+                <p className={cn('text-2xl font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>{users.length}</p>
+                <span className="text-xs text-emerald-600 font-semibold mt-2 block">
                   {users.filter((u) => u.isEmailVerified).length} verified emails
                 </span>
               </div>
             </div>
 
             {/* Revenue Trend Area Chart */}
-            <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
+            <div
+              className={cn(
+                'border rounded-3xl p-6 shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-base font-bold text-white">Platform Transaction Volume</h3>
-                  <p className="text-xs text-neutral-400">14-day trailing gross sales</p>
+                  <h3 className={cn('text-base font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Platform Transaction Volume
+                  </h3>
+                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    14-day trailing gross sales
+                  </p>
                 </div>
               </div>
 
@@ -585,46 +695,52 @@ function AdminDashboardContent() {
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={revenueChartData}>
                     <defs>
-                      <linearGradient id="adminEmeraldGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                      <linearGradient id="adminEmeraldGradLight" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#059669" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#059669" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                    <XAxis dataKey="date" stroke="#737373" fontSize={11} />
-                    <YAxis stroke="#737373" fontSize={11} tickFormatter={(v) => `£${v}`} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#262626' : '#f1f5f9'} />
+                    <XAxis dataKey="date" stroke={isDarkMode ? '#737373' : '#94a3b8'} fontSize={11} />
+                    <YAxis stroke={isDarkMode ? '#737373' : '#94a3b8'} tickFormatter={(v) => `£${v}`} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#171717',
-                        borderColor: '#262626',
+                        backgroundColor: isDarkMode ? '#171717' : '#ffffff',
+                        borderColor: isDarkMode ? '#262626' : '#e2e8f0',
                         borderRadius: '12px',
-                        color: '#fff',
+                        color: isDarkMode ? '#fff' : '#0f172a',
+                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
                       }}
                       formatter={(val: any) => [`£${val}`, 'Gross Revenue']}
                     />
-                    <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2} fill="url(#adminEmeraldGrad)" />
+                    <Area type="monotone" dataKey="revenue" stroke="#059669" strokeWidth={2.5} fill="url(#adminEmeraldGradLight)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Urgent Review Deck Preview */}
-            <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
+            {/* Verification Queue Preview */}
+            <div
+              className={cn(
+                'border rounded-3xl p-6 shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <ClipboardCheck className="w-5 h-5 text-emerald-400" /> Pending Hardware Approvals
+                <h3 className={cn('text-base font-bold flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  <ClipboardCheck className="w-5 h-5 text-emerald-600" /> Pending Hardware Approvals
                 </h3>
                 <button
                   onClick={() => setActiveTab('verification')}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold"
+                  className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold"
                 >
                   View All ({pendingVerifications.length})
                 </button>
               </div>
 
               {pendingVerifications.length === 0 ? (
-                <div className="text-center py-8 text-neutral-400 text-xs">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <div className={cn('text-center py-8 text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
                   All Trust Lens™ verification checks are clear. Zero backlog.
                 </div>
               ) : (
@@ -632,30 +748,37 @@ function AdminDashboardContent() {
                   {pendingVerifications.slice(0, 3).map((v) => (
                     <div
                       key={v.id}
-                      className="p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className={cn(
+                        'p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3',
+                        isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200'
+                      )}
                     >
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-mono text-xs text-neutral-400">Req #{v.id.substring(0, 8)}</span>
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                          <span className={cn('font-mono text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                            Req #{v.id.substring(0, 8)}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                             {v.status}
                           </span>
                         </div>
-                        <p className="text-sm font-semibold text-white">Listing: {v.listingId}</p>
+                        <p className={cn('text-sm font-semibold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                          Listing Target: {v.listingId}
+                        </p>
                       </div>
 
                       <div className="flex items-center gap-2">
                         <button
                           disabled={actionLoading}
                           onClick={() => handleVerificationReview(v.id, 'PASSED')}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl transition-colors"
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
                         >
                           Approve Pass
                         </button>
                         <button
                           disabled={actionLoading}
                           onClick={() => handleVerificationReview(v.id, 'FAILED')}
-                          className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 font-semibold text-xs rounded-xl transition-colors"
+                          className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold text-xs rounded-xl transition-colors"
                         >
                           Reject
                         </button>
@@ -671,15 +794,22 @@ function AdminDashboardContent() {
         {/* ─── TAB 2: VERIFICATION QUEUE ─── */}
         {activeTab === 'verification' && (
           <div className="space-y-6">
-            <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
-              <h3 className="text-base font-bold text-white mb-1">Trust Lens™ Telemetry Queue</h3>
-              <p className="text-xs text-neutral-400 mb-6">
+            <div
+              className={cn(
+                'border rounded-3xl p-6 shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
+              <h3 className={cn('text-base font-bold mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                Trust Lens™ Telemetry Queue
+              </h3>
+              <p className={cn('text-xs mb-6', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
                 Automated carrier checks, blacklist scans, and manual reviews.
               </p>
 
               {verifications.length === 0 ? (
-                <div className="text-center py-12 text-neutral-400 text-sm">
-                  <ClipboardCheck className="w-10 h-10 text-neutral-600 mx-auto mb-3" />
+                <div className={cn('text-center py-12 text-sm', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  <ClipboardCheck className="w-10 h-10 text-slate-400 mx-auto mb-3" />
                   No verification items found in queue.
                 </div>
               ) : (
@@ -687,39 +817,49 @@ function AdminDashboardContent() {
                   {verifications.map((v) => (
                     <div
                       key={v.id}
-                      className="p-5 rounded-2xl bg-neutral-950/70 border border-neutral-800 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                      className={cn(
+                        'p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4',
+                        isDarkMode ? 'bg-neutral-950/70 border-neutral-800' : 'bg-slate-50 border-slate-200'
+                      )}
                     >
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="font-mono text-xs text-neutral-400">ID: {v.id.substring(0, 12)}</span>
+                          <span className={cn('font-mono text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                            ID: {v.id.substring(0, 12)}
+                          </span>
                           <span
                             className={cn(
                               'px-2.5 py-0.5 rounded-full text-xs font-semibold border',
                               v.status === 'PASSED'
-                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 : v.status === 'FAILED'
-                                ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
                             )}
                           >
                             {v.status}
                           </span>
                         </div>
-                        <p className="text-sm font-bold text-white">Listing Target: {v.listingId}</p>
+                        <p className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                          Listing Target: {v.listingId}
+                        </p>
                         {v.conditionGrade && (
-                          <span className="text-xs text-neutral-400 block mt-1">
-                            Condition: <strong className="text-white">{v.conditionGrade}</strong>
+                          <span className={cn('text-xs block mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                            Condition: <strong className={isDarkMode ? 'text-white' : 'text-slate-800'}>{v.conditionGrade}</strong>
                           </span>
                         )}
                         {v.reviewNotes && (
-                          <p className="text-xs text-neutral-400 mt-1 italic">{v.reviewNotes}</p>
+                          <p className={cn('text-xs mt-1 italic', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>{v.reviewNotes}</p>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-3 border-t md:border-t-0 border-neutral-800 pt-3 md:pt-0">
+                      <div className={cn('flex items-center gap-3 border-t md:border-t-0 pt-3 md:pt-0', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
                         <Link
                           href={`/verification/${v.listingId}`}
-                          className="px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold text-xs rounded-xl border border-neutral-700"
+                          className={cn(
+                            'px-3.5 py-2 font-semibold text-xs rounded-xl border transition-colors',
+                            isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                          )}
                         >
                           Certificate
                         </Link>
@@ -749,8 +889,12 @@ function AdminDashboardContent() {
         {/* ─── TAB 3: LISTINGS MODERATION ─── */}
         {activeTab === 'listings' && (
           <div className="space-y-6">
-            {/* Filter toolbar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-neutral-900/70 border border-neutral-800 rounded-2xl p-4">
+            <div
+              className={cn(
+                'flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-2xl p-4 shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
               <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
                 {['ALL', 'ACTIVE', 'UNDER_REVIEW', 'SOLD', 'REJECTED'].map((s) => (
                   <button
@@ -759,8 +903,10 @@ function AdminDashboardContent() {
                     className={cn(
                       'px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors',
                       listingStatusFilter === s
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-neutral-800 text-neutral-400 hover:text-white'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : isDarkMode
+                        ? 'bg-neutral-800 text-neutral-400 hover:text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     )}
                   >
                     {s}
@@ -769,22 +915,29 @@ function AdminDashboardContent() {
               </div>
 
               <div className="relative">
-                <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Filter listings..."
                   value={listingSearch}
                   onChange={(e) => setListingSearch(e.target.value)}
-                  className="bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 w-full sm:w-60"
+                  className={cn(
+                    'border rounded-xl pl-9 pr-4 py-1.5 text-xs focus:outline-none focus:border-emerald-500 w-full sm:w-60',
+                    isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                  )}
                 />
               </div>
             </div>
 
-            {/* Listings table */}
-            <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl overflow-hidden">
+            <div
+              className={cn(
+                'border rounded-3xl overflow-hidden shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-neutral-950/80 text-neutral-400 uppercase tracking-wider border-b border-neutral-800">
+                  <thead className={cn('uppercase tracking-wider border-b', isDarkMode ? 'bg-neutral-950/80 text-neutral-400 border-neutral-800' : 'bg-slate-50 text-slate-500 border-slate-200')}>
                     <tr>
                       <th className="py-4 px-6">Device</th>
                       <th className="py-4 px-6">Price</th>
@@ -793,48 +946,51 @@ function AdminDashboardContent() {
                       <th className="py-4 px-6 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-800">
+                  <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
                     {filteredListings.map((l) => (
-                      <tr key={l.id} className="hover:bg-neutral-800/40 transition-colors">
+                      <tr key={l.id} className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50')}>
                         <td className="py-4 px-6">
-                          <p className="font-bold text-white text-sm">{l.title}</p>
-                          <p className="text-neutral-400 text-xs">
+                          <p className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>{l.title}</p>
+                          <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
                             {l.brand} &bull; {l.model}
                           </p>
                         </td>
-                        <td className="py-4 px-6 font-bold text-emerald-400">
+                        <td className="py-4 px-6 font-bold text-emerald-600">
                           {formatPrice(l.price, l.currency)}
                         </td>
                         <td className="py-4 px-6">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-neutral-800 text-neutral-300 border border-neutral-700">
+                          <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-semibold border', isDarkMode ? 'bg-neutral-800 text-neutral-300 border-neutral-700' : 'bg-slate-100 text-slate-700 border-slate-200')}>
                             {l.status}
                           </span>
                         </td>
                         <td className="py-4 px-6">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             {l.trustLensStatus}
                           </span>
                         </td>
                         <td className="py-4 px-6 text-right space-x-2">
                           <Link
                             href={`/listings/${l.id}`}
-                            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold rounded-lg border border-neutral-700 inline-block"
+                            className={cn(
+                              'px-3 py-1.5 font-semibold rounded-lg border inline-block shadow-sm',
+                              isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-200' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            )}
                           >
                             View
                           </Link>
                           {l.status === 'ACTIVE' ? (
                             <button
                               onClick={() => handleUpdateListingStatus(l.id, 'DELISTED')}
-                              className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 font-semibold rounded-lg"
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg"
                             >
                               Delist
                             </button>
                           ) : (
                             <button
                               onClick={() => handleUpdateListingStatus(l.id, 'ACTIVE')}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg"
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg shadow-sm"
                             >
-                              Make Active
+                              Activate
                             </button>
                           )}
                         </td>
@@ -850,65 +1006,117 @@ function AdminDashboardContent() {
         {/* ─── TAB 4: ORDERS & ESCROW ─── */}
         {activeTab === 'orders' && (
           <div className="space-y-6">
-            <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl overflow-hidden">
-              <div className="p-6 border-b border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div
+              className={cn(
+                'border rounded-3xl overflow-hidden shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
+              <div className={cn('p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
                 <div>
-                  <h3 className="text-base font-bold text-white">Escrow & Fulfillment Logs</h3>
-                  <p className="text-xs text-neutral-400">All marketplace transactions and escrow disbursements</p>
+                  <h3 className={cn('text-base font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Escrow & Transaction Desk
+                  </h3>
+                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Showing all order records ({orders.length} total)
+                  </p>
                 </div>
 
-                <div className="relative">
-                  <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search by order ID or user..."
-                    value={orderSearch}
-                    onChange={(e) => setOrderSearch(e.target.value)}
-                    className="bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  />
+                <div className="flex items-center gap-3">
+                  <select
+                    value={orderStatusFilter}
+                    onChange={(e) => setOrderStatusFilter(e.target.value)}
+                    className={cn(
+                      'border rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500',
+                      isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    )}
+                  >
+                    <option value="ALL">All Order States</option>
+                    <option value="PAID">Paid / In Escrow Only</option>
+                    <option value="PENDING">Unpaid Checkout Attempts Only</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="DISPUTED">Disputed</option>
+                  </select>
+
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search order ID / user..."
+                      value={orderSearch}
+                      onChange={(e) => setOrderSearch(e.target.value)}
+                      className={cn(
+                        'border rounded-xl pl-9 pr-4 py-1.5 text-xs focus:outline-none focus:border-emerald-500',
+                        isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                      )}
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-neutral-950/80 text-neutral-400 uppercase tracking-wider border-b border-neutral-800">
+                  <thead className={cn('uppercase tracking-wider border-b', isDarkMode ? 'bg-neutral-950/80 text-neutral-400 border-neutral-800' : 'bg-slate-50 text-slate-500 border-slate-200')}>
                     <tr>
                       <th className="py-4 px-6">Order ID</th>
+                      <th className="py-4 px-6">Listing Target</th>
                       <th className="py-4 px-6">Buyer & Seller</th>
                       <th className="py-4 px-6">Amount</th>
                       <th className="py-4 px-6">Escrow Status</th>
                       <th className="py-4 px-6 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-800">
+                  <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
                     {filteredOrders.map((o) => (
-                      <tr key={o.id} className="hover:bg-neutral-800/40 transition-colors">
-                        <td className="py-4 px-6 font-mono text-neutral-400">
-                          #{o.id.substring(0, 10)}
+                      <tr key={o.id} className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50')}>
+                        <td className={cn('py-4 px-6 font-mono font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
+                          #{o.id.substring(0, 8)}
                         </td>
                         <td className="py-4 px-6">
-                          <p className="text-white font-semibold">B: {o.buyer?.displayName || 'Buyer'}</p>
-                          <p className="text-neutral-400">S: {o.seller?.displayName || 'Seller'}</p>
+                          <p className={cn('font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                            {o.listing?.title || 'Electronics Listing'}
+                          </p>
+                          <span className={cn('font-mono text-[10px]', isDarkMode ? 'text-neutral-500' : 'text-slate-400')}>
+                            Listing ID: {o.listingId ? o.listingId.substring(0, 8) : 'N/A'}
+                          </span>
                         </td>
-                        <td className="py-4 px-6 font-bold text-emerald-400">
+                        <td className="py-4 px-6">
+                          <p className={cn('font-semibold', isDarkMode ? 'text-white' : 'text-slate-900')}>B: {o.buyer?.displayName || 'Buyer'}</p>
+                          <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>S: {o.seller?.displayName || 'Seller'}</p>
+                        </td>
+                        <td className="py-4 px-6 font-bold text-emerald-600">
                           {formatPrice(o.amount, o.currency)}
                         </td>
                         <td className="py-4 px-6">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-neutral-800 text-neutral-300 border border-neutral-700">
-                            {o.status}
+                          <span
+                            className={cn(
+                              'px-2.5 py-1 rounded-full text-[11px] font-semibold border',
+                              o.status === 'PENDING'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : ['ESCROW_HELD', 'COMPLETED', 'DELIVERED'].includes(o.status)
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isDarkMode
+                                ? 'bg-neutral-800 text-neutral-300 border-neutral-700'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                            )}
+                          >
+                            {o.status === 'PENDING' ? 'Unpaid Attempt' : o.status}
                           </span>
                         </td>
                         <td className="py-4 px-6 text-right space-x-2">
                           <Link
                             href={`/orders/${o.id}/tracking`}
-                            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 font-semibold rounded-lg border border-neutral-700 inline-block"
+                            className={cn(
+                              'px-3 py-1.5 font-semibold rounded-lg border inline-block shadow-sm',
+                              isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-200' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                            )}
                           >
                             Timeline
                           </Link>
                           {['ESCROW_HELD', 'DISPUTED'].includes(o.status) && (
                             <button
                               onClick={() => setRefundOrderId(o.id)}
-                              className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 font-semibold rounded-lg"
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg"
                             >
                               Refund
                             </button>
@@ -926,48 +1134,62 @@ function AdminDashboardContent() {
         {/* ─── TAB 5: USER DIRECTORY ─── */}
         {activeTab === 'users' && (
           <div className="space-y-6">
-            <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl overflow-hidden">
-              <div className="p-6 border-b border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div
+              className={cn(
+                'border rounded-3xl overflow-hidden shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
+              <div className={cn('p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
                 <div>
-                  <h3 className="text-base font-bold text-white">Identity & Role Management</h3>
-                  <p className="text-xs text-neutral-400">{users.length} total registered accounts</p>
+                  <h3 className={cn('text-base font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Identity & Role Management
+                  </h3>
+                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    {users.length} total registered users
+                  </p>
                 </div>
 
                 <div className="relative">
-                  <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     placeholder="Search name or email..."
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
-                    className="bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-4 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className={cn(
+                      'border rounded-xl pl-9 pr-4 py-1.5 text-xs focus:outline-none focus:border-emerald-500',
+                      isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    )}
                   />
                 </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-neutral-950/80 text-neutral-400 uppercase tracking-wider border-b border-neutral-800">
+                  <thead className={cn('uppercase tracking-wider border-b', isDarkMode ? 'bg-neutral-950/80 text-neutral-400 border-neutral-800' : 'bg-slate-50 text-slate-500 border-slate-200')}>
                     <tr>
                       <th className="py-4 px-6">User</th>
                       <th className="py-4 px-6">Email</th>
                       <th className="py-4 px-6">Role</th>
-                      <th className="py-4 px-6">Verification</th>
+                      <th className="py-4 px-6">Email Verification</th>
                       <th className="py-4 px-6 text-right">Role Toggle</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-800">
+                  <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
                     {filteredUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-neutral-800/40 transition-colors">
-                        <td className="py-4 px-6 font-bold text-white">{u.name || 'Unnamed'}</td>
-                        <td className="py-4 px-6 text-neutral-300 font-mono">{u.email}</td>
+                      <tr key={u.id} className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50')}>
+                        <td className={cn('py-4 px-6 font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>{u.name || 'Unnamed'}</td>
+                        <td className={cn('py-4 px-6 font-mono', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>{u.email}</td>
                         <td className="py-4 px-6">
                           <span
                             className={cn(
-                              'px-2.5 py-1 rounded-full text-[11px] font-bold',
+                              'px-2.5 py-1 rounded-full text-[11px] font-bold border',
                               u.role === 'ADMIN'
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-neutral-800 text-neutral-400'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : isDarkMode
+                                ? 'bg-neutral-800 text-neutral-400 border-neutral-700'
+                                : 'bg-slate-100 text-slate-700 border-slate-200'
                             )}
                           >
                             {u.role}
@@ -975,18 +1197,21 @@ function AdminDashboardContent() {
                         </td>
                         <td className="py-4 px-6">
                           {u.isEmailVerified ? (
-                            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                            <span className="text-emerald-600 font-semibold flex items-center gap-1">
                               <CheckCircle2 className="w-3.5 h-3.5" /> Verified
                             </span>
                           ) : (
-                            <span className="text-neutral-500">Unverified</span>
+                            <span className={cn('text-xs', isDarkMode ? 'text-neutral-500' : 'text-slate-400')}>Unverified</span>
                           )}
                         </td>
                         <td className="py-4 px-6 text-right">
                           <button
                             disabled={actionLoading}
                             onClick={() => handleToggleUserRole(u)}
-                            className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold rounded-lg border border-neutral-700"
+                            className={cn(
+                              'px-3 py-1.5 font-semibold rounded-lg border shadow-sm transition-colors',
+                              isDarkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-300' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+                            )}
                           >
                             Switch to {u.role === 'ADMIN' ? 'USER' : 'ADMIN'}
                           </button>
@@ -1003,23 +1228,30 @@ function AdminDashboardContent() {
         {/* ─── TAB 6: ANALYTICS ─── */}
         {activeTab === 'analytics' && (
           <div className="space-y-6">
-            <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
-              <h3 className="text-base font-bold text-white mb-6">Gross Transaction Flow</h3>
+            <div
+              className={cn(
+                'border rounded-3xl p-6 shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
+              <h3 className={cn('text-base font-bold mb-6', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                Gross Platform Transaction Flow
+              </h3>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={revenueChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
-                    <XAxis dataKey="date" stroke="#737373" />
-                    <YAxis stroke="#737373" tickFormatter={(v) => `£${v}`} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#262626' : '#f1f5f9'} />
+                    <XAxis dataKey="date" stroke={isDarkMode ? '#737373' : '#94a3b8'} />
+                    <YAxis stroke={isDarkMode ? '#737373' : '#94a3b8'} tickFormatter={(v) => `£${v}`} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#171717',
-                        borderColor: '#262626',
+                        backgroundColor: isDarkMode ? '#171717' : '#ffffff',
+                        borderColor: isDarkMode ? '#262626' : '#e2e8f0',
                         borderRadius: '12px',
-                        color: '#fff',
+                        color: isDarkMode ? '#fff' : '#0f172a',
                       }}
                     />
-                    <Area type="monotone" dataKey="revenue" stroke="#10b981" fill="#10b981" fillOpacity={0.2} />
+                    <Area type="monotone" dataKey="revenue" stroke="#059669" fill="#059669" fillOpacity={0.15} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -1031,35 +1263,62 @@ function AdminDashboardContent() {
         {activeTab === 'health' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
                 <div className="flex items-center gap-3 mb-2">
-                  <Database className="w-5 h-5 text-emerald-400" />
-                  <h4 className="font-bold text-white text-sm">PostgreSQL 17</h4>
+                  <Database className="w-5 h-5 text-emerald-600" />
+                  <h4 className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    PostgreSQL 17 Database
+                  </h4>
                 </div>
-                <p className="text-xs text-neutral-400">Connection pool healthy &bull; Latency: 4ms</p>
-                <span className="inline-block mt-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Connection pool active &bull; Latency: 4ms
+                </p>
+                <span className="inline-block mt-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Operational
                 </span>
               </div>
 
-              <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
                 <div className="flex items-center gap-3 mb-2">
-                  <Server className="w-5 h-5 text-emerald-400" />
-                  <h4 className="font-bold text-white text-sm">Redis Application State</h4>
+                  <Server className="w-5 h-5 text-emerald-600" />
+                  <h4 className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Redis Cache & Sessions
+                  </h4>
                 </div>
-                <p className="text-xs text-neutral-400">Short-lived cache & sessions</p>
-                <span className="inline-block mt-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Short-lived cache & token storage
+                </p>
+                <span className="inline-block mt-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Connected
                 </span>
               </div>
 
-              <div className="bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6">
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
                 <div className="flex items-center gap-3 mb-2">
-                  <Shield className="w-5 h-5 text-emerald-400" />
-                  <h4 className="font-bold text-white text-sm">GSMA & Carrier APIs</h4>
+                  <Shield className="w-5 h-5 text-emerald-600" />
+                  <h4 className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Carrier & GSMA Gateways
+                  </h4>
                 </div>
-                <p className="text-xs text-neutral-400">Blacklist & IMEI verification gateway</p>
-                <span className="inline-block mt-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Blacklist & IMEI verification gateway
+                </p>
+                <span className="inline-block mt-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   Live Active
                 </span>
               </div>
@@ -1067,25 +1326,87 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ─── TAB 8: SETTINGS ─── */}
+        {/* ─── TAB 8: SETTINGS & DYNAMIC FEE CONFIGURATION ─── */}
         {activeTab === 'settings' && (
-          <div className="max-w-2xl bg-neutral-900/70 border border-neutral-800 rounded-3xl p-6 sm:p-8 space-y-6">
+          <div
+            className={cn(
+              'max-w-2xl border rounded-3xl p-6 sm:p-8 space-y-6 shadow-sm',
+              isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+            )}
+          >
             <div>
-              <h3 className="text-base font-bold text-white mb-1">Global Marketplace Parameters</h3>
-              <p className="text-xs text-neutral-400">Configured runtime parameters</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800 space-y-2">
-              <span className="text-xs text-neutral-400 uppercase tracking-wider block">Buyer Protection Rate</span>
-              <p className="text-xl font-bold text-white">{getBuyerProtectionFeePercent()}% Dynamic Fee</p>
-              <p className="text-xs text-neutral-500">
-                Calculated dynamically via <code>getBuyerProtectionFeePercent()</code>
+              <h3 className={cn('text-lg font-bold mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                Platform Fee Settings
+              </h3>
+              <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                Configure the dynamic Buyer Protection Fee rate applied to checkouts in real-time.
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800 space-y-2">
-              <span className="text-xs text-neutral-400 uppercase tracking-wider block">Seller Commission Rate</span>
-              <p className="text-xl font-bold text-emerald-400">0% (Promotional Standard)</p>
+            {feeSaveSuccess && (
+              <div role="status" className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-700 text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Buyer Protection Fee rate updated successfully! All checkout calculations updated.</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveFeeSettings} className="space-y-4">
+              <div
+                className={cn(
+                  'p-5 rounded-2xl border space-y-3',
+                  isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className={cn('text-sm font-bold block', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                      Buyer Protection Fee Percentage
+                    </label>
+                    <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                      Currently configured rate applied to escrow checkouts.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={feeRateInput}
+                      onChange={(e) => setFeeRateInput(parseFloat(e.target.value) || 0)}
+                      className={cn(
+                        'w-24 border rounded-xl px-3 py-2 text-center font-bold text-sm focus:outline-none focus:border-emerald-500',
+                        isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-sm'
+                      )}
+                    />
+                    <span className="font-bold text-sm text-emerald-600">%</span>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
+                  >
+                    <Save className="w-4 h-4" /> Save Fee Rate
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            <div
+              className={cn(
+                'p-4 rounded-2xl border space-y-1',
+                isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200'
+              )}
+            >
+              <span className={cn('text-xs uppercase tracking-wider block font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                Seller Commission Rate
+              </span>
+              <p className="text-xl font-bold text-emerald-600">0% (Promotional Standard)</p>
+              <p className={cn('text-xs', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
+                Sellers pay 0% fees and retain 100% of the sale price.
+              </p>
             </div>
           </div>
         )}
@@ -1112,8 +1433,8 @@ export default function AdminDashboardPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
-          <div className="motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-emerald-500 border-t-transparent"></div>
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-emerald-600 border-t-transparent"></div>
         </div>
       }
     >
