@@ -121,28 +121,49 @@ const TRUST_BADGE: Record<string, { label: string; lightClass: string; darkClass
 };
 
 const REVENUE_STATUSES = ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'];
-const PAID_STATUSES = ['PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'COMPLETED'];
+const STATUS_PRIORITY: Record<string, number> = {
+  COMPLETED: 10,
+  DELIVERED: 9,
+  SHIPPED: 8,
+  ESCROW_HELD: 7,
+  PAYMENT_RECEIVED: 6,
+  DISPUTED: 5,
+  PENDING: 4,
+  REFUNDED: 2,
+  CANCELLED: 1,
+};
 
 /**
- * Deduplicate multiple uncompleted PENDING checkout attempts for the same listing
- * if the user already has a paid or progressing order for that listing.
+ * Deduplicate multiple checkout attempts for the same listing.
+ * Exactly 1 canonical order record is shown per unique listing.
  */
 function deduplicateOrders(orders: Order[]): Order[] {
-  const paidListingIds = new Set<string>();
-  orders.forEach((o) => {
-    const lid = o.listingId || o.listing?.id;
-    if (lid && PAID_STATUSES.includes(o.status)) {
-      paidListingIds.add(lid);
-    }
-  });
+  const groups = new Map<string, Order[]>();
 
-  return orders.filter((o) => {
-    const lid = o.listingId || o.listing?.id;
-    if (o.status === 'PENDING' && lid && paidListingIds.has(lid)) {
-      return false;
-    }
-    return true;
-  });
+  for (const order of orders) {
+    const key =
+      order.listingId ||
+      order.listing?.id ||
+      (order.listingTitle ? `title:${order.listingTitle.trim().toLowerCase()}` : null) ||
+      (order.listing?.title ? `title:${order.listing.title.trim().toLowerCase()}` : null) ||
+      order.id;
+    const existing = groups.get(key) || [];
+    existing.push(order);
+    groups.set(key, existing);
+  }
+
+  const result: Order[] = [];
+  for (const group of groups.values()) {
+    group.sort((a, b) => {
+      const pA = STATUS_PRIORITY[a.status] || 0;
+      const pB = STATUS_PRIORITY[b.status] || 0;
+      if (pA !== pB) return pB - pA;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    result.push(group[0]);
+  }
+
+  return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 function buildSalesChart(orders: Order[]): { date: string; revenue: number }[] {

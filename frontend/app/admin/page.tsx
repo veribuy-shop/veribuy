@@ -89,7 +89,7 @@ interface Order {
   buyerId?: string;
   buyer?: { displayName: string; avatarUrl: string | null; email: string } | null;
   seller?: { displayName: string; avatarUrl: string | null; email: string } | null;
-  listing?: { title: string; brand: string; model: string } | null;
+  listing?: { id?: string; title: string; brand: string; model: string } | null;
 }
 
 interface VerificationRequest {
@@ -106,22 +106,43 @@ interface VerificationRequest {
 
 type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'users' | 'analytics' | 'health' | 'settings';
 
-const PAID_STATUSES = ['PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'COMPLETED'];
+const STATUS_PRIORITY: Record<string, number> = {
+  COMPLETED: 10,
+  DELIVERED: 9,
+  SHIPPED: 8,
+  ESCROW_HELD: 7,
+  PAYMENT_RECEIVED: 6,
+  DISPUTED: 5,
+  PENDING: 4,
+  REFUNDED: 2,
+  CANCELLED: 1,
+};
 
 function deduplicateOrders(orders: Order[]): Order[] {
-  const paidListingIds = new Set<string>();
-  orders.forEach((o) => {
-    if (o.listingId && PAID_STATUSES.includes(o.status)) {
-      paidListingIds.add(o.listingId);
-    }
-  });
+  const groups = new Map<string, Order[]>();
 
-  return orders.filter((o) => {
-    if (o.status === 'PENDING' && o.listingId && paidListingIds.has(o.listingId)) {
-      return false;
-    }
-    return true;
-  });
+  for (const order of orders) {
+    const key =
+      order.listingId ||
+      order.listing?.id ||
+      (order.listing?.title ? `title:${order.listing.title.trim().toLowerCase()}` : order.id);
+    const existing = groups.get(key) || [];
+    existing.push(order);
+    groups.set(key, existing);
+  }
+
+  const result: Order[] = [];
+  for (const group of groups.values()) {
+    group.sort((a, b) => {
+      const pA = STATUS_PRIORITY[a.status] || 0;
+      const pB = STATUS_PRIORITY[b.status] || 0;
+      if (pA !== pB) return pB - pA;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+    result.push(group[0]);
+  }
+
+  return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 // ============================================================================
