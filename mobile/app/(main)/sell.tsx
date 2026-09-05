@@ -37,6 +37,7 @@ export default function SellScreen() {
   const [brand, setBrand] = useState('');
   const [model, setModel] = useState('');
   const [conditionGrade, setConditionGrade] = useState<string | undefined>();
+  const [imei, setImei] = useState('');
   const [price, setPrice] = useState('');
 
   const [pickedImage, setPickedImage] = useState<string | null>(null);
@@ -61,8 +62,9 @@ export default function SellScreen() {
       brand: brand.trim(),
       model: model.trim(),
       price: Number(price),
-      currency: 'USD',
+      currency: 'GBP',
     };
+    if (imei.trim()) payload.imei = imei.trim();
     if (conditionGrade) payload.conditionGrade = conditionGrade;
     return listingsService.create(payload);
   };
@@ -82,7 +84,7 @@ export default function SellScreen() {
     }
     const amount = Number(price);
     if (!Number.isFinite(amount) || amount < 0.01) {
-      setError('Price must be at least $0.01.');
+      setError('Price must be at least £0.01.');
       return;
     }
 
@@ -103,7 +105,7 @@ export default function SellScreen() {
         }
       }
 
-      Alert.alert('Listing created', 'Your listing is now under review.', [
+      Alert.alert('Listing created', 'Your listing is now registered with Trust Lens™ and under review.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
       reset();
@@ -121,6 +123,7 @@ export default function SellScreen() {
     setBrand('');
     setModel('');
     setConditionGrade(undefined);
+    setImei('');
     setPrice('');
     setPickedImage(null);
   };
@@ -131,9 +134,9 @@ export default function SellScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"
       >
-        <ScrollView>
+        <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
           <Text className="text-2xl font-bold text-primary mb-1">Sell your device</Text>
-          <Text className="text-text-muted mb-4">Create a new listing</Text>
+          <Text className="text-text-muted mb-4">Create a verified listing with 0% seller commission</Text>
 
           <Input label="Title * (10+ chars)" value={title} onChangeText={setTitle} />
           <Input
@@ -153,7 +156,17 @@ export default function SellScreen() {
           <Text className="text-sm text-text-muted mb-1">Condition grade</Text>
           <ChipRow options={CONDITION_GRADES} value={conditionGrade} onChange={setConditionGrade} />
 
-          <Input label="Price (USD) *" value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
+          {(deviceType === 'SMARTPHONE' || deviceType === 'TABLET' || deviceType === 'SMARTWATCH') && (
+            <Input
+              label="IMEI / Hardware Identifier (15 digits)"
+              placeholder="e.g. 352094081234567"
+              value={imei}
+              onChangeText={setImei}
+              keyboardType="number-pad"
+            />
+          )}
+
+          <Input label="Price (GBP £) *" value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
 
           <Pressable onPress={pickImage} className="border border-dashed border-borderc rounded-xl p-4 mb-3 items-center bg-surface-alt">
             {pickedImage ? (
@@ -163,10 +176,17 @@ export default function SellScreen() {
             )}
           </Pressable>
 
+          <View className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mb-4">
+            <Text className="text-xs font-bold text-emerald-800 mb-0.5">💰 0% Seller Commission</Text>
+            <Text className="text-xs text-emerald-700 leading-snug">
+              You keep 100% of the sale price. Payout is released automatically to your account following the buyer&apos;s 48-hour delivery inspection window.
+            </Text>
+          </View>
+
           {error ? <Text className="text-danger text-sm mb-2">{error}</Text> : null}
 
           <Button onPress={onSubmit} loading={loading}>
-            Create listing
+            Publish listing
           </Button>
         </ScrollView>
       </KeyboardAvoidingView>

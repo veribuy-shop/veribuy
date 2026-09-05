@@ -93,17 +93,35 @@ export function LoadingState() {
 }
 
 export function StatusPill({ status }: { status: string }) {
-  const normalized = status?.toUpperCase();
-  const color = normalized === 'ACTIVE' || normalized === 'COMPLETED' || normalized === 'DELIVERED' || normalized === 'PAID'
-    ? 'bg-green-light'
-    : normalized === 'PENDING' || normalized === 'PROCESSING' || normalized === 'SHIPPED'
-      ? 'bg-accent-light'
-      : normalized === 'SOLD'
-        ? 'bg-primary-light'
-        : 'bg-warm-beige';
+  const normalized = status?.toUpperCase() || '';
+  let color = 'bg-warm-beige text-text';
+  let label = normalized.replace('_', ' ');
+
+  if (normalized === 'ACTIVE' || normalized === 'COMPLETED' || normalized === 'PASSED') {
+    color = 'bg-emerald-100 text-emerald-800';
+    if (normalized === 'PASSED') label = 'Trust Lens: Verified';
+  } else if (normalized === 'ESCROW_HELD' || normalized === 'PAID' || normalized === 'PAYMENT_RECEIVED') {
+    color = 'bg-amber-100 text-amber-800';
+    label = 'In Escrow';
+  } else if (normalized === 'SHIPPED') {
+    color = 'bg-blue-100 text-blue-800';
+    label = 'Dispatched';
+  } else if (normalized === 'DELIVERED') {
+    color = 'bg-indigo-100 text-indigo-800';
+    label = 'Delivered (48h Check)';
+  } else if (normalized === 'DISPUTED' || normalized === 'FAILED' || normalized === 'REJECTED' || normalized === 'CANCELLED') {
+    color = 'bg-red-100 text-red-800';
+  } else if (normalized === 'REQUIRES_REVIEW' || normalized === 'PENDING') {
+    color = 'bg-amber-50 text-amber-700';
+    if (normalized === 'REQUIRES_REVIEW') label = 'Under Review';
+  } else if (normalized === 'SOLD') {
+    color = 'bg-slate-200 text-slate-800';
+  }
+
   return (
-    <View className={`rounded-full px-2 py-0.5 ${color}`}>
-      <Text className="text-xs text-text">{normalized || status}</Text>
+    <View className={`rounded-full px-2.5 py-1 ${color.split(' ')[0]}`}>
+      <Text className={`text-[11px] font-semibold ${color.split(' ')[1]}`}>{label || status}</Text>
     </View>
   );
 }
+

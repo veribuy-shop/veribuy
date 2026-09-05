@@ -3,13 +3,10 @@ import { Image, Text, View } from 'react-native';
 
 import { Listing } from '../types/entities';
 import { StatusPill } from './ui';
+import { formatPrice } from '../lib/currency';
 
 export function ListingCard({ listing }: { listing: Listing }) {
-  const price = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: listing.currency || 'USD',
-  }).format(listing.price);
-
+  const price = formatPrice(listing.price, listing.currency);
   const image = listing.images?.[0];
 
   return (
@@ -34,14 +31,22 @@ export function ListingCard({ listing }: { listing: Listing }) {
             {listing.brand} · {listing.model}
           </Text>
           <View className="flex-row items-center justify-between mt-2">
-            <Text className="text-accent-dark font-bold">{price}</Text>
+            <Text className="text-accent-dark font-bold text-base">{price}</Text>
             <StatusPill status={listing.status} />
           </View>
-          {listing.trustLensStatus ? (
-            <Text className="text-trust text-xs mt-1">Trust Lens: {listing.trustLensStatus}</Text>
-          ) : null}
+          <View className="flex-row items-center justify-between mt-1 pt-1 border-t border-borderc/40">
+            {listing.trustLensStatus ? (
+              <Text className="text-emerald-700 font-medium text-[11px]">
+                🛡️ Trust Lens: {listing.trustLensStatus}
+              </Text>
+            ) : (
+              <Text className="text-text-muted text-[11px]">48hr Inspection Guarantee</Text>
+            )}
+            <Text className="text-text-muted text-[10px]">Escrow Secured</Text>
+          </View>
         </View>
       </View>
     </Link>
   );
 }
+

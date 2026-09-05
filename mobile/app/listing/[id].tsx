@@ -6,6 +6,7 @@ import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } fr
 import { Button, Card, Screen, StatusPill } from '@/src/components/ui';
 import { evidenceService, listingsService, ordersService, trustService } from '@/src/services';
 import { useAuth } from '@/src/context/AuthContext';
+import { formatPrice } from '@/src/lib/currency';
 import { EvidenceItem, Listing, TrustLensReport, User } from '@/src/types/entities';
 
 export default function ListingDetailScreen() {
@@ -120,10 +121,7 @@ export default function ListingDetailScreen() {
     );
   }
 
-  const price = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: listing.currency || 'USD',
-  }).format(listing.price);
+  const price = formatPrice(listing.price, listing.currency);
   const isOwn = profileUser?.id === listing.sellerId;
 
   return (
@@ -145,7 +143,7 @@ export default function ListingDetailScreen() {
           <View className="flex-row items-center justify-between">
             <StatusPill status={listing.status} />
             {listing.trustLensStatus ? (
-              <Text className="text-trust text-xs">Trust Lens: {listing.trustLensStatus}</Text>
+              <Text className="text-trust text-xs font-semibold">Trust Lens: {listing.trustLensStatus}</Text>
             ) : null}
           </View>
           <Text className="text-2xl font-bold text-text mt-2">{listing.title}</Text>
@@ -156,15 +154,23 @@ export default function ListingDetailScreen() {
           <Text className="text-text mt-3">{listing.description}</Text>
         </Card>
 
+        {/* VeriBuy Escrow & Inspection Guarantee Banner */}
+        <Card>
+          <Text className="font-semibold text-text mb-1">🛡️ VeriBuy Buyer Protection</Text>
+          <Text className="text-text-muted text-sm leading-relaxed">
+            Your payment is securely held in escrow until delivery. You get a <Text className="font-bold text-text">48-Hour (2 Days)</Text> inspection window to verify the device condition before funds are released to the seller.
+          </Text>
+        </Card>
+
         {report ? (
           <Card>
-            <Text className="font-semibold text-text mb-1">Trust Lens Report</Text>
-            <Text className="text-text-muted text-sm">{report.summary || report.status}</Text>
+            <Text className="font-semibold text-text mb-1">Trust Lens™ Report</Text>
+            <Text className="text-text-muted text-sm">{report.summary || `Status: ${report.status}`}</Text>
           </Card>
         ) : (
           <Card>
-            <Text className="font-semibold text-text mb-1">Trust Lens</Text>
-            <Text className="text-text-muted text-sm">No trust lens report yet.</Text>
+            <Text className="font-semibold text-text mb-1">Trust Lens™</Text>
+            <Text className="text-text-muted text-sm">Under automated verification analysis.</Text>
           </Card>
         )}
 
