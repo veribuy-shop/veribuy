@@ -612,6 +612,167 @@ export class EmailService {
     });
   }
 
+  async sendOrderDispatchedEmail(data: {
+    buyerEmail: string;
+    buyerName: string;
+    sellerName: string;
+    listingTitle: string;
+    orderId: string;
+    trackingNumber?: string | null;
+    shippingService?: string | null;
+    shippingAddress?: any;
+  }): Promise<void> {
+    let addressHtml = '';
+    if (data.shippingAddress && typeof data.shippingAddress === 'object') {
+      const addr = data.shippingAddress;
+      const lines = [
+        addr.name,
+        addr.line1,
+        addr.line2,
+        [addr.city, addr.state, addr.postal_code].filter(Boolean).join(' '),
+        addr.country,
+      ].filter(Boolean);
+      if (lines.length > 0) {
+        addressHtml = `
+          <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:20px 0;">
+            <p style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Delivery Destination</p>
+            <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.5;">${lines.map((l) => this.escape(String(l))).join('<br>')}</p>
+          </div>
+        `;
+      }
+    }
+
+    const bodyHtml = `
+      <p style="margin-top:0;">Hi <strong>${this.escape(data.buyerName)}</strong>,</p>
+      <p style="font-size:16px;color:#0f172a;font-weight:600;">Good news! Your order has been dispatched.</p>
+      <p><strong>${this.escape(data.sellerName)}</strong> has packaged and shipped your item: <strong>${this.escape(data.listingTitle)}</strong>.</p>
+      
+      <!-- Tracking Card -->
+      <div style="background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:18px;margin:20px 0;">
+        <p style="margin:0 0 10px 0;font-size:12px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:0.5px;">&#128666; Courier Tracking Details</p>
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:14px;">
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Order Reference:</td>
+            <td align="right" style="font-family:monospace;font-weight:700;color:#0f172a;">#${this.escape(data.orderId.substring(0, 12))}</td>
+          </tr>
+          ${
+            data.shippingService
+              ? `<tr>
+                  <td style="color:#64748b;padding:6px 0;">Courier Method:</td>
+                  <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.shippingService)}</td>
+                </tr>`
+              : ''
+          }
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Tracking Number:</td>
+            <td align="right" style="font-family:monospace;font-weight:800;color:#1d4ed8;font-size:15px;">${this.escape(data.trackingNumber || 'Tracked Delivery (Standard)')}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Status:</td>
+            <td align="right" style="font-weight:700;color:#059669;">Dispatched / In Transit</td>
+          </tr>
+        </table>
+      </div>
+
+      ${addressHtml}
+
+      <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:20px 0;font-size:13px;color:#065f46;">
+        <p style="margin:0 0 8px 0;font-weight:700;font-size:14px;">&#128737; Protected by VeriBuy Escrow</p>
+        <p style="margin:0;line-height:1.5;">Your payment remains safely vaulted in escrow while the parcel travels. When your delivery arrives, you will have a 48-hour inspection window to ensure the device matches its listed condition before funds are released to the seller.</p>
+      </div>
+
+      <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:20px 0;">
+        <p style="margin:0 0 6px 0;font-weight:700;font-size:13px;color:#0f172a;">Next Steps:</p>
+        <ol style="margin:0;padding-left:20px;font-size:13px;color:#334155;line-height:1.6;">
+          <li>Track the package progress using the tracking timeline link below.</li>
+          <li>Once delivered, inspect your device and test all features.</li>
+          <li>Confirm delivery on your VeriBuy orders dashboard.</li>
+        </ol>
+      </div>
+    `;
+
+    const html = this.buildEmailTemplate({
+      title: 'Your Order Has Been Dispatched!',
+      previewText: `Dispatched: ${data.listingTitle}. Tracking: ${data.trackingNumber || 'Active'}. Escrow protected.`,
+      badgeText: 'Dispatched • In Transit',
+      badgeType: 'info',
+      bodyHtml,
+      cta: {
+        label: 'Track Live Delivery & Escrow',
+        url: `${this.appUrl}/orders/${data.orderId}/tracking`,
+      },
+    });
+
+    await this.send({
+      to: data.buyerEmail,
+      subject: `Order Dispatched: ${data.listingTitle} (Ref: #${data.orderId.substring(0, 8)})`,
+      html,
+    });
+  }
+
+  async sendSellerDispatchConfirmationEmail(data: {
+    sellerEmail: string;
+    sellerName: string;
+    buyerName: string;
+    listingTitle: string;
+    orderId: string;
+    trackingNumber?: string | null;
+    shippingService?: string | null;
+  }): Promise<void> {
+    const bodyHtml = `
+      <p style="margin-top:0;">Hi <strong>${this.escape(data.sellerName)}</strong>,</p>
+      <p style="font-size:16px;color:#0f172a;font-weight:600;">Dispatch Confirmed!</p>
+      <p>You have marked order <strong>#${this.escape(data.orderId.substring(0, 12))}</strong> (${this.escape(data.listingTitle)}) as dispatched to <strong>${this.escape(data.buyerName)}</strong>.</p>
+      
+      <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin:20px 0;">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:14px;">
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Order Reference:</td>
+            <td align="right" style="font-family:monospace;font-weight:700;color:#0f172a;">#${this.escape(data.orderId.substring(0, 12))}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Tracking Number:</td>
+            <td align="right" style="font-family:monospace;font-weight:700;color:#0f172a;">${this.escape(data.trackingNumber || 'Recorded')}</td>
+          </tr>
+          ${
+            data.shippingService
+              ? `<tr>
+                  <td style="color:#64748b;padding:6px 0;">Courier Method:</td>
+                  <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.shippingService)}</td>
+                </tr>`
+              : ''
+          }
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Escrow Status:</td>
+            <td align="right" style="font-weight:700;color:#059669;">Held in Escrow (Awaiting Delivery)</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:14px;margin:20px 0;font-size:13px;color:#065f46;">
+        &#10004; The buyer has been notified with your tracking information. Once the courier confirms delivery, the buyer will have a 48-hour inspection period, after which your payout will be released directly to your account.
+      </div>
+    `;
+
+    const html = this.buildEmailTemplate({
+      title: 'Dispatch Confirmed for Order',
+      previewText: `Dispatched: ${data.listingTitle}. Tracking ${data.trackingNumber || 'updated'}. Escrow in progress.`,
+      badgeText: 'Dispatch Recorded',
+      badgeType: 'success',
+      bodyHtml,
+      cta: {
+        label: 'View Order Timeline',
+        url: `${this.appUrl}/orders/${data.orderId}/tracking`,
+      },
+    });
+
+    await this.send({
+      to: data.sellerEmail,
+      subject: `Dispatch Confirmed: ${data.listingTitle} (Ref: #${data.orderId.substring(0, 8)})`,
+      html,
+    });
+  }
+
   async sendOrderStatusEmail(data: {
     recipientEmail: string;
     recipientName: string;
