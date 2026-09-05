@@ -256,6 +256,19 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    // Check if IMEI was flagged as duplicate across sellers
+    const cleanImei = imei.replace(/[^0-9]/g, '').trim();
+    if (cleanImei && cleanImei.length >= 8) {
+      try {
+        const reg = await this.prisma.imeiRegistry.findUnique({ where: { imei: cleanImei } });
+        if (reg && reg.isFlagged && !result.flags.includes('DUPLICATE_IMEI')) {
+          result.flags.push('DUPLICATE_IMEI');
+        }
+      } catch (err) {
+        this.logger.warn(`Failed checking imeiRegistry in worker: ${(err as Error).message}`);
+      }
+    }
+
     const isClean = result.flags.length === 1 && result.flags[0] === 'CLEAN';
     const isNotRun = result.flags.includes('NOT_RUN');
     const newStatus = isClean ? 'PASSED' : isNotRun ? 'PENDING' : 'REQUIRES_REVIEW';

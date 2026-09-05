@@ -193,6 +193,31 @@ model IdentifierValidation {
   @@map("identifier_validations")
 }
 
+model ImeiRegistry {
+  id              String   @id @default(uuid())
+  imei            String   @unique
+  brand           String?
+  model           String?
+  firstListingId  String   @map("first_listing_id")
+  firstSellerId   String   @map("first_seller_id")
+  lastListingId   String   @map("last_listing_id")
+  lastSellerId    String   @map("last_seller_id")
+  timesListed     Int      @default(1) @map("times_listed")
+  isFlagged       Boolean  @default(false) @map("is_flagged")
+  flagReason      String?  @map("flag_reason")
+  firstListedAt   DateTime @default(now()) @map("first_listed_at")
+  lastListedAt    DateTime @default(now()) @map("last_listed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([imei])
+  @@index([isFlagged])
+  @@index([firstSellerId])
+  @@index([lastSellerId])
+  @@schema("trust_lens")
+  @@map("imei_registry")
+}
+
 model EvidencePack {
   id        String         @id @default(uuid())
   listingId String         @unique @map("listing_id")
@@ -438,6 +463,7 @@ enum IntegrityFlag {
   REPORTED_STOLEN
   BLACKLISTED
   SERIAL_MISMATCH
+  DUPLICATE_IMEI
   @@schema("listings")
 }
 
@@ -487,6 +513,7 @@ enum TrustLensIntegrityFlag {
   REPORTED_STOLEN
   BLACKLISTED
   SERIAL_MISMATCH
+  DUPLICATE_IMEI
   @@schema("trust_lens")
   @@map("IntegrityFlag")
 }

@@ -528,4 +528,51 @@ export class TrustLensService {
 
     return updated;
   }
+
+  /**
+   * Admin listing of tracked IMEIs in the platform registry, with duplicate flag filters
+   */
+  async getImeiRegistry(
+    pagination: PaginationDto,
+    search?: string,
+    isFlaggedOnly?: boolean,
+  ): Promise<PaginatedResponse<any>> {
+    const { page = 1, limit = 20 } = pagination;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+    if (isFlaggedOnly) {
+      where.isFlagged = true;
+    }
+    if (search && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { imei: { contains: q, mode: 'insensitive' } },
+        { brand: { contains: q, mode: 'insensitive' } },
+        { model: { contains: q, mode: 'insensitive' } },
+        { flagReason: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.imeiRegistry.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { lastListedAt: 'desc' },
+      }),
+      this.prisma.imeiRegistry.count({ where }),
+    ]);
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
 }
+

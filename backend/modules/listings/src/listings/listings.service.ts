@@ -49,6 +49,26 @@ export class UlistingsService {
   ) {}
 
   async create(dto: CreateListingDto): Promise<Listing> {
+    const initialFlags: IntegrityFlag[] = [IntegrityFlag.CLEAN];
+    let initialTrustStatus: TrustLensStatus = TrustLensStatus.PENDING;
+
+    // Check if duplicate IMEI before creating
+    const cleanImei = dto.imei ? dto.imei.replace(/[^0-9]/g, '').trim() : null;
+    if (cleanImei && cleanImei.length >= 8) {
+      try {
+        const existingImei = await this.prisma.imeiRegistry.findUnique({
+          where: { imei: cleanImei },
+        });
+        if (existingImei && existingImei.firstSellerId !== dto.sellerId) {
+          initialFlags.length = 0;
+          initialFlags.push(IntegrityFlag.DUPLICATE_IMEI);
+          initialTrustStatus = TrustLensStatus.REQUIRES_REVIEW;
+        }
+      } catch (err) {
+        this.logger.warn(`Failed initial IMEI check: ${(err as Error).message}`);
+      }
+    }
+
     const listing = await this.prisma.listing.create({
       data: {
         sellerId: dto.sellerId!,
@@ -63,10 +83,20 @@ export class UlistingsService {
         imei: dto.imei,
         serialNumber: dto.serialNumber,
         status: ListingStatus.DRAFT,
-        trustLensStatus: TrustLensStatus.PENDING,
-        integrityFlags: [IntegrityFlag.CLEAN],
+        trustLensStatus: initialTrustStatus,
+        integrityFlags: initialFlags,
       },
     });
+
+    if (cleanImei && cleanImei.length >= 8) {
+      await this.checkAndRecordImei(
+        cleanImei,
+        dto.sellerId!,
+        listing.id,
+        dto.brand,
+        dto.model,
+      );
+    }
 
     // Fire-and-forget: notify seller of successful listing submission
     this.getSellerInfo(listing.sellerId).then((seller) => {
@@ -81,6 +111,70 @@ export class UlistingsService {
     }).catch((err: Error) => this.logger.error(`listing_created notify fetch failed: ${err.message}`));
 
     return listing;
+  }
+
+  /**
+   * Track IMEI in central ImeiRegistry table and flag if previously listed by a different seller
+   */
+  private async checkAndRecordImei(
+    rawImei: string,
+    sellerId: string,
+    listingId: string,
+    brand?: string,
+    model?: string,
+  ): Promise<{ isDuplicate: boolean; isFlagged: boolean }> {
+    const cleanImei = rawImei.replace(/[^0-9]/g, '').trim();
+    if (!cleanImei || cleanImei.length < 8) {
+      return { isDuplicate: false, isFlagged: false };
+    }
+
+    try {
+      const existing = await this.prisma.imeiRegistry.findUnique({
+        where: { imei: cleanImei },
+      });
+
+      if (existing) {
+        const isDifferentSeller = existing.firstSellerId !== sellerId;
+        const isFlagged = isDifferentSeller || existing.isFlagged;
+        const flagReason = isDifferentSeller
+          ? 'Attempted re-listing by different seller'
+          : existing.flagReason;
+
+        await this.prisma.imeiRegistry.update({
+          where: { imei: cleanImei },
+          data: {
+            lastListingId: listingId,
+            lastSellerId: sellerId,
+            timesListed: { increment: 1 },
+            lastListedAt: new Date(),
+            isFlagged,
+            ...(flagReason ? { flagReason } : {}),
+            ...(brand && !existing.brand ? { brand } : {}),
+            ...(model && !existing.model ? { model } : {}),
+          },
+        });
+
+        return { isDuplicate: isDifferentSeller, isFlagged };
+      } else {
+        await this.prisma.imeiRegistry.create({
+          data: {
+            imei: cleanImei,
+            brand: brand || null,
+            model: model || null,
+            firstListingId: listingId,
+            firstSellerId: sellerId,
+            lastListingId: listingId,
+            lastSellerId: sellerId,
+            timesListed: 1,
+            isFlagged: false,
+          },
+        });
+        return { isDuplicate: false, isFlagged: false };
+      }
+    } catch (err) {
+      this.logger.error(`Failed to check and record IMEI in registry: ${(err as Error).message}`);
+      return { isDuplicate: false, isFlagged: false };
+    }
   }
 
   async findAll(query: GetListingsQueryDto & PaginationDto): Promise<PaginatedResponse<any>> {

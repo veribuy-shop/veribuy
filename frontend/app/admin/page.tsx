@@ -43,11 +43,19 @@ import {
   Percent,
   ExternalLink,
   Smartphone,
+  TrendingUp,
+  ArrowUpRight,
+  Filter,
+  Hash,
+  Zap,
 } from 'lucide-react';
 import ConfirmModal from '@/components/confirm-modal';
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
+  Legend,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -117,6 +125,23 @@ interface VerificationRequest {
   updatedAt: string;
 }
 
+interface ImeiRegistryItem {
+  id: string;
+  imei: string;
+  brand: string | null;
+  model: string | null;
+  firstListingId: string;
+  firstSellerId: string;
+  lastListingId: string;
+  lastSellerId: string;
+  timesListed: number;
+  isFlagged: boolean;
+  flagReason: string | null;
+  firstListedAt: string;
+  lastListedAt: string;
+  createdAt: string;
+}
+
 type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'users' | 'analytics' | 'health' | 'settings';
 
 const STATUS_PRIORITY: Record<string, number> = {
@@ -177,6 +202,7 @@ function AdminDashboardContent() {
   const [listings, setListings] = useState<Listing[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [verifications, setVerifications] = useState<VerificationRequest[]>([]);
+  const [imeiRegistry, setImeiRegistry] = useState<ImeiRegistryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Search & Filter state
@@ -185,6 +211,8 @@ function AdminDashboardContent() {
   const [listingStatusFilter, setListingStatusFilter] = useState('ALL');
   const [orderSearch, setOrderSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
+  const [imeiSearch, setImeiSearch] = useState('');
+  const [imeiFlaggedOnly, setImeiFlaggedOnly] = useState(false);
 
   // Health state
   const [healthData, setHealthData] = useState<any>(null);
@@ -229,11 +257,12 @@ function AdminDashboardContent() {
       const withTimeout = <T,>(p: Promise<T>, ms = 10_000): Promise<T | null> =>
         Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
 
-      const [usersRes, listingsRes, ordersRes, verRes, healthRes] = await Promise.allSettled([
+      const [usersRes, listingsRes, ordersRes, verRes, imeiRes, healthRes] = await Promise.allSettled([
         withTimeout(authFetch('/api/admin/users')),
         withTimeout(authFetch('/api/admin/listings?status=ALL&limit=100')),
         withTimeout(authFetch('/api/admin/orders?limit=100&enrich=true')),
         withTimeout(authFetch('/api/trust-lens?limit=1000')),
+        withTimeout(authFetch('/api/admin/imei-registry?limit=100')),
         withTimeout(authFetch('/api/admin/health')),
       ]);
 
@@ -263,6 +292,12 @@ function AdminDashboardContent() {
       if (verVal?.ok) {
         const d = await verVal.json();
         setVerifications(Array.isArray(d) ? d : d.data ?? []);
+      }
+
+      const imeiVal = settleOk(imeiRes);
+      if (imeiVal?.ok) {
+        const d = await imeiVal.json();
+        setImeiRegistry(Array.isArray(d) ? d : d.data ?? []);
       }
 
       const healthVal = settleOk(healthRes);
@@ -403,26 +438,100 @@ function AdminDashboardContent() {
     }
   };
 
-  // Metrics
+  // Metrics & Core Calculations
   const activeListingsCount = listings.filter((l) => l.status === 'ACTIVE').length;
   const pendingVerifications = verifications.filter((v) => ['PENDING', 'IN_PROGRESS', 'REQUIRES_REVIEW'].includes(v.status));
-  const totalRevenue = orders
-    .filter((o) => ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED'].includes(o.status))
-    .reduce((sum, o) => sum + Number(o.amount || 0), 0);
+  const flaggedImeis = imeiRegistry.filter((i) => i.isFlagged);
 
-  // Revenue chart by day
-  const revenueMap = new Map<string, number>();
-  orders.forEach((o) => {
-    const key = new Date(o.createdAt).toISOString().split('T')[0];
-    revenueMap.set(key, (revenueMap.get(key) || 0) + Number(o.amount || 0));
+  const paidOrders = orders.filter((o) =>
+    ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'].includes(o.status)
+  );
+  const activeEscrowOrders = orders.filter((o) =>
+    ['ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'].includes(o.status)
+  );
+  const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
+  const disputedOrders = orders.filter((o) => o.status === 'DISPUTED');
+  const unpaidOrders = orders.filter((o) => o.status === 'PENDING');
+
+  const totalGmv = paidOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0);
+  const totalProtectionFees = paidOrders.reduce(
+    (sum, o) => sum + Number(o.protectionFee || (Number(o.amount || 0) * 0.05)),
+    0
+  );
+  const activeEscrowVault = activeEscrowOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0);
+  const conversionRate = orders.length > 0 ? (paidOrders.length / orders.length) * 100 : 0;
+  const aov = paidOrders.length > 0 ? totalGmv / paidOrders.length : 0;
+  const totalRevenue = totalGmv;
+
+  // 14-Day Continuous Timeline (guaranteed continuous dates with zero fill)
+  const last14Days: string[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    last14Days.push(d.toISOString().split('T')[0]);
+  }
+
+  const dailyAnalytics = last14Days.map((dateStr) => {
+    const dayOrders = orders.filter((o) => {
+      try {
+        return new Date(o.createdAt).toISOString().split('T')[0] === dateStr;
+      } catch {
+        return false;
+      }
+    });
+
+    const dayPaid = dayOrders.filter((o) =>
+      ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'].includes(o.status)
+    );
+    const dayGmv = dayPaid.reduce((sum, o) => sum + Number(o.amount || 0), 0);
+    const dayFees = dayPaid.reduce(
+      (sum, o) => sum + Number(o.protectionFee || (Number(o.amount || 0) * 0.05)),
+      0
+    );
+    const dayUnpaid = dayOrders.filter((o) => o.status === 'PENDING').length;
+
+    return {
+      date: new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
+      rawDate: dateStr,
+      revenue: Math.round(dayGmv),
+      gmv: Math.round(dayGmv * 100) / 100,
+      fees: Math.round(dayFees * 100) / 100,
+      paidCount: dayPaid.length,
+      unpaidCount: dayUnpaid,
+      totalOrders: dayOrders.length,
+    };
   });
-  const revenueChartData = Array.from(revenueMap.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-14)
-    .map(([date, revenue]) => ({
-      date: new Date(date + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),
-      revenue: Math.round(revenue),
-    }));
+
+  const revenueChartData = dailyAnalytics.map((d) => ({
+    date: d.date,
+    revenue: d.revenue,
+    fees: d.fees,
+  }));
+
+  // Category volume breakdown
+  const categoryStats: Record<string, { count: number; activeValue: number }> = {
+    SMARTPHONE: { count: 0, activeValue: 0 },
+    TABLET: { count: 0, activeValue: 0 },
+    LAPTOP: { count: 0, activeValue: 0 },
+    AUDIO: { count: 0, activeValue: 0 },
+    WEARABLE: { count: 0, activeValue: 0 },
+    OTHER: { count: 0, activeValue: 0 },
+  };
+
+  listings.forEach((l) => {
+    const rawType = (l.deviceType || '').toUpperCase();
+    const typeKey = categoryStats[rawType] ? rawType : 'OTHER';
+    categoryStats[typeKey].count += 1;
+    if (l.status === 'ACTIVE') {
+      categoryStats[typeKey].activeValue += Number(l.price || 0);
+    }
+  });
+
+  const categoryChartData = Object.entries(categoryStats).map(([name, stat]) => ({
+    name: name.charAt(0) + name.slice(1).toLowerCase(),
+    count: stat.count,
+    value: Math.round(stat.activeValue),
+  }));
 
   const navItems: { id: TabId; label: string; icon: any; count?: number; alert?: boolean }[] = [
     { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
@@ -478,6 +587,20 @@ function AdminDashboardContent() {
       (o.buyer?.displayName && o.buyer.displayName.toLowerCase().includes(term)) ||
       (o.seller?.displayName && o.seller.displayName.toLowerCase().includes(term));
     return matchesFilter && matchesSearch;
+  });
+
+  const filteredImeis = imeiRegistry.filter((item) => {
+    if (imeiFlaggedOnly && !item.isFlagged) return false;
+    const term = imeiSearch.toLowerCase().trim();
+    if (!term) return true;
+    return (
+      item.imei.toLowerCase().includes(term) ||
+      (item.brand && item.brand.toLowerCase().includes(term)) ||
+      (item.model && item.model.toLowerCase().includes(term)) ||
+      (item.flagReason && item.flagReason.toLowerCase().includes(term)) ||
+      item.firstListingId.toLowerCase().includes(term) ||
+      item.lastListingId.toLowerCase().includes(term)
+    );
   });
 
   return (
@@ -938,6 +1061,11 @@ function AdminDashboardContent() {
                           >
                             {v.status}
                           </span>
+                          {v.integrityFlags && v.integrityFlags.includes('DUPLICATE_IMEI') && (
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-300 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> Duplicate IMEI
+                            </span>
+                          )}
                         </div>
                         <p className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
                           Listing Target: {v.listingId}
@@ -979,6 +1107,133 @@ function AdminDashboardContent() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* IMEI Security & Duplicate Tracker Card */}
+            <div
+              className={cn(
+                'border rounded-3xl overflow-hidden shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
+              <div className={cn('p-6 border-b flex flex-col md:flex-row md:items-center justify-between gap-4', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
+                <div>
+                  <h3 className={cn('text-base font-bold flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    <Shield className="w-5 h-5 text-emerald-600" />
+                    IMEI Registry & Duplicate Tracker
+                  </h3>
+                  <p className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Historical registry of listed hardware identifiers. Flags re-listing attempts across different seller accounts.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    onClick={() => setImeiFlaggedOnly(!imeiFlaggedOnly)}
+                    className={cn(
+                      'px-3.5 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition-colors',
+                      imeiFlaggedOnly
+                        ? 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400 font-bold'
+                        : isDarkMode
+                        ? 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-white'
+                        : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
+                    )}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                    Flagged Duplicates Only ({flaggedImeis.length})
+                  </button>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search IMEI or device..."
+                      value={imeiSearch}
+                      onChange={(e) => setImeiSearch(e.target.value)}
+                      className={cn(
+                        'pl-8 pr-3 py-1.5 text-xs rounded-xl border focus:outline-none focus:ring-1 focus:ring-emerald-500',
+                        isDarkMode
+                          ? 'bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-500'
+                          : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'
+                      )}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {filteredImeis.length === 0 ? (
+                <div className={cn('text-center py-12 text-sm', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  <ShieldCheck className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+                  No IMEI records found matching your filter.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className={cn('border-b font-semibold uppercase tracking-wider', isDarkMode ? 'border-neutral-800 text-neutral-400 bg-neutral-950/40' : 'border-slate-200 text-slate-500 bg-slate-50')}>
+                        <th className="py-3 px-5">IMEI</th>
+                        <th className="py-3 px-4">Device</th>
+                        <th className="py-3 px-4">Times Listed</th>
+                        <th className="py-3 px-4">First Listed</th>
+                        <th className="py-3 px-4">Last Activity</th>
+                        <th className="py-3 px-4">Integrity Status</th>
+                        <th className="py-3 px-5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800/60' : 'divide-slate-200/60')}>
+                      {filteredImeis.map((item) => (
+                        <tr key={item.id} className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50/70')}>
+                          <td className="py-3.5 px-5 font-mono font-semibold text-slate-800 dark:text-neutral-200">
+                            {item.imei}
+                          </td>
+                          <td className="py-3.5 px-4 font-medium text-slate-800 dark:text-neutral-200">
+                            {item.brand || item.model ? `${item.brand ?? ''} ${item.model ?? ''}`.trim() : 'Unspecified'}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={cn('px-2.5 py-0.5 rounded-full font-bold text-xs', item.timesListed > 1 ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300' : 'bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-400')}>
+                              {item.timesListed}x
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500 dark:text-neutral-400">
+                            <div>{new Date(item.firstListedAt).toLocaleDateString('en-GB')}</div>
+                            <div className="font-mono text-[10px] text-slate-400">Listing: #{item.firstListingId.substring(0, 8)}</div>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500 dark:text-neutral-400">
+                            <div>{new Date(item.lastListedAt).toLocaleDateString('en-GB')}</div>
+                            <div className="font-mono text-[10px] text-slate-400">Listing: #{item.lastListingId.substring(0, 8)}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {item.isFlagged ? (
+                              <div>
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-xs bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-900/60">
+                                  <AlertTriangle className="w-3 h-3" /> Duplicate Seller Attempt
+                                </span>
+                                {item.flagReason && (
+                                  <div className="text-[10px] text-red-600 dark:text-red-400 mt-0.5 italic">{item.flagReason}</div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-semibold text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40">
+                                <CheckCircle2 className="w-3 h-3" /> Unique Single Seller
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-5 text-right">
+                            <Link
+                              href={`/listings/${item.lastListingId}`}
+                              className={cn(
+                                'inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors',
+                                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                              )}
+                            >
+                              <ExternalLink className="w-3 h-3" /> Listing
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
@@ -1517,20 +1772,163 @@ function AdminDashboardContent() {
         {/* ─── TAB 6: ANALYTICS ─── */}
         {activeTab === 'analytics' && (
           <div className="space-y-6">
+            {/* Top KPI Metrics Suite */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div
+                className={cn(
+                  'p-5 rounded-3xl border shadow-sm transition-all',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className={cn('text-xs font-semibold uppercase tracking-wider', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Platform GMV
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={cn('text-2xl font-black tracking-tight', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  {formatPrice(totalGmv, 'GBP')}
+                </div>
+                <div className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Gross value transacted
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  'p-5 rounded-3xl border shadow-sm transition-all',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className={cn('text-xs font-semibold uppercase tracking-wider', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Protection Fees
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-600">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={cn('text-2xl font-black tracking-tight text-indigo-600 dark:text-indigo-400')}>
+                  {formatPrice(totalProtectionFees, 'GBP')}
+                </div>
+                <div className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Net 5% platform revenue
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  'p-5 rounded-3xl border shadow-sm transition-all',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className={cn('text-xs font-semibold uppercase tracking-wider', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Active Escrow
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-600">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={cn('text-2xl font-black tracking-tight text-amber-600 dark:text-amber-400')}>
+                  {formatPrice(activeEscrowVault, 'GBP')}
+                </div>
+                <div className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  {activeEscrowOrders.length} orders in vault
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  'p-5 rounded-3xl border shadow-sm transition-all',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className={cn('text-xs font-semibold uppercase tracking-wider', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Conversion Rate
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-teal-500/10 flex items-center justify-center text-teal-600">
+                    <ArrowUpRight className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={cn('text-2xl font-black tracking-tight', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  {conversionRate.toFixed(1)}%
+                </div>
+                <div className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  {paidOrders.length} paid of {orders.length} total
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  'p-5 rounded-3xl border shadow-sm transition-all',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className={cn('text-xs font-semibold uppercase tracking-wider', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Average Order Value
+                  </span>
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-600">
+                    <CreditCard className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className={cn('text-2xl font-black tracking-tight', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  {formatPrice(aov, 'GBP')}
+                </div>
+                <div className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Avg ticket per checkout
+                </div>
+              </div>
+            </div>
+
+            {/* Main Dual-Metric Volume & Revenue Chart */}
             <div
               className={cn(
                 'border rounded-3xl p-6 shadow-sm',
                 isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
               )}
             >
-              <h3 className={cn('text-base font-bold mb-6', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                Gross Platform Transaction Flow
-              </h3>
-              <div className="h-72 w-full">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+                <div>
+                  <h3 className={cn('text-base font-bold flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    <TrendingUp className="w-5 h-5 text-emerald-600" />
+                    Gross Platform Transaction Velocity & Protection Fees
+                  </h3>
+                  <p className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    14-day continuous trailing settlement curves (GMV vs Net Buyer Protection Fee yield).
+                  </p>
+                </div>
+                <div className="flex items-center gap-4 text-xs font-semibold">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500" />
+                    <span className={isDarkMode ? 'text-neutral-300' : 'text-slate-700'}>Gross GMV (£)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-indigo-500" />
+                    <span className={isDarkMode ? 'text-neutral-300' : 'text-slate-700'}>Protection Fee 5% (£)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="h-80 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={revenueChartData}>
+                  <AreaChart data={dailyAnalytics}>
+                    <defs>
+                      <linearGradient id="gmvGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#059669" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="#059669" stopOpacity={0.0} />
+                      </linearGradient>
+                      <linearGradient id="feeGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#262626' : '#f1f5f9'} />
-                    <XAxis dataKey="date" stroke={isDarkMode ? '#737373' : '#94a3b8'} />
+                    <XAxis dataKey="date" stroke={isDarkMode ? '#737373' : '#94a3b8'} fontSize={11} />
                     <YAxis stroke={isDarkMode ? '#737373' : '#94a3b8'} tickFormatter={(v) => `£${v}`} />
                     <Tooltip
                       contentStyle={{
@@ -1538,11 +1936,231 @@ function AdminDashboardContent() {
                         borderColor: isDarkMode ? '#262626' : '#e2e8f0',
                         borderRadius: '12px',
                         color: isDarkMode ? '#fff' : '#0f172a',
+                        boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
                       }}
+                      formatter={(val: any, name: any) => [
+                        `£${val}`,
+                        name === 'gmv' ? 'Gross GMV' : 'Net Protection Fee (5%)',
+                      ]}
                     />
-                    <Area type="monotone" dataKey="revenue" stroke="#059669" fill="#059669" fillOpacity={0.15} />
+                    <Area
+                      type="monotone"
+                      dataKey="gmv"
+                      name="gmv"
+                      stroke="#059669"
+                      strokeWidth={2.5}
+                      fill="url(#gmvGradient)"
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="fees"
+                      name="fees"
+                      stroke="#6366f1"
+                      strokeWidth={2}
+                      fill="url(#feeGradient)"
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Two-Column Breakdown: Escrow Lifecycle & Device Categories */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Escrow Status Breakdown */}
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <h3 className={cn('text-base font-bold mb-1 flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  <Lock className="w-5 h-5 text-amber-500" />
+                  Escrow Lifecycle Distribution
+                </h3>
+                <p className={cn('text-xs mb-5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Current disposition of all transaction funds across states.
+                </p>
+
+                <div className="space-y-4">
+                  {[
+                    {
+                      label: 'Paid in Escrow (Awaiting Dispatch)',
+                      count: orders.filter((o) => o.status === 'ESCROW_HELD' || o.status === 'PAYMENT_RECEIVED').length,
+                      val: orders.filter((o) => o.status === 'ESCROW_HELD' || o.status === 'PAYMENT_RECEIVED').reduce((s, o) => s + Number(o.amount || 0), 0),
+                      color: 'bg-amber-500',
+                    },
+                    {
+                      label: 'In Transit / Dispatched',
+                      count: orders.filter((o) => o.status === 'SHIPPED').length,
+                      val: orders.filter((o) => o.status === 'SHIPPED').reduce((s, o) => s + Number(o.amount || 0), 0),
+                      color: 'bg-blue-500',
+                    },
+                    {
+                      label: 'Delivered (48h Inspection Window)',
+                      count: orders.filter((o) => o.status === 'DELIVERED').length,
+                      val: orders.filter((o) => o.status === 'DELIVERED').reduce((s, o) => s + Number(o.amount || 0), 0),
+                      color: 'bg-indigo-500',
+                    },
+                    {
+                      label: 'Funds Released / Completed',
+                      count: completedOrders.length,
+                      val: completedOrders.reduce((s, o) => s + Number(o.amount || 0), 0),
+                      color: 'bg-emerald-500',
+                    },
+                    {
+                      label: 'Disputed / In Arbitration',
+                      count: disputedOrders.length,
+                      val: disputedOrders.reduce((s, o) => s + Number(o.amount || 0), 0),
+                      color: 'bg-red-500',
+                    },
+                    {
+                      label: 'Unpaid Checkout Attempts',
+                      count: unpaidOrders.length,
+                      val: unpaidOrders.reduce((s, o) => s + Number(o.amount || 0), 0),
+                      color: 'bg-slate-400',
+                    },
+                  ].map((row, idx) => {
+                    const pct = orders.length > 0 ? (row.count / orders.length) * 100 : 0;
+                    return (
+                      <div key={idx} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className={cn('font-semibold', isDarkMode ? 'text-neutral-200' : 'text-slate-700')}>
+                            {row.label}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className={cn('font-mono font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                              {formatPrice(row.val, 'GBP')}
+                            </span>
+                            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold', isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-600')}>
+                              {row.count} ({pct.toFixed(0)}%)
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-neutral-800 overflow-hidden">
+                          <div
+                            className={cn('h-full rounded-full transition-all duration-500', row.color)}
+                            style={{ width: `${Math.max(pct, row.count > 0 ? 3 : 0)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Device Category Distribution */}
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <h3 className={cn('text-base font-bold mb-1 flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  <Smartphone className="w-5 h-5 text-emerald-600" />
+                  Inventory & Category Distribution
+                </h3>
+                <p className={cn('text-xs mb-5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Live marketplace catalog volume and active inventory value.
+                </p>
+
+                <div className="space-y-4">
+                  {categoryChartData.map((cat, idx) => {
+                    const totalListingsCount = listings.length || 1;
+                    const pct = (cat.count / totalListingsCount) * 100;
+                    return (
+                      <div key={idx} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className={cn('font-semibold', isDarkMode ? 'text-neutral-200' : 'text-slate-700')}>
+                            {cat.name}
+                          </span>
+                          <div className="flex items-center gap-3">
+                            <span className={cn('font-mono font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                              {formatPrice(cat.value, 'GBP')} active
+                            </span>
+                            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold', isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-600')}>
+                              {cat.count} listings ({pct.toFixed(0)}%)
+                            </span>
+                          </div>
+                        </div>
+                        <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-neutral-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                            style={{ width: `${Math.max(pct, cat.count > 0 ? 3 : 0)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Daily Itemized Settlement Ledger (14-Day Audit Table) */}
+            <div
+              className={cn(
+                'border rounded-3xl overflow-hidden shadow-sm',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
+              <div className={cn('p-6 border-b', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
+                <h3 className={cn('text-base font-bold flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  <Wallet className="w-5 h-5 text-indigo-600" />
+                  14-Day Platform Settlement Audit Ledger
+                </h3>
+                <p className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Daily breakdown of checkout attempts, paid escrow deposits, and captured protection fees.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className={cn('border-b font-semibold uppercase tracking-wider', isDarkMode ? 'border-neutral-800 text-neutral-400 bg-neutral-950/40' : 'border-slate-200 text-slate-500 bg-slate-50')}>
+                      <th className="py-3 px-6">Settlement Date</th>
+                      <th className="py-3 px-6">Paid Orders</th>
+                      <th className="py-3 px-6">Gross GMV</th>
+                      <th className="py-3 px-6">Protection Fees (5%)</th>
+                      <th className="py-3 px-6">Unpaid Attempts</th>
+                      <th className="py-3 px-6 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800/60' : 'divide-slate-200/60')}>
+                    {dailyAnalytics.slice().reverse().map((day, idx) => (
+                      <tr key={idx} className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50/70')}>
+                        <td className="py-3.5 px-6 font-semibold text-slate-800 dark:text-neutral-200">
+                          {day.date} <span className="text-[10px] text-slate-400 font-mono">({day.rawDate})</span>
+                        </td>
+                        <td className="py-3.5 px-6 font-bold">
+                          {day.paidCount > 0 ? (
+                            <span className="text-emerald-600 dark:text-emerald-400">{day.paidCount} paid</span>
+                          ) : (
+                            <span className="text-slate-400 font-normal">0</span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-6 font-mono font-bold text-slate-800 dark:text-neutral-200">
+                          {formatPrice(day.gmv, 'GBP')}
+                        </td>
+                        <td className="py-3.5 px-6 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {formatPrice(day.fees, 'GBP')}
+                        </td>
+                        <td className="py-3.5 px-6 text-slate-500 dark:text-neutral-400 font-mono">
+                          {day.unpaidCount}
+                        </td>
+                        <td className="py-3.5 px-6 text-right">
+                          {day.paidCount > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/60">
+                              <CheckCircle2 className="w-3 h-3" /> Settled
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-normal text-slate-400 bg-slate-100 dark:bg-neutral-800">
+                              Idle
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
