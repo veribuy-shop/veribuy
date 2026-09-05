@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
+import { getAccessToken, createAuthHeaders, getTokenUserId, getTokenRole } from '@/lib/api-auth';
 import { sanitizeOrderWithPayment } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
 
@@ -11,6 +11,15 @@ export async function POST(req: NextRequest) {
     const authResult = getAccessToken(req);
     if ('error' in authResult) {
       return authResult.error;
+    }
+
+    // Admins are for management only and cannot checkout or purchase items
+    const role = await getTokenRole(authResult.token);
+    if (role === 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Administrator accounts are restricted to platform management and cannot purchase listings. Please use a buyer account.' },
+        { status: 403 },
+      );
     }
 
     // Extract buyerId from the verified JWT — never trust client-supplied buyerId

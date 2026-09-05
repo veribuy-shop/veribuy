@@ -582,6 +582,12 @@ function CheckoutPageContent() {
       return;
     }
 
+    if (user.role === 'ADMIN') {
+      setError('Administrator accounts are for management only and cannot checkout or purchase listings. Please sign in with a buyer account.');
+      setLoading(false);
+      return;
+    }
+
     if (!listingId || listingId === 'undefined' || listingId === 'null') {
       setError('No listing ID provided. Please select an item to purchase.');
       setLoading(false);
@@ -592,7 +598,7 @@ function CheckoutPageContent() {
     initRef.current = true;
 
     initCheckout();
-  }, [listingId, user?.id]); // PERF-07: depend on user?.id (primitive) not user object to avoid stale-closure re-runs
+  }, [listingId, user?.id, user?.role]); // PERF-07: depend on user?.id and user?.role to avoid stale-closure re-runs
 
   const initCheckout = async () => {
     try {
