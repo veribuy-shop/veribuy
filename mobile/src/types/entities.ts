@@ -58,10 +58,13 @@ export interface TrustLensReport {
 export type OrderStatus =
   | 'PENDING'
   | 'PAID'
+  | 'PAYMENT_RECEIVED'
+  | 'ESCROW_HELD'
   | 'PROCESSING'
   | 'SHIPPED'
   | 'DELIVERED'
   | 'COMPLETED'
+  | 'DISPUTED'
   | 'CANCELLED'
   | 'REFUNDED';
 
@@ -70,11 +73,33 @@ export interface Order {
   orderNumber?: string;
   buyerId: string;
   sellerId: string;
-  listingId: string;
+  listingId?: string | null;
   amount: number;
   currency: string;
   status: OrderStatus;
+  protectionFee?: number | null;
+  shippingFee?: number | null;
+  shippingService?: string | null;
+  trackingNumber?: string | null;
+  carrier?: string | null;
+  dispatchedAt?: string | null;
+  deliveredAt?: string | null;
+  completedAt?: string | null;
+  totalAmount?: number | null;
   shippingAddress?: ShippingAddress;
+  buyer?: { id?: string; displayName?: string; name?: string; email?: string; avatarUrl?: string | null } | null;
+  seller?: { id?: string; displayName?: string; name?: string; email?: string; avatarUrl?: string | null } | null;
+  listing?: {
+    id?: string;
+    title: string;
+    brand?: string;
+    model?: string;
+    price?: number;
+    currency?: string;
+    condition?: string;
+    imageUrl?: string | null;
+    images?: string[];
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,7 +110,8 @@ export interface ShippingAddress {
   line2?: string;
   city: string;
   state: string;
-  postal_code: string;
+  postal_code?: string;
+  postalCode?: string;
   country: string;
 }
 
