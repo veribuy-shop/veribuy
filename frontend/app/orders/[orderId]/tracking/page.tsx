@@ -150,14 +150,14 @@ export default function OrderTrackingPage() {
     if (order.paidAt) {
       steps.push({
         title: 'Payment Secured in Escrow',
-        description: 'Funds safely locked in VeriBuy Escrow Vault',
+        description: 'Funds safely vaulted in VeriBuy Escrow protection',
         status: 'completed',
         timestamp: order.paidAt,
       });
     } else {
       steps.push({
         title: 'Awaiting Payment Clearance',
-        description: 'Waiting for bank/card settlement confirmation',
+        description: 'Waiting for payment confirmation from bank',
         status: order.status === 'PENDING' ? 'current' : 'upcoming',
       });
     }
@@ -242,14 +242,14 @@ export default function OrderTrackingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div role="status" className="text-center">
           <div
             aria-hidden="true"
-            className="inline-block motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-emerald-500 border-t-transparent mb-4"
+            className="inline-block motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-emerald-600 border-t-transparent mb-4"
           ></div>
           <span className="sr-only">Loading order tracking...</span>
-          <p className="text-neutral-400 text-sm">Loading order timeline...</p>
+          <p className="text-slate-500 text-sm font-medium">Loading order timeline...</p>
         </div>
       </div>
     );
@@ -257,18 +257,18 @@ export default function OrderTrackingPage() {
 
   if (error || !orderData) {
     return (
-      <div className="min-h-screen bg-neutral-950 flex items-center justify-center px-4">
-        <div role="alert" className="text-center max-w-md bg-neutral-900 border border-neutral-800 rounded-3xl p-8">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div role="alert" className="text-center max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-sm">
           <div aria-hidden="true" className="mb-4 flex justify-center">
-            <CircleX className="h-14 w-14 text-red-400" />
+            <CircleX className="h-14 w-14 text-red-500" />
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-white mb-2">Order Not Found</h1>
-          <p className="text-neutral-400 text-sm mb-6">
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 mb-2">Order Not Found</h1>
+          <p className="text-slate-500 text-sm mb-6">
             {error || 'We could not locate this order in our records.'}
           </p>
           <Link
             href="/orders"
-            className="inline-block bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-6 py-3 rounded-xl transition-colors"
+            className="inline-block bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-6 py-3 rounded-xl transition-colors shadow-sm"
           >
             Return to Orders
           </Link>
@@ -281,24 +281,24 @@ export default function OrderTrackingPage() {
   const timeline = getTimeline(order);
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 py-8 md:py-12">
+    <div className="min-h-screen bg-slate-50 text-slate-900 py-8 md:py-12">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Navigation & Title */}
         <div className="mb-8">
           <Link
             href="/orders"
-            className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 text-sm font-medium mb-3 transition-colors"
+            className="inline-flex items-center gap-2 text-slate-600 hover:text-slate-900 text-sm font-semibold mb-4 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" /> Back to My Orders
           </Link>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">Order Tracking & Escrow</h1>
-              <p className="text-neutral-400 text-sm mt-1">
-                Order <span className="font-mono text-neutral-300">#{order.id}</span>
+              <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">Order Tracking & Escrow</h1>
+              <p className="text-slate-500 text-sm mt-1">
+                Order <span className="font-mono text-slate-700 font-semibold">#{order.id}</span>
               </p>
             </div>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
               <ShieldCheck className="w-4 h-4 shrink-0" />
               Escrow Protection Active
             </div>
@@ -307,30 +307,30 @@ export default function OrderTrackingPage() {
 
         {/* Device Summary Card */}
         {listing && (
-          <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
             <div className="flex items-center gap-4">
               {listing.imageUrls && listing.imageUrls.length > 0 ? (
                 <img
                   src={listing.imageUrls[0]}
                   alt={listing.title}
-                  className="w-16 h-16 object-cover rounded-xl border border-neutral-700/60 bg-neutral-800 shrink-0"
+                  className="w-16 h-16 object-cover rounded-xl border border-slate-200 bg-slate-100 shrink-0"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-xl bg-neutral-800 border border-neutral-700/60 flex items-center justify-center shrink-0">
-                  <Package className="w-6 h-6 text-neutral-500" />
+                <div className="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
+                  <Package className="w-6 h-6 text-slate-400" />
                 </div>
               )}
               <div>
-                <h3 className="font-semibold text-white text-base leading-tight mb-1">{listing.title}</h3>
-                <p className="text-xs text-neutral-400">
+                <h3 className="font-bold text-slate-900 text-base leading-tight mb-1">{listing.title}</h3>
+                <p className="text-xs text-slate-500">
                   {listing.brand} &bull; {listing.model}
                 </p>
               </div>
             </div>
 
-            <div className="text-left sm:text-right border-t sm:border-t-0 border-neutral-800 pt-3 sm:pt-0 w-full sm:w-auto">
-              <span className="text-xs text-neutral-400 uppercase tracking-wider block">Order Value</span>
-              <span className="text-lg font-bold text-emerald-400">
+            <div className="text-left sm:text-right border-t sm:border-t-0 border-slate-100 pt-3 sm:pt-0 w-full sm:w-auto">
+              <span className="text-xs text-slate-500 uppercase tracking-wider block font-semibold">Order Value</span>
+              <span className="text-lg font-bold text-emerald-600">
                 {formatPrice(order.amount, order.currency)}
               </span>
             </div>
@@ -339,24 +339,24 @@ export default function OrderTrackingPage() {
 
         {/* Tracking Number Card */}
         {order.trackingNumber && (
-          <div className="bg-neutral-900/60 border border-neutral-800 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
                 <Truck className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-xs text-neutral-400 uppercase tracking-wider">Courier Tracking Number</span>
-                <p className="font-mono text-sm font-bold text-white">{order.trackingNumber}</p>
+                <span className="text-xs text-slate-500 uppercase tracking-wider font-semibold">Courier Tracking Number</span>
+                <p className="font-mono text-sm font-bold text-slate-900">{order.trackingNumber}</p>
               </div>
             </div>
 
             <button
               onClick={() => handleCopyTracking(order.trackingNumber!)}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-neutral-300 text-xs font-medium transition-colors"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-semibold transition-colors"
             >
               {copied ? (
                 <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                   Copied!
                 </>
               ) : (
@@ -370,9 +370,9 @@ export default function OrderTrackingPage() {
         )}
 
         {/* Timeline Stepper */}
-        <div className="bg-neutral-900/60 border border-neutral-800 rounded-3xl p-6 md:p-8 mb-6">
-          <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-emerald-400" /> Escrow & Fulfillment Timeline
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 mb-6 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-900 mb-6 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-emerald-600" /> Escrow & Fulfillment Timeline
           </h2>
 
           <ol className="space-y-6 md:space-y-8">
@@ -388,10 +388,10 @@ export default function OrderTrackingPage() {
                       aria-hidden="true"
                       className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                         isDone
-                          ? 'bg-emerald-500 text-neutral-950 shadow-lg shadow-emerald-950'
+                          ? 'bg-emerald-600 text-white shadow-sm'
                           : isCurrent
-                          ? 'bg-emerald-500/20 text-emerald-400 border-2 border-emerald-500 motion-safe:animate-pulse'
-                          : 'bg-neutral-800 text-neutral-500 border border-neutral-700'
+                          ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-600 motion-safe:animate-pulse'
+                          : 'bg-slate-100 text-slate-500 border border-slate-200'
                       }`}
                     >
                       {isDone ? <Check className="w-4 h-4 stroke-[3]" /> : index + 1}
@@ -400,7 +400,7 @@ export default function OrderTrackingPage() {
                       <div
                         aria-hidden="true"
                         className={`w-0.5 min-h-[48px] mt-2 ${
-                          isDone ? 'bg-emerald-500/60' : 'bg-neutral-800'
+                          isDone ? 'bg-emerald-600' : 'bg-slate-200'
                         }`}
                       />
                     )}
@@ -411,18 +411,18 @@ export default function OrderTrackingPage() {
                     <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
                       <h3
                         className={`text-sm md:text-base font-bold ${
-                          isDone ? 'text-white' : isCurrent ? 'text-emerald-400' : 'text-neutral-500'
+                          isDone ? 'text-slate-900' : isCurrent ? 'text-emerald-700' : 'text-slate-400'
                         }`}
                       >
                         {step.title}
                       </h3>
                       {step.timestamp && (
-                        <span className="text-xs text-neutral-500 font-mono">
+                        <span className="text-xs text-slate-500 font-mono">
                           {formatDate(step.timestamp)}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs md:text-sm text-neutral-400 mt-1 leading-relaxed">
+                    <p className="text-xs md:text-sm text-slate-500 mt-1 leading-relaxed">
                       {step.description}
                     </p>
                   </div>
@@ -434,27 +434,27 @@ export default function OrderTrackingPage() {
 
         {/* Action Notifications & Buttons */}
         {actionError && (
-          <div role="alert" className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-sm flex items-center gap-3 mb-6">
+          <div role="alert" className="p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-sm flex items-center gap-3 mb-6">
             <AlertCircle className="w-5 h-5 shrink-0" />
             <span>{actionError}</span>
           </div>
         )}
 
         {isBuyer && order.status === 'SHIPPED' && (
-          <div className="bg-gradient-to-br from-blue-950/40 via-neutral-900 to-neutral-900 border border-blue-500/30 rounded-3xl p-6 md:p-8">
+          <div className="bg-gradient-to-br from-blue-50 via-white to-white border border-blue-200 rounded-3xl p-6 md:p-8 shadow-sm">
             <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-2xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-700 shrink-0">
                 <Truck className="w-5 h-5" />
               </div>
               <div className="flex-1">
-                <h3 className="text-base md:text-lg font-bold text-white mb-1">Has your parcel arrived?</h3>
-                <p className="text-xs md:text-sm text-neutral-400 mb-5 leading-relaxed">
+                <h3 className="text-base md:text-lg font-bold text-slate-900 mb-1">Has your parcel arrived?</h3>
+                <p className="text-xs md:text-sm text-slate-600 mb-5 leading-relaxed">
                   Click below once you have physically received the package from the courier. Your 7-day inspection window will commence.
                 </p>
                 <button
                   disabled={actionLoading}
                   onClick={() => updateOrderStatus('DELIVERED')}
-                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-xl transition-all disabled:opacity-50"
+                  className="w-full sm:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm rounded-xl transition-all shadow-sm disabled:opacity-50"
                 >
                   {actionLoading ? 'Updating Status...' : 'Confirm Delivery Received'}
                 </button>
@@ -464,20 +464,20 @@ export default function OrderTrackingPage() {
         )}
 
         {isBuyer && order.status === 'DELIVERED' && (
-          <div className="bg-gradient-to-br from-emerald-950/50 via-neutral-900 to-neutral-900 border border-emerald-500/30 rounded-3xl p-6 md:p-8">
+          <div className="bg-gradient-to-br from-emerald-50 via-white to-white border border-emerald-200 rounded-3xl p-6 md:p-8 shadow-sm">
             <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-700 shrink-0">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div className="flex-1">
-                <h3 className="text-base md:text-lg font-bold text-white mb-1">Device Inspected & Satisfied?</h3>
-                <p className="text-xs md:text-sm text-neutral-400 mb-5 leading-relaxed">
+                <h3 className="text-base md:text-lg font-bold text-slate-900 mb-1">Device Inspected & Satisfied?</h3>
+                <p className="text-xs md:text-sm text-slate-600 mb-5 leading-relaxed">
                   Releasing escrow signifies that the hardware condition matches the Trust Lens™ certificate. Once confirmed, funds will be immediately disbursed to the seller.
                 </p>
                 <button
                   disabled={actionLoading}
                   onClick={() => updateOrderStatus('COMPLETED')}
-                  className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-950 transition-all disabled:opacity-50"
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-sm transition-all disabled:opacity-50"
                 >
                   {actionLoading ? 'Processing Escrow Release...' : 'Confirm Receipt & Release Escrow'}
                 </button>

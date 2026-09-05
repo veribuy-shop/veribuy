@@ -3,6 +3,7 @@
 import { useAuth } from '@/lib/auth-context';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
+import { BrandLogo } from '@/components/brand-logo';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
@@ -105,6 +106,24 @@ interface VerificationRequest {
 
 type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'users' | 'analytics' | 'health' | 'settings';
 
+const PAID_STATUSES = ['PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'COMPLETED'];
+
+function deduplicateOrders(orders: Order[]): Order[] {
+  const paidListingIds = new Set<string>();
+  orders.forEach((o) => {
+    if (o.listingId && PAID_STATUSES.includes(o.status)) {
+      paidListingIds.add(o.listingId);
+    }
+  });
+
+  return orders.filter((o) => {
+    if (o.status === 'PENDING' && o.listingId && paidListingIds.has(o.listingId)) {
+      return false;
+    }
+    return true;
+  });
+}
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -154,11 +173,11 @@ function AdminDashboardContent() {
     } catch {}
   }, []);
 
-  const toggleTheme = () => {
-    const next = !isDarkMode;
+  const setThemeMode = (mode: 'light' | 'dark') => {
+    const next = mode === 'dark';
     setIsDarkMode(next);
     try {
-      localStorage.setItem('veribuy_admin_theme', next ? 'dark' : 'light');
+      localStorage.setItem('veribuy_admin_theme', mode);
     } catch {}
   };
 
@@ -194,7 +213,8 @@ function AdminDashboardContent() {
       const ordVal = settleOk(ordersRes);
       if (ordVal?.ok) {
         const d = await ordVal.json();
-        setOrders(Array.isArray(d.orders) ? d.orders : Array.isArray(d) ? d : []);
+        const rawOrders: Order[] = Array.isArray(d.orders) ? d.orders : Array.isArray(d) ? d : [];
+        setOrders(deduplicateOrders(rawOrders));
       }
 
       const verVal = settleOk(verRes);
@@ -392,30 +412,20 @@ function AdminDashboardContent() {
         )}
       >
         <Link href="/" className="flex items-center gap-2">
-          <span className="font-extrabold text-slate-900">Veri<span className="text-emerald-600">Buy</span></span>
-          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">ADMIN</span>
+          <BrandLogo />
+          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
+            ADMIN
+          </span>
         </Link>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            className={cn(
-              'p-2 rounded-xl border',
-              isDarkMode ? 'bg-neutral-800 border-neutral-700 text-amber-400' : 'bg-slate-100 border-slate-200 text-slate-700'
-            )}
-          >
-            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={cn(
-              'p-2 rounded-xl',
-              isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-700'
-            )}
-          >
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className={cn(
+            'p-2 rounded-xl',
+            isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-700'
+          )}
+        >
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
 
       {/* Sidebar Navigation */}
@@ -427,26 +437,14 @@ function AdminDashboardContent() {
         )}
       >
         <div>
-          {/* Logo & Theme Switcher */}
+          {/* Logo & Brand */}
           <div className="hidden md:flex items-center justify-between mb-6">
             <Link href="/" className="flex items-center gap-2" title="Back to Marketplace">
-              <span className={cn('text-xl font-extrabold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                Veri<span className="text-emerald-600">Buy</span>
-              </span>
+              <BrandLogo />
               <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
                 ADMIN
               </span>
             </Link>
-            <button
-              onClick={toggleTheme}
-              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-              className={cn(
-                'p-2 rounded-xl border transition-colors',
-                isDarkMode ? 'bg-neutral-800 border-neutral-700 text-amber-400' : 'bg-slate-100 border-slate-200 text-slate-600'
-              )}
-            >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
           </div>
 
           {/* Back to Marketplace */}
@@ -620,7 +618,7 @@ function AdminDashboardContent() {
                 </span>
                 <p className="text-2xl font-bold text-emerald-600">{formatPrice(totalRevenue, 'GBP')}</p>
                 <span className={cn('text-xs mt-2 block', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
-                  {orders.length} total orders recorded
+                  {orders.length} unique active orders
                 </span>
               </div>
 
@@ -1018,7 +1016,7 @@ function AdminDashboardContent() {
                     Escrow & Transaction Desk
                   </h3>
                   <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Showing all order records ({orders.length} total)
+                    Showing active order records ({orders.length} total)
                   </p>
                 </div>
 
@@ -1031,9 +1029,9 @@ function AdminDashboardContent() {
                       isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     )}
                   >
-                    <option value="ALL">All Order States</option>
+                    <option value="ALL">All Orders</option>
                     <option value="PAID">Paid / In Escrow Only</option>
-                    <option value="PENDING">Unpaid Checkout Attempts Only</option>
+                    <option value="PENDING">Unpaid Attempts Only</option>
                     <option value="COMPLETED">Completed</option>
                     <option value="DISPUTED">Disputed</option>
                   </select>
@@ -1326,7 +1324,7 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        {/* ─── TAB 8: SETTINGS & DYNAMIC FEE CONFIGURATION ─── */}
+        {/* ─── TAB 8: SETTINGS, THEME TOGGLE & DYNAMIC FEE CONFIGURATION ─── */}
         {activeTab === 'settings' && (
           <div
             className={cn(
@@ -1336,11 +1334,55 @@ function AdminDashboardContent() {
           >
             <div>
               <h3 className={cn('text-lg font-bold mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                Platform Fee Settings
+                Platform & Interface Settings
               </h3>
               <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                Configure the dynamic Buyer Protection Fee rate applied to checkouts in real-time.
+                Configure the dynamic Buyer Protection Fee rate and dashboard display theme.
               </p>
+            </div>
+
+            {/* Dashboard Theme Mode Preference */}
+            <div
+              className={cn(
+                'p-5 rounded-2xl border space-y-3',
+                isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200'
+              )}
+            >
+              <div>
+                <label className={cn('text-sm font-bold block', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  Dashboard Appearance Theme
+                </label>
+                <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Select the display theme for the Admin operations console.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setThemeMode('light')}
+                  className={cn(
+                    'p-4 rounded-xl border flex items-center justify-center gap-2 font-semibold text-xs transition-all',
+                    !isDarkMode
+                      ? 'bg-white border-emerald-600 text-emerald-700 ring-2 ring-emerald-500/20 shadow-sm'
+                      : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:text-white'
+                  )}
+                >
+                  <Sun className="w-4 h-4 text-amber-500" /> Light Mode (Default)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setThemeMode('dark')}
+                  className={cn(
+                    'p-4 rounded-xl border flex items-center justify-center gap-2 font-semibold text-xs transition-all',
+                    isDarkMode
+                      ? 'bg-neutral-900 border-emerald-500 text-emerald-400 ring-2 ring-emerald-500/20 shadow-sm'
+                      : 'bg-white border-slate-200 text-slate-600 hover:text-slate-900'
+                  )}
+                >
+                  <Moon className="w-4 h-4 text-purple-500" /> Dark Mode
+                </button>
+              </div>
             </div>
 
             {feeSaveSuccess && (
@@ -1350,6 +1392,7 @@ function AdminDashboardContent() {
               </div>
             )}
 
+            {/* Fee Setting Form */}
             <form onSubmit={handleSaveFeeSettings} className="space-y-4">
               <div
                 className={cn(
@@ -1363,7 +1406,7 @@ function AdminDashboardContent() {
                       Buyer Protection Fee Percentage
                     </label>
                     <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                      Currently configured rate applied to escrow checkouts.
+                      Configured dynamic rate applied to checkouts in real-time.
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
