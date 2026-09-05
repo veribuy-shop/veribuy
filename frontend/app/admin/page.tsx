@@ -200,21 +200,25 @@ function AdminDashboardContent() {
   // Refund modal state
   const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
 
-  // Load theme preference
+  // Load theme preference per admin user
   useEffect(() => {
+    if (!user?.id) return;
     try {
-      const savedTheme = localStorage.getItem('veribuy_admin_theme');
-      if (savedTheme === 'dark') {
-        setIsDarkMode(true);
+      const savedTheme = localStorage.getItem(`veribuy_admin_theme_${user.id}`);
+      if (savedTheme) {
+        setIsDarkMode(savedTheme === 'dark');
+      } else {
+        setIsDarkMode(false);
       }
     } catch {}
-  }, []);
+  }, [user?.id]);
 
   const setThemeMode = (mode: 'light' | 'dark') => {
     const next = mode === 'dark';
     setIsDarkMode(next);
+    if (!user?.id) return;
     try {
-      localStorage.setItem('veribuy_admin_theme', mode);
+      localStorage.setItem(`veribuy_admin_theme_${user.id}`, mode);
     } catch {}
   };
 

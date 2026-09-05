@@ -238,20 +238,24 @@ function DashboardContent() {
   const [notifOrders, setNotifOrders] = useState(true);
   const [notifTrustLens, setNotifTrustLens] = useState(true);
 
-  // Load theme preference
+  // Load theme preference per user
   useEffect(() => {
+    if (!user?.id) return;
     try {
-      const savedTheme = localStorage.getItem('veribuy_dashboard_theme');
-      if (savedTheme === 'dark') {
-        setIsDarkMode(true);
+      const savedTheme = localStorage.getItem(`veribuy_dashboard_theme_${user.id}`);
+      if (savedTheme) {
+        setIsDarkMode(savedTheme === 'dark');
+      } else {
+        setIsDarkMode(false);
       }
     } catch {}
-  }, []);
+  }, [user?.id]);
 
   const setThemeMode = (mode: 'light' | 'dark') => {
     setIsDarkMode(mode === 'dark');
+    if (!user?.id) return;
     try {
-      localStorage.setItem('veribuy_dashboard_theme', mode);
+      localStorage.setItem(`veribuy_dashboard_theme_${user.id}`, mode);
     } catch {}
   };
 
