@@ -68,7 +68,8 @@ export class TransactionsService implements OnModuleInit {
       apiVersion: '2026-01-28.clover',
     });
 
-    // Run background cleanup for expired pending orders every 5 minutes
+    // Run initial and recurring background cleanup for expired pending orders (30 min timeout)
+    this.cleanupExpiredPendingOrders().catch(() => {});
     setInterval(() => {
       this.cleanupExpiredPendingOrders().catch((err) => {
         this.logger.warn(`Cleanup expired pending orders error: ${err.message}`);
@@ -543,13 +544,78 @@ export class TransactionsService implements OnModuleInit {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
-    const [data, total] = await Promise.all([
+    const [orders, total] = await Promise.all([
       this.prisma.order.findMany({ skip, take: limit, orderBy: { createdAt: 'desc' } }),
       this.prisma.order.count(),
     ]);
 
+    const buyerIds = [...new Set(orders.map((o) => o.buyerId).filter(Boolean))];
+    const sellerIds = [...new Set(orders.map((o) => o.sellerId).filter(Boolean))];
+    const allUserIds = [...new Set([...buyerIds, ...sellerIds])];
+    const listingIds = [...new Set(orders.map((o) => o.listingId).filter(Boolean))];
+
+    const [profiles, users, listings] = await Promise.all([
+      this.prisma.profile.findMany({
+        where: { userId: { in: allUserIds } },
+        select: { userId: true, displayName: true, firstName: true, lastName: true },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: allUserIds } },
+        select: { id: true, email: true },
+      }),
+      this.prisma.listing.findMany({
+        where: { id: { in: listingIds } },
+        select: { id: true, title: true, brand: true, model: true },
+      }),
+    ]);
+
+    const profileMap = new Map(profiles.map((p) => [p.userId, p]));
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const listingMap = new Map(listings.map((l) => [l.id, l]));
+
+    const enriched = orders.map((order) => {
+      const buyerProfile = profileMap.get(order.buyerId);
+      const buyerUser = userMap.get(order.buyerId);
+      const buyerName =
+        buyerProfile?.displayName ||
+        (buyerProfile?.firstName ? `${buyerProfile.firstName} ${buyerProfile.lastName || ''}`.trim() : null) ||
+        (buyerUser?.email ? buyerUser.email.split('@')[0] : null) ||
+        'Buyer';
+
+      const sellerProfile = profileMap.get(order.sellerId);
+      const sellerUser = userMap.get(order.sellerId);
+      const sellerName =
+        sellerProfile?.displayName ||
+        (sellerProfile?.firstName ? `${sellerProfile.firstName} ${sellerProfile.lastName || ''}`.trim() : null) ||
+        (sellerUser?.email ? sellerUser.email.split('@')[0] : null) ||
+        'Seller';
+
+      const listing = listingMap.get(order.listingId);
+
+      return {
+        ...order,
+        buyer: {
+          id: order.buyerId,
+          displayName: buyerName,
+          email: buyerUser?.email || null,
+        },
+        seller: {
+          id: order.sellerId,
+          displayName: sellerName,
+          email: sellerUser?.email || null,
+        },
+        listing: listing || {
+          id: order.listingId,
+          title: order.listingTitle || 'Verified Device',
+          brand: '',
+          model: '',
+          imageUrls: [],
+        },
+      };
+    });
+
     return {
-      data,
+      data: enriched,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -561,14 +627,28 @@ export class TransactionsService implements OnModuleInit {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
+    // Proactively clean up any expired pending orders older than 30 mins
+    this.cleanupExpiredPendingOrders().catch(() => {});
+
+    const expiryThreshold = new Date(Date.now() - 30 * 60 * 1000);
+
+    const where = {
+      buyerId,
+      status: { notIn: ['CANCELLED'] as any },
+      NOT: {
+        status: 'PENDING' as any,
+        createdAt: { lt: expiryThreshold },
+      },
+    };
+
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({
-        where: { buyerId },
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.order.count({ where: { buyerId } }),
+      this.prisma.order.count({ where }),
     ]);
 
     return {
@@ -584,14 +664,19 @@ export class TransactionsService implements OnModuleInit {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
+    const where = {
+      sellerId,
+      status: { notIn: ['PENDING', 'CANCELLED'] as any },
+    };
+
     const [data, total] = await Promise.all([
       this.prisma.order.findMany({
-        where: { sellerId },
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.order.count({ where: { sellerId } }),
+      this.prisma.order.count({ where }),
     ]);
 
     return {

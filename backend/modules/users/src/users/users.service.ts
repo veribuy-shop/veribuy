@@ -66,7 +66,30 @@ export class UsersService {
     });
 
     if (!profile) {
-      throw new NotFoundException('Profile not found');
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, createdAt: true, updatedAt: true },
+      });
+      if (!user) {
+        throw new NotFoundException('Profile not found');
+      }
+      return {
+        id: user.id,
+        userId: user.id,
+        displayName: user.email ? user.email.split('@')[0] : 'User',
+        firstName: null,
+        lastName: null,
+        bio: null,
+        avatarUrl: null,
+        phone: null,
+        verificationStatus: 'PENDING',
+        sellerRating: null,
+        totalSales: 0,
+        totalPurchases: 0,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        address: null,
+      };
     }
 
     // Write to cache — fail open

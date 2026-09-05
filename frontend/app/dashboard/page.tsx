@@ -281,14 +281,23 @@ function DashboardContent() {
       const sellerOrdVal = settleOk(sellerOrdRes);
       if (sellerOrdVal?.ok) {
         const d = await sellerOrdVal.json();
-        const raw = Array.isArray(d) ? d : d.data ?? [];
-        setSellerOrders(deduplicateOrders(raw));
+        const raw: Order[] = Array.isArray(d) ? d : d.data ?? [];
+        const paidOnly = raw.filter((o) => o.status !== 'PENDING' && o.status !== 'CANCELLED');
+        setSellerOrders(deduplicateOrders(paidOnly));
       }
       const buyerOrdVal = settleOk(buyerOrdRes);
       if (buyerOrdVal?.ok) {
         const d = await buyerOrdVal.json();
-        const raw = Array.isArray(d) ? d : d.data ?? [];
-        setBuyerOrders(deduplicateOrders(raw));
+        const raw: Order[] = Array.isArray(d) ? d : d.data ?? [];
+        const activeOnly = raw.filter((o) => {
+          if (o.status === 'CANCELLED') return false;
+          if (o.status === 'PENDING') {
+            const elapsed = (Date.now() - new Date(o.createdAt).getTime()) / (1000 * 60);
+            return elapsed < 30;
+          }
+          return true;
+        });
+        setBuyerOrders(deduplicateOrders(activeOnly));
       }
       const verVal = settleOk(verRes);
       if (verVal?.ok) {
@@ -1131,20 +1140,48 @@ function DashboardContent() {
                         </div>
 
                         {o.status === 'PENDING' ? (
-                          <div className="flex items-center gap-2">
-                            <Link
-                              href={`/checkout?listingId=${o.listingId || ''}&resume=true`}
-                              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
-                            >
-                              Resume
-                            </Link>
-                            <button
-                              onClick={() => handleCancelOrder(o.id)}
-                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold text-xs rounded-xl transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                          (() => {
+                            const createdAtMs = new Date(o.createdAt).getTime();
+                            const elapsedMinutes = Math.floor((Date.now() - createdAtMs) / (1000 * 60));
+                            const remainingMinutes = Math.max(0, 30 - elapsedMinutes);
+                            const isExpired = remainingMinutes <= 0;
+
+                            if (isExpired) {
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className={cn('text-xs font-medium px-2 py-1 rounded-lg border', isDarkMode ? 'bg-neutral-800 text-neutral-400 border-neutral-700' : 'bg-slate-100 text-slate-500 border-slate-200')}>
+                                    Expired (30m passed)
+                                  </span>
+                                  <button
+                                    onClick={() => handleCancelOrder(o.id)}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-semibold text-xs rounded-xl transition-colors"
+                                  >
+                                    Dismiss
+                                  </button>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-lg">
+                                  {remainingMinutes}m left
+                                </span>
+                                <Link
+                                  href={`/checkout?listingId=${o.listingId || ''}&resume=true`}
+                                  className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
+                                >
+                                  Resume
+                                </Link>
+                                <button
+                                  onClick={() => handleCancelOrder(o.id)}
+                                  className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold text-xs rounded-xl transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            );
+                          })()
                         ) : (
                           <Link
                             href={`/orders/${o.id}/tracking`}

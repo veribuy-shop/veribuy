@@ -119,7 +119,15 @@ export default function OrdersPage() {
       if (buyingResponse.ok) {
         const buyingData = await buyingResponse.json();
         const rawOrders: Order[] = Array.isArray(buyingData) ? buyingData : buyingData.data ?? [];
-        setBuyingOrders(deduplicateOrders(rawOrders));
+        const activeOrders = rawOrders.filter((o: Order) => {
+          if (o.status === 'CANCELLED') return false;
+          if (o.status === 'PENDING') {
+            const elapsed = (Date.now() - new Date(o.createdAt).getTime()) / (1000 * 60);
+            return elapsed < 30;
+          }
+          return true;
+        });
+        setBuyingOrders(deduplicateOrders(activeOrders));
       }
     } catch (err: any) {
       console.error('Error fetching buying orders:', err);
@@ -139,7 +147,8 @@ export default function OrdersPage() {
       if (sellingResponse.ok) {
         const sellingData = await sellingResponse.json();
         const rawOrders: Order[] = Array.isArray(sellingData) ? sellingData : sellingData.data ?? [];
-        setSellingOrders(deduplicateOrders(rawOrders));
+        const paidOrders = rawOrders.filter((o: Order) => o.status !== 'PENDING' && o.status !== 'CANCELLED');
+        setSellingOrders(deduplicateOrders(paidOrders));
       }
     } catch (err: any) {
       console.error('Error fetching selling orders:', err);
