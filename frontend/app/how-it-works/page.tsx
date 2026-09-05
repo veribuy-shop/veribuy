@@ -66,12 +66,12 @@ export default function HowItWorksPage() {
     },
     {
       number: '04',
-      title: '7-Day Inspection & Release',
+      title: '48-Hour Inspection & Release',
       icon: RotateCcw,
       badge: 'Step 4: Inspection',
-      description: 'The buyer has 7 full days to inspect the physical device against the timestamped evidence pack. Once satisfied, funds release to the seller with £0 seller commission.',
+      description: 'The buyer has 48 hours (2 days) to inspect the physical device against the timestamped evidence pack. Once satisfied, funds release to the seller with £0 seller commission.',
       details: [
-        '7-day hands-on testing window for the buyer',
+        '48-hour (2 days) hands-on testing window for the buyer',
         'Timestamped evidence photos used for objective dispute support',
         'Full 100% refund guarantee if device is misrepresented',
         'Instant seller payout upon buyer confirmation',
@@ -130,7 +130,7 @@ export default function HowItWorksPage() {
             </span>
           </h1>
           <p className="text-base sm:text-lg text-emerald-100/90 max-w-2xl mx-auto leading-relaxed">
-            Eliminating scams, blacklisted electronics, and hidden defects through automated IMEI checks, escrow holding, and 7-day inspection windows.
+            Eliminating scams, blacklisted electronics, and hidden defects through automated IMEI checks, escrow holding, and 48-hour (2 days) inspection windows.
           </p>
         </div>
       </section>

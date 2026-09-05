@@ -61,7 +61,7 @@ export default function SellContent() {
     {
       step: '04',
       title: 'Receive 100% Payout',
-      desc: 'After the 7-day inspection window, receive your full sale price with zero commission deducted.',
+      desc: 'After the 48-hour (2 days) inspection window, receive your full sale price with zero commission deducted.',
     },
   ];
 

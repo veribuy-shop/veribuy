@@ -16,7 +16,7 @@ const TOC = [
   { id: 'accounts', label: '2. User Accounts & Eligibility' },
   { id: 'verification', label: '3. Trust Lens™ Device Verification' },
   { id: 'fees', label: '4. Fees, Pricing & Seller Payouts' },
-  { id: 'escrow', label: '5. Escrow Payment & 7-Day Protection' },
+  { id: 'escrow', label: '5. Escrow Payment & 48-Hour (2 Days) Protection' },
   { id: 'prohibited', label: '6. Prohibited Items & Activities' },
   { id: 'ip', label: '7. Intellectual Property Rights' },
   { id: 'liability', label: '8. Limitation of Liability' },
@@ -156,21 +156,21 @@ export default function TermsPage() {
                 <div className="p-4 border border-[var(--color-border)] rounded-xl bg-white">
                   <span className="text-xs font-bold text-blue-600 uppercase tracking-wider block mb-1">Buyers</span>
                   <span className="text-2xl font-black text-[var(--color-text)] block mb-1">Buyer Protection Fee</span>
-                  <p className="text-[var(--color-text-muted)]">A variable protection fee (clearly itemised at checkout) covers escrow handling, Trust Lens™ hardware verification, and 7-day money-back dispute guarantee.</p>
+                  <p className="text-[var(--color-text-muted)]">A variable protection fee (clearly itemised at checkout) covers escrow handling, Trust Lens™ hardware verification, and 48-hour (2 days) money-back dispute guarantee.</p>
                 </div>
               </div>
             </section>
 
             {/* Section 5 */}
             <section id="escrow" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
-              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">5. Escrow Payment & 7-Day Protection</h2>
+              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">5. Escrow Payment & 48-Hour (2 Days) Protection</h2>
               <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
                 Upon order confirmation, buyer payment is placed into secure escrow managed via Stripe. Escrow release follows this strict protocol:
               </p>
               <ol className="space-y-3 text-sm text-[var(--color-text-muted)] list-decimal pl-5">
                 <li><strong>Dispatch Requirement:</strong> Sellers must dispatch within 3 working days via tracked Royal Mail delivery.</li>
-                <li><strong>Inspection Window:</strong> Buyers receive a 7-day inspection window starting upon carrier delivery confirmation.</li>
-                <li><strong>Release or Dispute:</strong> Funds are automatically released to the seller after the 7-day window expires unless the buyer opens a valid dispute for misrepresentation or undisclosed hardware defect.</li>
+                <li><strong>Inspection Window:</strong> Buyers receive a 48-hour (2 days) inspection window starting upon carrier delivery confirmation.</li>
+                <li><strong>Release or Dispute:</strong> Funds are automatically released to the seller after the 48-hour window expires unless the buyer opens a valid dispute for misrepresentation or undisclosed hardware defect.</li>
               </ol>
             </section>
 

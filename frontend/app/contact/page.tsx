@@ -281,7 +281,7 @@ export default function ContactPage() {
                 <span>Security &amp; Disputes</span>
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Need to escalate a device condition mismatch? Open an order dispute directly from your <a href="/orders" className="text-[var(--color-green)] font-bold hover:underline">Orders Dashboard</a> to preserve your 7-day inspection return window.
+                Need to escalate a device condition mismatch? Open an order dispute directly from your <a href="/orders" className="text-[var(--color-green)] font-bold hover:underline">Orders Dashboard</a> to preserve your 48-hour (2 days) inspection return window.
               </p>
             </div>
           </div>

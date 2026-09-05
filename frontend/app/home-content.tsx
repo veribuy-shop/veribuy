@@ -61,8 +61,8 @@ const verificationSteps = [
   {
     step: '04',
     icon: RotateCcw,
-    title: '7-Day Inspection Window',
-    description: 'Buyer tests the device for 7 days. Once satisfied, escrow funds release to the seller with £0 seller commission.',
+    title: '48-Hour Inspection Window',
+    description: 'Buyer tests the device for 48 hours (2 days). Once satisfied, escrow funds release to the seller with £0 seller commission.',
   },
 ];
 
@@ -79,7 +79,7 @@ const comparisonPoints = [
   },
   {
     feature: 'Money-Back Guarantee',
-    veribuy: '7-day full refund guarantee on misrepresented items',
+    veribuy: '48-hour (2 days) full refund guarantee on misrepresented items',
     others: 'Sold as seen (no returns, no recourse)',
   },
   {
@@ -230,7 +230,7 @@ export default function HomeContent() {
             </div>
             <div className="flex items-center justify-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl py-2.5 px-3">
               <RotateCcw className="w-4 h-4 text-emerald-300 shrink-0" />
-              <span>7-Day Money-Back Guarantee</span>
+              <span>48-Hour Money-Back Guarantee</span>
             </div>
             <div className="flex items-center justify-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl py-2.5 px-3">
               <Percent className="w-4 h-4 text-emerald-300 shrink-0" />

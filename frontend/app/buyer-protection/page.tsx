@@ -5,7 +5,7 @@ import { ShieldCheck, RefreshCcw, Lock, Scale, CheckCircle2, ArrowRight } from '
 
 export const metadata: Metadata = {
   title: 'Buyer Protection Guarantee',
-  description: 'Shop with confidence on VeriBuy. 7-day returns, escrow payments, Trust Lens verification, and dispute resolution.',
+  description: 'Shop with confidence on VeriBuy. 48-hour returns, escrow payments, Trust Lens verification, and dispute resolution.',
   alternates: {
     canonical: '/buyer-protection',
   },
@@ -21,8 +21,8 @@ export default function BuyerProtectionPage() {
     },
     {
       icon: <RefreshCcw className="w-6 h-6 text-[var(--color-green)]" />,
-      title: '7-Day Money-Back Guarantee',
-      description: 'If your device doesn\'t match the listing description, photos, or condition grade, you have 7 days to request a full refund.',
+      title: '48-Hour Money-Back Guarantee',
+      description: 'If your device doesn\'t match the listing description, photos, or condition grade, you have 48 hours (2 days) to request a full refund.',
       benefit: 'Full refund including return postage for misrepresented items.',
     },
     {
@@ -43,7 +43,7 @@ export default function BuyerProtectionPage() {
     <div className="min-h-screen bg-[var(--color-surface)]">
       <LegalHeader
         title="Buyer Protection Guarantee"
-        subtitle="Comprehensive protection included on every purchase: escrow payment holding, hardware authentication, and 7-day returns."
+        subtitle="Comprehensive protection included on every purchase: escrow payment holding, hardware authentication, and 48-hour (2 days) returns."
         lastUpdated="September 4, 2026"
         badge="100% Guaranteed"
       />
@@ -91,7 +91,7 @@ export default function BuyerProtectionPage() {
                 2
               </span>
               <strong className="text-[var(--color-text)] block">Tracked Dispatch & Inspection</strong>
-              <p className="text-xs">Item arrives via tracked Royal Mail delivery. You have 7 days to test battery, screen, and functions.</p>
+              <p className="text-xs">Item arrives via tracked Royal Mail delivery. You have 48 hours (2 days) to test battery, screen, and functions.</p>
             </div>
 
             <div className="space-y-2">

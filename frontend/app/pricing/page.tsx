@@ -38,7 +38,7 @@ export default function PricingPage() {
       buyerProtection: `Variable (~${feePercent}%)`,
       imeiCheck: 'Automated 100% of devices',
       escrow: 'Yes (Stripe Escrow)',
-      returnWindow: '7-day guarantee',
+      returnWindow: '48-hour (2 days) guarantee',
       isVeriBuy: true,
     },
     {
@@ -190,7 +190,7 @@ export default function PricingPage() {
                   <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 mt-0.5">
                     <Check className="w-3.5 h-3.5" />
                   </div>
-                  <span><strong>7-Day Money-Back Guarantee:</strong> Return for a full refund if item does not match evidence photos.</span>
+                  <span><strong>48-Hour (2 Days) Money-Back Guarantee:</strong> Return for a full refund if item does not match evidence photos.</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 mt-0.5">
@@ -283,7 +283,7 @@ export default function PricingPage() {
           </div>
 
           <p className="mt-6 text-xs text-gray-500 text-center leading-relaxed">
-            * The Buyer Protection fee is dynamically calculated at checkout based on device tier and value, covering escrow security, hardware audit reports, and the 7-day money-back return guarantee.
+            * The Buyer Protection fee is dynamically calculated at checkout based on device tier and value, covering escrow security, hardware audit reports, and the 48-hour (2 days) money-back return guarantee.
           </p>
         </div>
 

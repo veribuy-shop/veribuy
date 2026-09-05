@@ -28,17 +28,17 @@ const rawFaqs = [
   {
     category: 'Buyer Protection & Escrow',
     question: 'How is my payment protected in escrow?',
-    answer: 'When you purchase on VeriBuy, 100% of your funds are securely held in Stripe platform escrow. The seller never receives funds upfront. The seller only receives payout after you receive the parcel and complete your 7-day inspection window without dispute.',
+    answer: 'When you purchase on VeriBuy, 100% of your funds are securely held in Stripe platform escrow. The seller never receives funds upfront. The seller only receives payout after you receive the parcel and complete your 48-hour (2 days) inspection window without dispute.',
   },
   {
     category: 'Buyer Protection & Escrow',
     question: 'What is the Buyer Protection fee and what does it cover?',
-    answer: 'We charge a transparent variable Buyer Protection fee calculated dynamically at checkout. This fee directly funds 100% Stripe escrow holding, real-time Trust Lens™ database checks, signature-tracked delivery insurance, 7-day money-back return guarantees, and dedicated UK dispute arbitration.',
+    answer: 'We charge a transparent variable Buyer Protection fee calculated dynamically at checkout. This fee directly funds 100% Stripe escrow holding, real-time Trust Lens™ database checks, signature-tracked delivery insurance, 48-hour (2 days) money-back return guarantees, and dedicated UK dispute arbitration.',
   },
   {
     category: 'Buyer Protection & Escrow',
-    question: 'What is the 7-day money-back guarantee policy?',
-    answer: 'If the device received differs cosmetically, mechanically, or functionally from the listing grade and timestamped evidence photos, you can open a return within 7 calendar days of delivery for a full refund.',
+    question: 'What is the 48-hour money-back guarantee policy?',
+    answer: 'If the device received differs cosmetically, mechanically, or functionally from the listing grade and timestamped evidence photos, you can open a return within 48 hours (2 days) of delivery for a full refund.',
   },
   {
     category: 'Selling on VeriBuy',
