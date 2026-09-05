@@ -264,6 +264,26 @@ export class NotificationsService {
           listingTitle: data.payload['listingTitle'],
           orderId: data.payload['orderId'],
           amount: data.payload['amount'],
+          protectionFee: data.payload['protectionFee'],
+          shippingFee: data.payload['shippingFee'],
+          totalAmount: data.payload['totalAmount'],
+          shippingAddress: data.payload['shippingAddress'],
+          shippingService: data.payload['shippingService'],
+        });
+        break;
+      case 'seller_order_received':
+        await this.email.sendSellerOrderReceivedEmail({
+          sellerEmail: data.to,
+          sellerName: data.payload['sellerName'],
+          buyerName: data.payload['buyerName'],
+          listingTitle: data.payload['listingTitle'],
+          orderId: data.payload['orderId'],
+          payoutAmount: data.payload['payoutAmount'],
+          itemPrice: data.payload['itemPrice'],
+          shippingFee: data.payload['shippingFee'],
+          currency: data.payload['currency'],
+          shippingAddress: data.payload['shippingAddress'],
+          shippingService: data.payload['shippingService'],
         });
         break;
       case 'order_status':
