@@ -13,9 +13,9 @@ export class GetListingsQueryDto extends PaginationDto {
   @MaxLength(100)
   brand?: string;
 
-  @IsEnum(ListingStatus)
   @IsOptional()
-  status?: ListingStatus;
+  @IsString()
+  status?: ListingStatus | 'ALL';
 
   @IsEnum(TrustLensStatus)
   @IsOptional()

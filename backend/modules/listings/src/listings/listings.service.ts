@@ -97,12 +97,10 @@ export class UlistingsService {
       where.brand = { contains: query.brand, mode: 'insensitive' };
     }
 
-    if (query.status) {
+    if (query.status && (query.status as any) !== 'ALL') {
       where.status = query.status;
-    } else if (query.sellerId) {
-      // Seller's own dashboard: return all statuses so pending-review (DRAFT /
-      // REQUIRES_REVIEW) and rejected listings still show up.
-      // no default filter
+    } else if (query.sellerId || (query.status as any) === 'ALL') {
+      // Admin moderation or seller dashboard: return all statuses
     } else {
       // Public browse: only show ACTIVE listings
       where.status = ListingStatus.ACTIVE;
