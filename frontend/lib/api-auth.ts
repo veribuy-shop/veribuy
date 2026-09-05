@@ -80,6 +80,14 @@ export async function getTokenUserId(token: string): Promise<string | null> {
 }
 
 /**
+ * Extract the authenticated user's role from a verified JWT payload.
+ */
+export async function getTokenRole(token: string): Promise<string | null> {
+  const payload = await verifyJwtPayload(token);
+  return payload?.role ?? null;
+}
+
+/**
  * Helper function to create authorization headers for backend requests
  */
 export function createAuthHeaders(token: string): HeadersInit {
@@ -88,3 +96,4 @@ export function createAuthHeaders(token: string): HeadersInit {
     'Authorization': `Bearer ${token}`,
   };
 }
+

@@ -773,19 +773,37 @@ export default function ListingDetailContent({ id }: { id: string }) {
                 </div>
               ) : listing.trustLensStatus === 'PASSED' ? (
                 <div className="space-y-3 mb-6">
-                  <button
-                    onClick={() => {
-                      if (!user) {
-                        router.push(`/login?redirect=/checkout?listingId=${listing.id}`);
-                        return;
-                      }
-                      router.push(`/checkout?listingId=${listing.id}`);
-                    }}
-                    className="w-full px-6 py-4 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white rounded-xl font-black text-base transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
-                  >
-                    <Lock className="w-5 h-5 text-white/90" />
-                    <span>Buy with Escrow Protection</span>
-                  </button>
+                  {user?.role === 'ADMIN' ? (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-center">
+                      <div className="flex items-center justify-center gap-2 text-amber-800 font-bold text-sm mb-1">
+                        <ShieldCheck className="w-4 h-4 text-amber-600" />
+                        <span>Administrator Management Mode</span>
+                      </div>
+                      <p className="text-xs text-amber-700">
+                        Admin accounts are restricted to platform moderation and cannot checkout items.
+                      </p>
+                      <Link
+                        href="/admin?tab=listings"
+                        className="inline-flex items-center justify-center gap-1.5 mt-2.5 px-4 py-2 bg-white border border-amber-300 text-amber-900 rounded-lg text-xs font-semibold hover:bg-amber-100/50 transition-colors shadow-sm"
+                      >
+                        Manage in Admin Console &rarr;
+                      </Link>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          router.push(`/login?redirect=/checkout?listingId=${listing.id}`);
+                          return;
+                        }
+                        router.push(`/checkout?listingId=${listing.id}`);
+                      }}
+                      className="w-full px-6 py-4 bg-[var(--color-green)] hover:bg-[var(--color-green-dark)] text-white rounded-xl font-black text-base transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <Lock className="w-5 h-5 text-white/90" />
+                      <span>Buy with Escrow Protection</span>
+                    </button>
+                  )}
 
                   <button
                     onClick={() => {
