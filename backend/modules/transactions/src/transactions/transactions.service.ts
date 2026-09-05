@@ -349,6 +349,11 @@ export class TransactionsService implements OnModuleInit {
       this.logger.error('Failed to send seller escrow notification', err?.stack ?? err);
     });
 
+    // Send emails to buyer (order receipt) and seller (sale made + dispatch next steps)
+    this.sendOrderConfirmationEmails(updatedOrder).catch((err) => {
+      this.logger.error('Failed to send order confirmation emails to buyer and seller', err?.stack ?? err);
+    });
+
     // Generate invoice — fire-and-forget
     this.generateInvoiceForOrder(updatedOrder).catch((err) => {
       this.logger.error('Failed to generate invoice for confirmed payment', err?.stack ?? err);
@@ -762,6 +767,114 @@ export class TransactionsService implements OnModuleInit {
   }
 
   /**
+   * Send an outbound email notification via the notification service.
+   * Always call as fire-and-forget (.catch(...)) — must not block order flow.
+   */
+  private async sendEmail(params: {
+    type: string;
+    to: string;
+    payload: Record<string, any>;
+  }): Promise<void> {
+    const NOTIFICATION_SERVICE_URL = getInternalApiUrl();
+
+    const response = await fetch(
+      `${NOTIFICATION_SERVICE_URL}/notifications/send-email`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN!,
+        },
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`Notification send-email error: ${response.status} ${err}`);
+    }
+  }
+
+  /**
+   * Send order confirmation & receipt emails to buyer and sale & next steps email to seller.
+   */
+  private async sendOrderConfirmationEmails(order: any): Promise<void> {
+    const [buyerUser, buyerProfile, sellerUser, sellerProfile, listing] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: order.buyerId }, select: { email: true, name: true } }),
+      this.prisma.profile.findUnique({ where: { userId: order.buyerId }, select: { displayName: true, firstName: true, lastName: true } }),
+      this.prisma.user.findUnique({ where: { id: order.sellerId }, select: { email: true, name: true } }),
+      this.prisma.profile.findUnique({ where: { userId: order.sellerId }, select: { displayName: true, firstName: true, lastName: true } }),
+      this.prisma.listing.findUnique({ where: { id: order.listingId }, select: { title: true, brand: true, model: true } }),
+    ]);
+
+    const buyerName =
+      buyerProfile?.displayName ||
+      (buyerProfile?.firstName ? `${buyerProfile.firstName} ${buyerProfile.lastName || ''}`.trim() : null) ||
+      buyerUser?.name ||
+      buyerUser?.email?.split('@')[0] ||
+      'Buyer';
+
+    const sellerName =
+      sellerProfile?.displayName ||
+      (sellerProfile?.firstName ? `${sellerProfile.firstName} ${sellerProfile.lastName || ''}`.trim() : null) ||
+      sellerUser?.name ||
+      sellerUser?.email?.split('@')[0] ||
+      'Seller';
+
+    const listingTitle = order.listingTitle || listing?.title || `${listing?.brand || ''} ${listing?.model || ''}`.trim() || 'Electronic Device';
+
+    const itemPriceStr = `${order.currency} ${Number(order.amount).toFixed(2)}`;
+    const protectionFeeStr = order.protectionFee ? `${order.currency} ${Number(order.protectionFee).toFixed(2)}` : null;
+    const shippingFeeStr = order.shippingFee ? `${order.currency} ${Number(order.shippingFee).toFixed(2)}` : null;
+    const totalAmountStr = `${order.currency} ${(Number(order.totalAmount ?? order.amount)).toFixed(2)}`;
+    const sellerPayoutStr = `${order.currency} ${(Number(order.amount) + Number(order.shippingFee || 0)).toFixed(2)}`;
+
+    // 1. Email to Buyer: Order Complete & Itemized Receipt
+    if (buyerUser?.email) {
+      this.sendEmail({
+        type: 'order_confirmed',
+        to: buyerUser.email,
+        payload: {
+          buyerName,
+          listingTitle,
+          orderId: order.id,
+          amount: itemPriceStr,
+          protectionFee: protectionFeeStr,
+          shippingFee: shippingFeeStr,
+          totalAmount: totalAmountStr,
+          shippingAddress: order.shippingAddress,
+          shippingService: order.shippingService,
+        },
+      }).catch((err) => {
+        this.logger.error('Failed to send buyer order receipt email', err?.stack ?? err);
+      });
+    }
+
+    // 2. Email to Seller: Sale Made & Next Steps (Package, Ship & Add Tracking)
+    if (sellerUser?.email) {
+      this.sendEmail({
+        type: 'seller_order_received',
+        to: sellerUser.email,
+        payload: {
+          sellerName,
+          buyerName,
+          listingTitle,
+          orderId: order.id,
+          payoutAmount: sellerPayoutStr,
+          itemPrice: itemPriceStr,
+          shippingFee: shippingFeeStr,
+          currency: order.currency,
+          shippingAddress: order.shippingAddress,
+          shippingService: order.shippingService,
+        },
+      }).catch((err) => {
+        this.logger.error('Failed to send seller sale dispatch email', err?.stack ?? err);
+      });
+    }
+  }
+
+  /**
    * Send an order-related notification via the notification service.
    * Always call as fire-and-forget (.catch(...)) — must not block order flow.
    */
@@ -824,6 +937,27 @@ export class TransactionsService implements OnModuleInit {
             order.trackingNumber ? ` Tracking number: ${order.trackingNumber}` : ''
           } Please confirm delivery once you receive the item.`,
         });
+
+        // Outbound status email to buyer
+        this.prisma.user.findUnique({ where: { id: order.buyerId }, select: { email: true, name: true } })
+          .then((buyer) => {
+            if (buyer?.email) {
+              return this.sendEmail({
+                type: 'order_status',
+                to: buyer.email,
+                payload: {
+                  recipientName: buyer.name || 'Buyer',
+                  listingTitle: order.listingTitle || 'Your order',
+                  orderId: order.id,
+                  status: 'SHIPPED',
+                  message: `Your item has been dispatched by the seller via tracked courier.${
+                    order.trackingNumber ? ` Tracking Number: ${order.trackingNumber}` : ''
+                  }`,
+                },
+              });
+            }
+          })
+          .catch((err) => this.logger.error('Failed to send shipped email to buyer', err?.stack ?? err));
         break;
 
       case 'DELIVERED':
@@ -835,6 +969,25 @@ export class TransactionsService implements OnModuleInit {
           subject: 'Your order has been delivered',
           content: `Order #${shortId} has been marked as delivered. Please confirm receipt to release payment to the seller.`,
         });
+
+        // Outbound status email to buyer
+        this.prisma.user.findUnique({ where: { id: order.buyerId }, select: { email: true, name: true } })
+          .then((buyer) => {
+            if (buyer?.email) {
+              return this.sendEmail({
+                type: 'order_status',
+                to: buyer.email,
+                payload: {
+                  recipientName: buyer.name || 'Buyer',
+                  listingTitle: order.listingTitle || 'Your order',
+                  orderId: order.id,
+                  status: 'DELIVERED',
+                  message: 'Your parcel has been delivered! Please inspect your device within 48 hours and confirm receipt to release payment to the seller.',
+                },
+              });
+            }
+          })
+          .catch((err) => this.logger.error('Failed to send delivered email to buyer', err?.stack ?? err));
         break;
 
       case 'COMPLETED':
@@ -855,6 +1008,25 @@ export class TransactionsService implements OnModuleInit {
           subject: 'Order completed',
           content: `Order #${shortId} has been completed. Thank you for your purchase on VeriBuy!`,
         });
+
+        // Outbound status email to seller
+        this.prisma.user.findUnique({ where: { id: order.sellerId }, select: { email: true, name: true } })
+          .then((seller) => {
+            if (seller?.email) {
+              return this.sendEmail({
+                type: 'order_status',
+                to: seller.email,
+                payload: {
+                  recipientName: seller.name || 'Seller',
+                  listingTitle: order.listingTitle || 'Your sold item',
+                  orderId: order.id,
+                  status: 'COMPLETED',
+                  message: `Transaction completed! Your escrow payout of ${order.currency} ${sellerPayout} has been released.`,
+                },
+              });
+            }
+          })
+          .catch((err) => this.logger.error('Failed to send completed email to seller', err?.stack ?? err));
         break;
 
       case 'REFUNDED':

@@ -390,48 +390,224 @@ export class EmailService {
     listingTitle: string;
     orderId: string;
     amount: string;
+    protectionFee?: string | null;
+    shippingFee?: string | null;
+    totalAmount?: string | null;
+    shippingAddress?: any;
+    shippingService?: string | null;
   }): Promise<void> {
+    const totalDisplay = data.totalAmount || data.amount;
+
+    let addressHtml = '';
+    if (data.shippingAddress && typeof data.shippingAddress === 'object') {
+      const addr = data.shippingAddress;
+      const lines = [
+        addr.name,
+        addr.line1,
+        addr.line2,
+        [addr.city, addr.state, addr.postal_code].filter(Boolean).join(' '),
+        addr.country,
+      ].filter(Boolean);
+      if (lines.length > 0) {
+        addressHtml = `
+          <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:20px 0;">
+            <p style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Delivery Address</p>
+            <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.5;">${lines.map((l) => this.escape(String(l))).join('<br>')}</p>
+            ${data.shippingService ? `<p style="margin:8px 0 0 0;font-size:12px;color:#059669;font-weight:600;">Method: ${this.escape(data.shippingService)}</p>` : ''}
+          </div>
+        `;
+      }
+    }
+
     const bodyHtml = `
       <p style="margin-top:0;">Hi <strong>${this.escape(data.buyerName)}</strong>,</p>
-      <p>Your order has been confirmed! Your payment is now securely vaulted in <strong>VeriBuy Escrow</strong> and will not be disbursed until you receive and inspect your device.</p>
+      <p>Thank you for your order! Your payment has been securely vaulted in <strong>VeriBuy Escrow</strong>. The seller has been notified to prepare and dispatch your device.</p>
       
-      <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin:24px 0;">
+      <!-- Itemized Receipt -->
+      <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin:20px 0;">
+        <p style="margin:0 0 12px 0;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Order Receipt & Breakdown</p>
         <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:14px;">
           <tr>
             <td style="color:#64748b;padding:6px 0;">Order Reference:</td>
             <td align="right" style="font-family:monospace;font-weight:700;color:#0f172a;">#${this.escape(data.orderId.substring(0, 12))}</td>
           </tr>
           <tr>
-            <td style="color:#64748b;padding:6px 0;">Item:</td>
+            <td style="color:#64748b;padding:6px 0;">Item Purchased:</td>
             <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.listingTitle)}</td>
           </tr>
-          <tr style="border-top:1px solid #e2e8f0;">
-            <td style="color:#0f172a;font-weight:700;padding:10px 0 0 0;">Total Paid:</td>
-            <td align="right" style="font-size:16px;font-weight:800;color:#059669;padding:10px 0 0 0;">${this.escape(data.amount)}</td>
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Item Price:</td>
+            <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.amount)}</td>
+          </tr>
+          ${
+            data.protectionFee
+              ? `<tr>
+                  <td style="color:#64748b;padding:6px 0;">Buyer Protection (Trust Lens™ & Escrow):</td>
+                  <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.protectionFee)}</td>
+                </tr>`
+              : ''
+          }
+          ${
+            data.shippingFee
+              ? `<tr>
+                  <td style="color:#64748b;padding:6px 0;">Tracked Insured Delivery:</td>
+                  <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.shippingFee)}</td>
+                </tr>`
+              : ''
+          }
+          <tr style="border-top:2px solid #e2e8f0;">
+            <td style="color:#0f172a;font-weight:800;padding:12px 0 0 0;font-size:15px;">Total Paid:</td>
+            <td align="right" style="font-size:18px;font-weight:800;color:#059669;padding:12px 0 0 0;">${this.escape(totalDisplay)}</td>
           </tr>
         </table>
       </div>
 
-      <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:14px;font-size:13px;color:#065f46;">
-        &#10004; <strong>What happens next:</strong> The seller has been notified to pack and dispatch your item via tracked courier. You will receive tracking details as soon as it ships.
+      ${addressHtml}
+
+      <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:20px 0;font-size:13px;color:#065f46;">
+        <p style="margin:0 0 8px 0;font-weight:700;font-size:14px;">&#128737; VeriBuy Buyer Escrow Protection</p>
+        <p style="margin:0;line-height:1.5;">Your payment is safely held in escrow. The seller will only be paid after your parcel arrives and you have 48 hours to inspect your device to verify it matches its listed condition.</p>
+      </div>
+
+      <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:20px 0;">
+        <p style="margin:0 0 6px 0;font-weight:700;font-size:13px;color:#0f172a;">What happens next:</p>
+        <ol style="margin:0;padding-left:20px;font-size:13px;color:#334155;line-height:1.6;">
+          <li>The seller prepares and securely packages your device.</li>
+          <li>Once dispatched via tracked courier, you will receive an email with your tracking number.</li>
+          <li>When delivered, confirm receipt on VeriBuy to complete the transaction.</li>
+        </ol>
       </div>
     `;
 
     const html = this.buildEmailTemplate({
-      title: 'Order Confirmed & Escrow Secured',
-      previewText: `Order #${data.orderId.substring(0, 8)} confirmed. Payment secured in escrow.`,
-      badgeText: 'Payment Vaulted',
+      title: 'Order Confirmation & Payment Receipt',
+      previewText: `Order #${data.orderId.substring(0, 8)} confirmed. Total: ${totalDisplay}. Payment vaulted in escrow.`,
+      badgeText: 'Payment Vaulted in Escrow',
       badgeType: 'success',
       bodyHtml,
       cta: {
-        label: 'Track Order & Escrow',
+        label: 'View Order & Live Timeline',
         url: `${this.appUrl}/orders/${data.orderId}/tracking`,
       },
     });
 
     await this.send({
       to: data.buyerEmail,
-      subject: 'Your VeriBuy order is confirmed',
+      subject: `Order Confirmed: ${data.listingTitle} (Ref: #${data.orderId.substring(0, 8)})`,
+      html,
+    });
+  }
+
+  async sendSellerOrderReceivedEmail(data: {
+    sellerEmail: string;
+    sellerName: string;
+    buyerName: string;
+    listingTitle: string;
+    orderId: string;
+    payoutAmount: string;
+    itemPrice?: string | null;
+    shippingFee?: string | null;
+    currency?: string;
+    shippingAddress?: any;
+    shippingService?: string | null;
+  }): Promise<void> {
+    let addressHtml = '';
+    if (data.shippingAddress && typeof data.shippingAddress === 'object') {
+      const addr = data.shippingAddress;
+      const lines = [
+        addr.name,
+        addr.line1,
+        addr.line2,
+        [addr.city, addr.state, addr.postal_code].filter(Boolean).join(' '),
+        addr.country,
+      ].filter(Boolean);
+      if (lines.length > 0) {
+        addressHtml = `
+          <div style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px;margin:20px 0;">
+            <p style="margin:0 0 8px 0;font-size:12px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">&#128230; Ship To Address</p>
+            <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.5;">${lines.map((l) => this.escape(String(l))).join('<br>')}</p>
+            ${data.shippingService ? `<p style="margin:8px 0 0 0;font-size:12px;color:#92400e;font-weight:600;">Selected Courier Method: ${this.escape(data.shippingService)}</p>` : ''}
+          </div>
+        `;
+      }
+    }
+
+    const bodyHtml = `
+      <p style="margin-top:0;">Hi <strong>${this.escape(data.sellerName)}</strong>,</p>
+      <p style="font-size:16px;color:#0f172a;font-weight:600;">Great news! You have made a sale on VeriBuy.</p>
+      <p><strong>${this.escape(data.buyerName)}</strong> has purchased your listing <strong>${this.escape(data.listingTitle)}</strong>. The buyer's payment of <strong>${this.escape(data.payoutAmount)}</strong> has been verified and is currently held in <strong>VeriBuy Escrow</strong>.</p>
+      
+      <!-- Sale Details -->
+      <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin:20px 0;">
+        <p style="margin:0 0 12px 0;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Sale Summary</p>
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="font-size:14px;">
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Order Reference:</td>
+            <td align="right" style="font-family:monospace;font-weight:700;color:#0f172a;">#${this.escape(data.orderId.substring(0, 12))}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Item Sold:</td>
+            <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.listingTitle)}</td>
+          </tr>
+          <tr>
+            <td style="color:#64748b;padding:6px 0;">Buyer:</td>
+            <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.buyerName)}</td>
+          </tr>
+          ${
+            data.itemPrice
+              ? `<tr>
+                  <td style="color:#64748b;padding:6px 0;">Item Sale Price:</td>
+                  <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.itemPrice)}</td>
+                </tr>`
+              : ''
+          }
+          ${
+            data.shippingFee
+              ? `<tr>
+                  <td style="color:#64748b;padding:6px 0;">Shipping Reimbursement:</td>
+                  <td align="right" style="font-weight:600;color:#0f172a;">${this.escape(data.shippingFee)}</td>
+                </tr>`
+              : ''
+          }
+          <tr style="border-top:2px solid #e2e8f0;">
+            <td style="color:#0f172a;font-weight:800;padding:12px 0 0 0;font-size:15px;">Your Payout:</td>
+            <td align="right" style="font-size:18px;font-weight:800;color:#059669;padding:12px 0 0 0;">${this.escape(data.payoutAmount)}</td>
+          </tr>
+        </table>
+      </div>
+
+      ${addressHtml}
+
+      <!-- Next Steps for Seller -->
+      <div style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:18px;margin:20px 0;">
+        <p style="margin:0 0 10px 0;font-weight:700;font-size:14px;color:#166534;">&#128640; Next Steps — Action Required:</p>
+        <ol style="margin:0;padding-left:20px;font-size:13px;color:#15803d;line-height:1.7;">
+          <li><strong>Package the Device Securely:</strong> Protect the item with proper cushioning/bubble wrap and include all accessories described in your listing.</li>
+          <li><strong>Ship to the Buyer's Address:</strong> Dispatch the parcel via a tracked courier service (such as Royal Mail, DPD, or UPS) within 2 business days.</li>
+          <li><strong>Update VeriBuy with Tracking:</strong> Click the button below to enter the courier name and tracking number so the buyer can track the delivery and escrow release is initiated.</li>
+        </ol>
+      </div>
+
+      <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:14px;margin:20px 0;font-size:13px;color:#065f46;">
+        &#128176; <strong>Escrow Release:</strong> Once the tracking confirms delivery and the buyer's 48-hour inspection period concludes, your funds will be released automatically.
+      </div>
+    `;
+
+    const html = this.buildEmailTemplate({
+      title: 'Action Required: You Made a Sale!',
+      previewText: `New Sale: ${data.listingTitle}. Payment of ${data.payoutAmount} secured in escrow. Please package and dispatch.`,
+      badgeText: 'Action Required • Ship Order',
+      badgeType: 'warning',
+      bodyHtml,
+      cta: {
+        label: 'View Sale & Enter Tracking',
+        url: `${this.appUrl}/orders/${data.orderId}/tracking`,
+      },
+    });
+
+    await this.send({
+      to: data.sellerEmail,
+      subject: `Action Required: You made a sale! ${data.listingTitle} (Ref: #${data.orderId.substring(0, 8)})`,
       html,
     });
   }
