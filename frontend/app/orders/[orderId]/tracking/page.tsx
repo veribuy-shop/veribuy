@@ -583,7 +583,7 @@ export default function OrderTrackingPage() {
               <div className="flex-1">
                 <h3 className="text-base md:text-lg font-bold text-slate-900 mb-1">Has your parcel arrived?</h3>
                 <p className="text-xs md:text-sm text-slate-600 mb-5 leading-relaxed">
-                  Click below once you have physically received the package from the courier. Your 7-day inspection window will commence.
+                  Click below once you have physically received the package from the courier. Your 48-hour (2 days) inspection window will commence.
                 </p>
                 <button
                   disabled={actionLoading}

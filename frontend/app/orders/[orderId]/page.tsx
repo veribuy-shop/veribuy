@@ -320,7 +320,7 @@ export default function OrderConfirmationPage() {
                     <CircleCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   </div>
                   <span className="text-[10px] sm:text-xs font-semibold text-[var(--color-text)] truncate max-w-full">4. Delivered</span>
-                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">7-day check</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">48hr check</span>
                 </div>
 
                 {/* Step 5: Completed */}

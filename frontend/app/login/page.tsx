@@ -21,7 +21,7 @@ import {
 const WHY_SIGNIN = [
   { icon: ShieldCheck, label: '100% Trust Lens™ Verified Hardware' },
   { icon: Lock,        label: 'Stripe Escrow Payment Protection' },
-  { icon: RotateCcw,  label: '7-Day Money-Back Return Guarantee' },
+  { icon: RotateCcw,  label: '48-Hour Money-Back Return Guarantee' },
   { icon: BadgeCheck,  label: '0% Seller Commission Payouts' },
 ];
 

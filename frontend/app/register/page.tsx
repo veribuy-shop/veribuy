@@ -23,7 +23,7 @@ const WHY_JOIN = [
   { icon: ShieldCheck, label: '100% Trust Lens™ Verified Hardware' },
   { icon: Lock,        label: 'Stripe Escrow Payment Protection' },
   { icon: Coins,       label: '0% Seller Commission (Keep 100%)' },
-  { icon: RotateCcw,  label: '7-Day Money-Back Guarantee' },
+  { icon: RotateCcw,  label: '48-Hour Money-Back Guarantee' },
 ];
 
 export default function RegisterPage() {
