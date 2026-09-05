@@ -496,9 +496,6 @@ function AdminDashboardContent() {
       >
         <Link href="/" className="flex items-center gap-2">
           <BrandLogo />
-          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
-            ADMIN
-          </span>
         </Link>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -524,9 +521,6 @@ function AdminDashboardContent() {
           <div className="hidden md:flex items-center justify-between mb-6">
             <Link href="/" className="flex items-center gap-2" title="Back to Marketplace">
               <BrandLogo />
-              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded border border-emerald-200">
-                ADMIN
-              </span>
             </Link>
           </div>
 
