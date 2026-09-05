@@ -121,6 +121,29 @@ const TRUST_BADGE: Record<string, { label: string; lightClass: string; darkClass
 };
 
 const REVENUE_STATUSES = ['COMPLETED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'PAYMENT_RECEIVED'];
+const PAID_STATUSES = ['PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'COMPLETED'];
+
+/**
+ * Deduplicate multiple uncompleted PENDING checkout attempts for the same listing
+ * if the user already has a paid or progressing order for that listing.
+ */
+function deduplicateOrders(orders: Order[]): Order[] {
+  const paidListingIds = new Set<string>();
+  orders.forEach((o) => {
+    const lid = o.listingId || o.listing?.id;
+    if (lid && PAID_STATUSES.includes(o.status)) {
+      paidListingIds.add(lid);
+    }
+  });
+
+  return orders.filter((o) => {
+    const lid = o.listingId || o.listing?.id;
+    if (o.status === 'PENDING' && lid && paidListingIds.has(lid)) {
+      return false;
+    }
+    return true;
+  });
+}
 
 function buildSalesChart(orders: Order[]): { date: string; revenue: number }[] {
   const days = 30;
@@ -204,11 +227,10 @@ function DashboardContent() {
     } catch {}
   }, []);
 
-  const toggleTheme = () => {
-    const next = !isDarkMode;
-    setIsDarkMode(next);
+  const setThemeMode = (mode: 'light' | 'dark') => {
+    setIsDarkMode(mode === 'dark');
     try {
-      localStorage.setItem('veribuy_dashboard_theme', next ? 'dark' : 'light');
+      localStorage.setItem('veribuy_dashboard_theme', mode);
     } catch {}
   };
 
@@ -238,12 +260,14 @@ function DashboardContent() {
       const sellerOrdVal = settleOk(sellerOrdRes);
       if (sellerOrdVal?.ok) {
         const d = await sellerOrdVal.json();
-        setSellerOrders(Array.isArray(d) ? d : d.data ?? []);
+        const raw = Array.isArray(d) ? d : d.data ?? [];
+        setSellerOrders(deduplicateOrders(raw));
       }
       const buyerOrdVal = settleOk(buyerOrdRes);
       if (buyerOrdVal?.ok) {
         const d = await buyerOrdVal.json();
-        setBuyerOrders(Array.isArray(d) ? d : d.data ?? []);
+        const raw = Array.isArray(d) ? d : d.data ?? [];
+        setBuyerOrders(deduplicateOrders(raw));
       }
       const verVal = settleOk(verRes);
       if (verVal?.ok) {
@@ -400,27 +424,16 @@ function DashboardContent() {
         <Link href="/" className="flex items-center gap-2">
           <BrandLogo />
         </Link>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            className={cn(
-              'p-2 rounded-xl border',
-              isDarkMode ? 'bg-neutral-800 border-neutral-700 text-amber-400' : 'bg-slate-100 border-slate-200 text-slate-700'
-            )}
-          >
-            {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={cn(
-              'p-2 rounded-xl',
-              isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-700'
-            )}
-          >
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        </div>
+        <button
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-label="Toggle navigation menu"
+          className={cn(
+            'p-2 rounded-xl',
+            isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-700'
+          )}
+        >
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
 
       {/* Sidebar Navigation */}
@@ -439,18 +452,6 @@ function DashboardContent() {
             <Link href="/" title="Back to VeriBuy Home" className="group flex items-center gap-2">
               <BrandLogo />
             </Link>
-            <button
-              onClick={toggleTheme}
-              title={isDarkMode ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-              className={cn(
-                'p-2 rounded-xl border transition-colors',
-                isDarkMode
-                  ? 'bg-neutral-800 border-neutral-700 text-amber-400 hover:bg-neutral-700'
-                  : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
-              )}
-            >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
           </div>
 
           {/* Back to Marketplace Button */}
@@ -1458,6 +1459,50 @@ function DashboardContent() {
         {/* ─── TAB 8: SETTINGS & SECURITY ─── */}
         {activeNav === 'settings' && (
           <div className="space-y-6 max-w-2xl">
+            {/* Dashboard Appearance Theme */}
+            <div
+              className={cn(
+                'border rounded-3xl p-6 sm:p-8 shadow-sm space-y-4',
+                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+              )}
+            >
+              <div>
+                <h3 className={cn('text-base font-bold mb-1 flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  <Sparkles className="w-4 h-4 text-emerald-600" /> Dashboard Appearance
+                </h3>
+                <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                  Choose your preferred color theme across all dashboard views.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setThemeMode('light')}
+                  className={cn(
+                    'p-4 rounded-2xl border flex items-center justify-center gap-2 font-semibold text-xs transition-all',
+                    !isDarkMode
+                      ? 'bg-emerald-50/50 border-emerald-600 text-emerald-700 ring-2 ring-emerald-500/20 shadow-sm'
+                      : 'bg-neutral-950 border-neutral-800 text-neutral-400 hover:text-white'
+                  )}
+                >
+                  <Sun className="w-4 h-4 text-amber-500" /> Light Mode (Default)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setThemeMode('dark')}
+                  className={cn(
+                    'p-4 rounded-2xl border flex items-center justify-center gap-2 font-semibold text-xs transition-all',
+                    isDarkMode
+                      ? 'bg-neutral-950 border-emerald-500 text-emerald-400 ring-2 ring-emerald-500/20 shadow-sm'
+                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:text-slate-900'
+                  )}
+                >
+                  <Moon className="w-4 h-4 text-purple-500" /> Dark Mode
+                </button>
+              </div>
+            </div>
+
             {/* Security */}
             <div
               className={cn(
