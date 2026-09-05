@@ -938,26 +938,65 @@ export class TransactionsService implements OnModuleInit {
           } Please confirm delivery once you receive the item.`,
         });
 
-        // Outbound status email to buyer
-        this.prisma.user.findUnique({ where: { id: order.buyerId }, select: { email: true, name: true } })
-          .then((buyer) => {
-            if (buyer?.email) {
-              return this.sendEmail({
-                type: 'order_status',
-                to: buyer.email,
+        // Dispatch rich emails to buyer and seller
+        Promise.all([
+          this.prisma.user.findUnique({ where: { id: order.buyerId }, select: { email: true, name: true } }),
+          this.prisma.profile.findUnique({ where: { userId: order.buyerId }, select: { displayName: true, firstName: true, lastName: true } }),
+          this.prisma.user.findUnique({ where: { id: order.sellerId }, select: { email: true, name: true } }),
+          this.prisma.profile.findUnique({ where: { userId: order.sellerId }, select: { displayName: true, firstName: true, lastName: true } }),
+          this.prisma.listing.findUnique({ where: { id: order.listingId }, select: { title: true, brand: true, model: true } }),
+        ])
+          .then(([buyerUser, buyerProfile, sellerUser, sellerProfile, listing]) => {
+            const buyerName =
+              buyerProfile?.displayName ||
+              (buyerProfile?.firstName ? `${buyerProfile.firstName} ${buyerProfile.lastName || ''}`.trim() : null) ||
+              buyerUser?.name ||
+              buyerUser?.email?.split('@')[0] ||
+              'Buyer';
+
+            const sellerName =
+              sellerProfile?.displayName ||
+              (sellerProfile?.firstName ? `${sellerProfile.firstName} ${sellerProfile.lastName || ''}`.trim() : null) ||
+              sellerUser?.name ||
+              sellerUser?.email?.split('@')[0] ||
+              'Seller';
+
+            const listingTitle = order.listingTitle || listing?.title || `${listing?.brand || ''} ${listing?.model || ''}`.trim() || 'Your Order';
+
+            // 1. Email to Buyer with tracking info
+            if (buyerUser?.email) {
+              this.sendEmail({
+                type: 'order_dispatched',
+                to: buyerUser.email,
                 payload: {
-                  recipientName: buyer.name || 'Buyer',
-                  listingTitle: order.listingTitle || 'Your order',
+                  buyerName,
+                  sellerName,
+                  listingTitle,
                   orderId: order.id,
-                  status: 'SHIPPED',
-                  message: `Your item has been dispatched by the seller via tracked courier.${
-                    order.trackingNumber ? ` Tracking Number: ${order.trackingNumber}` : ''
-                  }`,
+                  trackingNumber: order.trackingNumber,
+                  shippingService: order.shippingService,
+                  shippingAddress: order.shippingAddress,
                 },
-              });
+              }).catch((err) => this.logger.error('Failed to send dispatched email to buyer', err?.stack ?? err));
+            }
+
+            // 2. Confirmation email to Seller
+            if (sellerUser?.email) {
+              this.sendEmail({
+                type: 'seller_dispatch_confirmed',
+                to: sellerUser.email,
+                payload: {
+                  sellerName,
+                  buyerName,
+                  listingTitle,
+                  orderId: order.id,
+                  trackingNumber: order.trackingNumber,
+                  shippingService: order.shippingService,
+                },
+              }).catch((err) => this.logger.error('Failed to send dispatch confirmation email to seller', err?.stack ?? err));
             }
           })
-          .catch((err) => this.logger.error('Failed to send shipped email to buyer', err?.stack ?? err));
+          .catch((err) => this.logger.error('Failed to fetch users for dispatched email', err?.stack ?? err));
         break;
 
       case 'DELIVERED':

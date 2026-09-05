@@ -286,6 +286,29 @@ export class NotificationsService {
           shippingService: data.payload['shippingService'],
         });
         break;
+      case 'order_dispatched':
+        await this.email.sendOrderDispatchedEmail({
+          buyerEmail: data.to,
+          buyerName: data.payload['buyerName'],
+          sellerName: data.payload['sellerName'],
+          listingTitle: data.payload['listingTitle'],
+          orderId: data.payload['orderId'],
+          trackingNumber: data.payload['trackingNumber'],
+          shippingService: data.payload['shippingService'],
+          shippingAddress: data.payload['shippingAddress'],
+        });
+        break;
+      case 'seller_dispatch_confirmed':
+        await this.email.sendSellerDispatchConfirmationEmail({
+          sellerEmail: data.to,
+          sellerName: data.payload['sellerName'],
+          buyerName: data.payload['buyerName'],
+          listingTitle: data.payload['listingTitle'],
+          orderId: data.payload['orderId'],
+          trackingNumber: data.payload['trackingNumber'],
+          shippingService: data.payload['shippingService'],
+        });
+        break;
       case 'order_status':
         await this.email.sendOrderStatusEmail({
           recipientEmail: data.to,
