@@ -41,6 +41,8 @@ import {
   Moon,
   ArrowLeft,
   Percent,
+  ExternalLink,
+  Smartphone,
 } from 'lucide-react';
 import ConfirmModal from '@/components/confirm-modal';
 import {
@@ -69,6 +71,7 @@ interface User {
 
 interface Listing {
   id: string;
+  sellerId?: string;
   title: string;
   deviceType?: string;
   brand: string;
@@ -78,6 +81,8 @@ interface Listing {
   status: string;
   trustLensStatus: string;
   conditionGrade: string | null;
+  imageUrl?: string | null;
+  images?: Array<{ id?: string; url: string }>;
   createdAt: string;
   publishedAt: string | null;
 }
@@ -222,7 +227,7 @@ function AdminDashboardContent() {
 
       const [usersRes, listingsRes, ordersRes, verRes, healthRes] = await Promise.allSettled([
         withTimeout(authFetch('/api/admin/users')),
-        withTimeout(authFetch('/api/admin/listings')),
+        withTimeout(authFetch('/api/admin/listings?status=ALL&limit=100')),
         withTimeout(authFetch('/api/admin/orders?limit=100&enrich=true')),
         withTimeout(authFetch('/api/trust-lens?limit=1000')),
         withTimeout(authFetch('/api/admin/health')),
@@ -432,13 +437,26 @@ function AdminDashboardContent() {
   });
 
   const filteredListings = listings.filter((l) => {
-    const matchesFilter = listingStatusFilter === 'ALL' || l.status === listingStatusFilter;
+    let matchesFilter = true;
+    if (listingStatusFilter === 'ALL') {
+      matchesFilter = true;
+    } else if (listingStatusFilter === 'UNDER_REVIEW') {
+      matchesFilter = l.status === 'UNDER_REVIEW' || l.status === 'DRAFT';
+    } else if (listingStatusFilter === 'INACTIVE') {
+      matchesFilter = l.status === 'INACTIVE';
+    } else if (listingStatusFilter === 'DELISTED') {
+      matchesFilter = l.status === 'DELISTED' || l.status === 'REJECTED';
+    } else {
+      matchesFilter = l.status === listingStatusFilter;
+    }
     const term = listingSearch.toLowerCase();
     const matchesSearch =
       !term ||
       (l.title && l.title.toLowerCase().includes(term)) ||
       (l.brand && l.brand.toLowerCase().includes(term)) ||
-      (l.model && l.model.toLowerCase().includes(term));
+      (l.model && l.model.toLowerCase().includes(term)) ||
+      (l.id && l.id.toLowerCase().includes(term)) ||
+      (l.sellerId && l.sellerId.toLowerCase().includes(term));
     return matchesFilter && matchesSearch;
   });
 
@@ -950,114 +968,280 @@ function AdminDashboardContent() {
           <div className="space-y-6">
             <div
               className={cn(
-                'flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-2xl p-4 shadow-sm',
-                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-              )}
-            >
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-                {['ALL', 'ACTIVE', 'UNDER_REVIEW', 'SOLD', 'REJECTED'].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setListingStatusFilter(s)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors',
-                      listingStatusFilter === s
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : isDarkMode
-                        ? 'bg-neutral-800 text-neutral-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    )}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Filter listings..."
-                  value={listingSearch}
-                  onChange={(e) => setListingSearch(e.target.value)}
-                  className={cn(
-                    'border rounded-xl pl-9 pr-4 py-1.5 text-xs focus:outline-none focus:border-emerald-500 w-full sm:w-60',
-                    isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                  )}
-                />
-              </div>
-            </div>
-
-            <div
-              className={cn(
                 'border rounded-3xl overflow-hidden shadow-sm',
                 isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
               )}
             >
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className={cn('uppercase tracking-wider border-b', isDarkMode ? 'bg-neutral-950/80 text-neutral-400 border-neutral-800' : 'bg-slate-50 text-slate-500 border-slate-200')}>
-                    <tr>
-                      <th className="py-4 px-6">Device</th>
-                      <th className="py-4 px-6">Price</th>
-                      <th className="py-4 px-6">Status</th>
-                      <th className="py-4 px-6">Trust Lens</th>
-                      <th className="py-4 px-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
-                    {filteredListings.map((l) => (
-                      <tr key={l.id} className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50')}>
-                        <td className="py-4 px-6">
-                          <p className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>{l.title}</p>
-                          <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                            {l.brand} &bull; {l.model}
-                          </p>
-                        </td>
-                        <td className="py-4 px-6 font-bold text-emerald-600">
-                          {formatPrice(l.price, l.currency)}
-                        </td>
-                        <td className="py-4 px-6">
-                          <span className={cn('px-2.5 py-1 rounded-full text-[11px] font-semibold border', isDarkMode ? 'bg-neutral-800 text-neutral-300 border-neutral-700' : 'bg-slate-100 text-slate-700 border-slate-200')}>
-                            {l.status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6">
-                          <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {l.trustLensStatus}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6 text-right space-x-2">
-                          <Link
-                            href={`/listings/${l.id}`}
-                            className={cn(
-                              'px-3 py-1.5 font-semibold rounded-lg border inline-block shadow-sm',
-                              isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-200' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                            )}
-                          >
-                            View
-                          </Link>
-                          {l.status === 'ACTIVE' ? (
-                            <button
-                              onClick={() => handleUpdateListingStatus(l.id, 'DELISTED')}
-                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg"
-                            >
-                              Delist
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleUpdateListingStatus(l.id, 'ACTIVE')}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg shadow-sm"
-                            >
-                              Activate
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {/* Card Header with total count & search */}
+              <div
+                className={cn(
+                  'p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4',
+                  isDarkMode ? 'border-neutral-800' : 'border-slate-200'
+                )}
+              >
+                <div>
+                  <h3 className={cn('text-base font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Catalog & Inventory Moderation
+                  </h3>
+                  <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Showing marketplace listings ({listings.length} total) across all lifecycle statuses
+                  </p>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by title, brand, model, ID..."
+                    value={listingSearch}
+                    onChange={(e) => setListingSearch(e.target.value)}
+                    className={cn(
+                      'border rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-emerald-500 w-full sm:w-72 transition-colors',
+                      isDarkMode
+                        ? 'bg-neutral-950 border-neutral-800 text-white placeholder-neutral-500'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
+                    )}
+                  />
+                </div>
               </div>
+
+              {/* Status Filter Tabs */}
+              <div
+                className={cn(
+                  'px-6 py-3 border-b flex items-center gap-2 overflow-x-auto scrollbar-none',
+                  isDarkMode ? 'bg-neutral-950/40 border-neutral-800' : 'bg-slate-50/70 border-slate-200'
+                )}
+              >
+                {[
+                  { id: 'ALL', label: 'All Listings', count: listings.length },
+                  { id: 'ACTIVE', label: 'Active', count: listings.filter((l) => l.status === 'ACTIVE').length },
+                  { id: 'UNDER_REVIEW', label: 'Under Review', count: listings.filter((l) => l.status === 'UNDER_REVIEW' || l.status === 'DRAFT').length },
+                  { id: 'INACTIVE', label: 'In Checkout / Reserved', count: listings.filter((l) => l.status === 'INACTIVE').length },
+                  { id: 'SOLD', label: 'Sold', count: listings.filter((l) => l.status === 'SOLD').length },
+                  { id: 'DELISTED', label: 'Delisted / Suspended', count: listings.filter((l) => l.status === 'DELISTED' || l.status === 'REJECTED').length },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setListingStatusFilter(tab.id)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5',
+                      listingStatusFilter === tab.id
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : isDarkMode
+                        ? 'bg-neutral-800/80 text-neutral-400 hover:text-white hover:bg-neutral-800'
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80 shadow-xs'
+                    )}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.2 text-[10px] rounded-full font-mono font-bold',
+                        listingStatusFilter === tab.id
+                          ? 'bg-emerald-700/80 text-white'
+                          : isDarkMode
+                          ? 'bg-neutral-900 text-neutral-400'
+                          : 'bg-slate-100 text-slate-500'
+                      )}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Table or Empty State */}
+              {filteredListings.length === 0 ? (
+                <div className="text-center py-16 px-4">
+                  <div
+                    className={cn(
+                      'w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center border',
+                      isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-400' : 'bg-slate-100 border-slate-200 text-slate-400'
+                    )}
+                  >
+                    <Package className="w-6 h-6" />
+                  </div>
+                  <h4 className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    No listings found
+                  </h4>
+                  <p className={cn('text-xs max-w-sm mx-auto mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    {listingSearch
+                      ? `No marketplace items matched "${listingSearch}". Try searching by another keyword.`
+                      : 'No marketplace items currently match this status filter.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead
+                      className={cn(
+                        'uppercase tracking-wider border-b',
+                        isDarkMode ? 'bg-neutral-950/80 text-neutral-400 border-neutral-800' : 'bg-slate-50 text-slate-500 border-slate-200'
+                      )}
+                    >
+                      <tr>
+                        <th className="py-4 px-6">Product / Device</th>
+                        <th className="py-4 px-6">Price</th>
+                        <th className="py-4 px-6">Condition</th>
+                        <th className="py-4 px-6">Listing Status</th>
+                        <th className="py-4 px-6">Trust Lens™</th>
+                        <th className="py-4 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
+                      {filteredListings.map((l) => {
+                        const coverImg = l.imageUrl || (Array.isArray(l.images) && l.images[0]?.url) || null;
+                        const isLive = l.status === 'ACTIVE';
+                        const isReserved = l.status === 'INACTIVE';
+                        const isSold = l.status === 'SOLD';
+                        const isUnderReview = l.status === 'UNDER_REVIEW' || l.status === 'DRAFT';
+                        const isDelisted = l.status === 'DELISTED' || l.status === 'REJECTED';
+
+                        return (
+                          <tr
+                            key={l.id}
+                            className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50')}
+                          >
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-3.5">
+                                <div
+                                  className={cn(
+                                    'w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden border shrink-0',
+                                    isDarkMode ? 'bg-neutral-950 border-neutral-800 text-neutral-500' : 'bg-slate-100 border-slate-200 text-slate-400'
+                                  )}
+                                >
+                                  {coverImg ? (
+                                    <img src={coverImg} alt={l.title} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Smartphone className="w-5 h-5" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <Link
+                                    href={`/listings/${l.id}`}
+                                    className={cn('font-bold text-sm hover:underline line-clamp-1', isDarkMode ? 'text-white' : 'text-slate-900')}
+                                  >
+                                    {l.title}
+                                  </Link>
+                                  <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                                    {l.brand} &bull; {l.model}
+                                  </p>
+                                  <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                                    ID: {l.id.slice(0, 8)}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-4 px-6 font-bold text-emerald-600 text-sm whitespace-nowrap">
+                              {formatPrice(l.price, l.currency || 'GBP')}
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              {l.conditionGrade ? (
+                                <span
+                                  className={cn(
+                                    'px-2.5 py-1 rounded-lg text-[11px] font-semibold border',
+                                    isDarkMode ? 'bg-neutral-800 text-neutral-300 border-neutral-700' : 'bg-slate-100 text-slate-700 border-slate-200'
+                                  )}
+                                >
+                                  {l.conditionGrade}
+                                </span>
+                              ) : (
+                                <span className="text-neutral-400 text-xs">—</span>
+                              )}
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <span
+                                className={cn(
+                                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border',
+                                  isLive && 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                                  isReserved && 'bg-amber-50 text-amber-700 border-amber-200',
+                                  isSold && 'bg-purple-50 text-purple-700 border-purple-200',
+                                  isUnderReview && 'bg-sky-50 text-sky-700 border-sky-200',
+                                  isDelisted && 'bg-red-50 text-red-700 border-red-200'
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    'w-1.5 h-1.5 rounded-full',
+                                    isLive && 'bg-emerald-500',
+                                    isReserved && 'bg-amber-500',
+                                    isSold && 'bg-purple-500',
+                                    isUnderReview && 'bg-sky-500',
+                                    isDelisted && 'bg-red-500'
+                                  )}
+                                />
+                                {isReserved
+                                  ? 'In Checkout'
+                                  : isUnderReview
+                                  ? 'Under Review'
+                                  : isDelisted
+                                  ? 'Delisted'
+                                  : l.status}
+                              </span>
+                            </td>
+
+                            <td className="py-4 px-6 whitespace-nowrap">
+                              <span
+                                className={cn(
+                                  'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border',
+                                  l.trustLensStatus === 'VERIFIED'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : l.trustLensStatus === 'FLAGGED' || l.trustLensStatus === 'REJECTED'
+                                    ? 'bg-red-50 text-red-700 border-red-200'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                )}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                                {l.trustLensStatus || 'PENDING'}
+                              </span>
+                            </td>
+
+                            <td className="py-4 px-6 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-2">
+                                <Link
+                                  href={`/listings/${l.id}`}
+                                  target="_blank"
+                                  className={cn(
+                                    'px-2.5 py-1.5 font-semibold rounded-lg border inline-flex items-center gap-1 text-xs transition-colors shadow-xs',
+                                    isDarkMode
+                                      ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                  )}
+                                >
+                                  <span>View</span>
+                                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                                </Link>
+
+                                {isLive ? (
+                                  <button
+                                    onClick={() => handleUpdateListingStatus(l.id, 'DELISTED')}
+                                    disabled={actionLoading}
+                                    className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50"
+                                    title="Delist from marketplace"
+                                  >
+                                    Delist
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => handleUpdateListingStatus(l.id, 'ACTIVE')}
+                                    disabled={actionLoading}
+                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs shadow-xs transition-colors disabled:opacity-50"
+                                    title="Reactivate on marketplace"
+                                  >
+                                    Activate
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}

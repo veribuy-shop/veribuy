@@ -157,6 +157,9 @@ export interface SafeListing {
   imei: string | null;
   serialNumber: string | null;
   publishedAt: string | null;
+  imageUrl?: string | null;
+  images?: Array<{ id?: string; url: string }>;
+  seller?: SafePublicProfile | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -368,6 +371,9 @@ export function sanitizeListing(raw: Record<string, any>): SafeListing {
     imei: raw.imei ?? null,
     serialNumber: raw.serialNumber ?? null,
     publishedAt: raw.publishedAt ?? null,
+    imageUrl: raw.imageUrl ?? raw.images?.[0]?.url ?? (typeof raw.images?.[0] === 'string' ? raw.images[0] : null),
+    images: Array.isArray(raw.images) ? raw.images : [],
+    seller: raw.seller ? sanitizePublicProfile(raw.seller) : null,
     createdAt: raw.createdAt ?? '',
     updatedAt: raw.updatedAt ?? '',
   };

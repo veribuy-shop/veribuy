@@ -13,8 +13,20 @@ export async function GET(request: NextRequest) {
       return authResult.error;
     }
 
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status') || 'ALL';
+    const limit = searchParams.get('limit') || '100';
+    const page = searchParams.get('page') || '1';
+    const search = searchParams.get('search');
+
+    const backendUrl = new URL(`${LISTING_SERVICE_URL}/listings`);
+    backendUrl.searchParams.set('status', status);
+    backendUrl.searchParams.set('limit', limit);
+    backendUrl.searchParams.set('page', page);
+    if (search) backendUrl.searchParams.set('search', search);
+
     // Fetch all listings
-    const response = await fetch(`${LISTING_SERVICE_URL}/listings`, {
+    const response = await fetch(backendUrl.toString(), {
       method: 'GET',
       headers: createAuthHeaders(authResult.token),
     });
