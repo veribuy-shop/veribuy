@@ -20,6 +20,7 @@ import { formatPrice } from '@/lib/currency';
 
 interface Order {
   id: string;
+  listingId?: string | null;
   amount: number;
   currency: string;
   status: string;
@@ -138,27 +139,36 @@ export default function OrderTrackingPage() {
   const getTimeline = (order: Order): TimelineStep[] => {
     const steps: TimelineStep[] = [];
 
-    // Order Placed
-    steps.push({
-      title: 'Order Placed & Escrow Initiated',
-      description: 'Your order was registered and payment initialized',
-      status: 'completed',
-      timestamp: order.createdAt,
-    });
+    // Cancelled state
+    if (order.status === 'CANCELLED') {
+      steps.push({
+        title: 'Checkout Cancelled',
+        description: 'This checkout attempt was cancelled. No payment was charged and the listing was returned to the active queue.',
+        status: 'completed',
+        timestamp: order.createdAt,
+      });
+      return steps;
+    }
 
-    // Payment Received
-    if (order.paidAt) {
+    // Step 1: Placed / Paid
+    if (order.status === 'PENDING') {
+      steps.push({
+        title: 'Checkout Initialized (Unpaid)',
+        description: 'Checkout was initiated — awaiting payment clearance from buyer',
+        status: 'current',
+        timestamp: order.createdAt,
+      });
       steps.push({
         title: 'Payment Secured in Escrow',
-        description: 'Funds safely vaulted in VeriBuy Escrow protection',
-        status: 'completed',
-        timestamp: order.paidAt,
+        description: 'Funds will be safely vaulted in VeriBuy Escrow once payment completes',
+        status: 'upcoming',
       });
     } else {
       steps.push({
-        title: 'Awaiting Payment Clearance',
-        description: 'Waiting for payment confirmation from bank',
-        status: order.status === 'PENDING' ? 'current' : 'upcoming',
+        title: 'Order Placed & Escrow Secured',
+        description: 'Payment was verified and vaulted in VeriBuy Escrow protection',
+        status: 'completed',
+        timestamp: order.paidAt || order.createdAt,
       });
     }
 
@@ -298,10 +308,22 @@ export default function OrderTrackingPage() {
                 Order <span className="font-mono text-slate-700 font-semibold">#{order.id}</span>
               </p>
             </div>
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
-              <ShieldCheck className="w-4 h-4 shrink-0" />
-              Escrow Protection Active
-            </div>
+            {order.status === 'CANCELLED' ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Checkout Cancelled
+              </div>
+            ) : order.status === 'PENDING' ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold">
+                <Clock className="w-4 h-4 shrink-0" />
+                Awaiting Payment
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                Escrow Protection Active
+              </div>
+            )}
           </div>
         </div>
 
@@ -439,6 +461,118 @@ export default function OrderTrackingPage() {
             <span>{actionError}</span>
           </div>
         )}
+
+        {/* Cancelled Banner */}
+        {order.status === 'CANCELLED' && (
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm mb-6">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base md:text-lg font-bold text-slate-900 mb-1">Checkout Attempt Cancelled</h3>
+                <p className="text-xs md:text-sm text-slate-500 mb-4 leading-relaxed">
+                  This checkout session was cancelled. No payment was charged, and the device has been made available again in the marketplace.
+                </p>
+                <Link
+                  href="/browse"
+                  className="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-sm"
+                >
+                  Browse Available Devices
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Pending Checkout Actions */}
+        {order.status === 'PENDING' && (() => {
+          const createdAtMs = new Date(order.createdAt).getTime();
+          const elapsedMinutes = Math.floor((Date.now() - createdAtMs) / (1000 * 60));
+          const remainingMinutes = Math.max(0, 30 - elapsedMinutes);
+          const isExpired = remainingMinutes <= 0;
+
+          if (isExpired) {
+            return (
+              <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm mb-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-base md:text-lg font-bold text-slate-900 mb-1">Checkout Session Expired</h3>
+                    <p className="text-xs md:text-sm text-slate-500 mb-4 leading-relaxed">
+                      This checkout attempt was held for 30 minutes and has now expired. The device has been returned to the marketplace.
+                    </p>
+                    <Link
+                      href="/browse"
+                      className="inline-flex items-center justify-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-sm"
+                    >
+                      Browse Available Devices
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="bg-gradient-to-br from-amber-50 via-white to-white border border-amber-200 rounded-3xl p-6 md:p-8 shadow-sm mb-6">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700 shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <h3 className="text-base md:text-lg font-bold text-slate-900">Checkout Pending Payment</h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                      {remainingMinutes}m remaining
+                    </span>
+                  </div>
+                  <p className="text-xs md:text-sm text-slate-600 mb-5 leading-relaxed">
+                    This order is reserved for your checkout session. You have {remainingMinutes} minutes to complete secure payment before the item is released back to the marketplace.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {(listing?.id || order.listingId) && (
+                      <Link
+                        href={`/checkout/${listing?.id || order.listingId}`}
+                        className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-sm inline-flex items-center gap-2"
+                      >
+                        Complete Checkout
+                      </Link>
+                    )}
+                    <button
+                      disabled={actionLoading}
+                      onClick={async () => {
+                        if (!confirm('Are you sure you want to cancel this checkout attempt?')) return;
+                        setActionLoading(true);
+                        try {
+                          const res = await fetch(`/api/checkout/orders/${orderId}`, {
+                            method: 'DELETE',
+                            credentials: 'include',
+                          });
+                          if (res.ok) {
+                            await fetchOrderDetails();
+                          } else {
+                            const data = await res.json();
+                            setActionError(data.error || 'Failed to cancel checkout');
+                          }
+                        } catch (err: any) {
+                          setActionError(err.message || 'Failed to cancel checkout');
+                        } finally {
+                          setActionLoading(false);
+                        }
+                      }}
+                      className="px-5 py-2.5 bg-slate-100 hover:bg-red-50 hover:text-red-700 text-slate-700 font-semibold text-xs sm:text-sm rounded-xl border border-slate-200 transition-all disabled:opacity-50"
+                    >
+                      {actionLoading ? 'Cancelling...' : 'Cancel Checkout Attempt'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {isBuyer && order.status === 'SHIPPED' && (
           <div className="bg-gradient-to-br from-blue-50 via-white to-white border border-blue-200 rounded-3xl p-6 md:p-8 shadow-sm">

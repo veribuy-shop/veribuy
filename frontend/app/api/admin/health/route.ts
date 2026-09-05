@@ -94,14 +94,36 @@ export async function GET(request: NextRequest) {
       return authResult.error;
     }
 
-    // Run all checks against the single live health payload
-    const [backend, postgres, redis] = await Promise.all([
-      checkBackend(),
-      checkPostgres(),
-      checkRedis(),
-    ]);
+    const { data, responseTime, ok } = await fetchBackendHealth().catch(() => ({
+      data: {},
+      responseTime: -1,
+      ok: false,
+    }));
 
-    const services = [backend, postgres, redis];
+    const backendStatus: HealthState = !ok ? 'unhealthy' : data?.status === 'error' ? 'degraded' : 'healthy';
+    const dbStatus = data?.details?.database?.status;
+    const postgresStatus: HealthState =
+      !ok || dbStatus === 'down' ? 'unhealthy' : dbStatus === 'up' ? 'healthy' : 'degraded';
+    const redisStatus = data?.details?.redis?.status;
+    const redisHealthStatus: HealthState =
+      !ok || redisStatus === 'down' ? 'unhealthy' : redisStatus === 'up' ? 'healthy' : 'degraded';
+
+    const services: ServiceHealth[] = [
+      { name: 'Core Backend Engine', status: backendStatus, responseTime, details: { service: 'veribuy-backend', port: 3000 }, url: BACKEND_URL },
+      { name: 'PostgreSQL 17 Database', status: postgresStatus, responseTime: data?.details?.database?.responseTime ?? responseTime, details: { database: dbStatus ?? 'unknown' }, url: BACKEND_URL },
+      { name: 'Redis Cache & State', status: redisHealthStatus, responseTime: data?.details?.redis?.responseTime ?? responseTime, details: { redis: redisStatus ?? 'unknown' }, url: BACKEND_URL },
+    ];
+
+    const modules = [
+      { name: 'Auth & Identity API', route: '/auth', status: backendStatus === 'healthy' ? 'operational' : 'degraded', description: 'JWT tokens, role guards, and cookie sessions' },
+      { name: 'Users & Profiles API', route: '/users', status: backendStatus === 'healthy' ? 'operational' : 'degraded', description: 'User account profiles & KYC states' },
+      { name: 'Listings & Catalog API', route: '/listings', status: backendStatus === 'healthy' ? 'operational' : 'degraded', description: 'Catalog indexing, filtering, and prices' },
+      { name: 'Trust Lens™ Verification API', route: '/trust-lens', status: backendStatus === 'healthy' ? 'operational' : 'degraded', description: 'Device integrity check & verification certificates' },
+      { name: 'Transactions & Escrow API', route: '/transactions', status: backendStatus === 'healthy' ? 'operational' : 'degraded', description: 'Stripe intents, escrow vaulting & order payouts' },
+      { name: 'Evidence Vault API', route: '/evidence', status: backendStatus === 'healthy' ? 'operational' : 'degraded', description: 'Cloudinary media uploads & inspection assets' },
+      { name: 'Notifications & Messaging API', route: '/messages', status: backendStatus === 'healthy' ? 'operational' : 'degraded', description: 'Order lifecycle alerts & user communications' },
+    ];
+
     const healthyCount = services.filter((s) => s.status === 'healthy').length;
     const totalCount = services.length;
 
@@ -116,7 +138,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       overall: overallStatus,
       services,
-      infrastructure: [],
+      modules,
       summary: {
         healthy: healthyCount,
         unhealthy: services.filter((s) => s.status === 'unhealthy').length,

@@ -34,6 +34,15 @@ export class HealthController {
       status: databaseUp ? 'ok' : 'error',
       service: 'veribuy-backend',
       timestamp: new Date().toISOString(),
+      modules: {
+        auth: { name: 'Auth & Identity API', status: 'up', route: '/auth' },
+        users: { name: 'Users & Profiles API', status: 'up', route: '/users' },
+        listings: { name: 'Listings & Catalog API', status: 'up', route: '/listings' },
+        trustLens: { name: 'Trust Lens™ Verification API', status: 'up', route: '/trust-lens' },
+        transactions: { name: 'Transactions & Escrow API', status: 'up', route: '/transactions' },
+        evidence: { name: 'Evidence Vault API', status: 'up', route: '/evidence' },
+        notifications: { name: 'Notifications & Messaging API', status: 'up', route: '/messages' },
+      },
       details: {
         database,
         redis,

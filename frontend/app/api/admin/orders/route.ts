@@ -109,45 +109,51 @@ export async function GET(request: NextRequest) {
 
     // Fetch buyer, seller, and listing details for each order (with auth headers)
     const enrichedOrders = await Promise.all(
-      paginatedOrders.map(async (order) => {
-        let buyer = null;
-        let seller = null;
-        let listing = null;
+      paginatedOrders.map(async (order: any) => {
+        let buyer = order.buyer || null;
+        let seller = order.seller || null;
+        let listing = order.listing || null;
 
-        try {
-          const buyerResponse = await fetch(
-            `${USER_SERVICE_URL}/users/${order.buyerId}/profile`,
-            { method: 'GET', headers: createAuthHeaders(authResult.token) }
-          );
-          if (buyerResponse.ok) {
-            buyer = sanitizeAdminProfile(await buyerResponse.json());
+        if (!buyer && order.buyerId) {
+          try {
+            const buyerResponse = await fetch(
+              `${USER_SERVICE_URL}/users/${order.buyerId}/profile`,
+              { method: 'GET', headers: createAuthHeaders(authResult.token) }
+            );
+            if (buyerResponse.ok) {
+              buyer = sanitizeAdminProfile(await buyerResponse.json());
+            }
+          } catch {
+            // non-fatal — buyer profile unavailable
           }
-        } catch {
-          // non-fatal — buyer profile unavailable
         }
 
-        try {
-          const sellerResponse = await fetch(
-            `${USER_SERVICE_URL}/users/${order.sellerId}/profile`,
-            { method: 'GET', headers: createAuthHeaders(authResult.token) }
-          );
-          if (sellerResponse.ok) {
-            seller = sanitizeAdminProfile(await sellerResponse.json());
+        if (!seller && order.sellerId) {
+          try {
+            const sellerResponse = await fetch(
+              `${USER_SERVICE_URL}/users/${order.sellerId}/profile`,
+              { method: 'GET', headers: createAuthHeaders(authResult.token) }
+            );
+            if (sellerResponse.ok) {
+              seller = sanitizeAdminProfile(await sellerResponse.json());
+            }
+          } catch {
+            // non-fatal — seller profile unavailable
           }
-        } catch {
-          // non-fatal — seller profile unavailable
         }
 
-        try {
-          const listingResponse = await fetch(
-            `${LISTING_SERVICE_URL}/listings/${order.listingId}`,
-            { method: 'GET', headers: createAuthHeaders(authResult.token) }
-          );
-          if (listingResponse.ok) {
-            listing = sanitizeListing(await listingResponse.json());
+        if (!listing && order.listingId) {
+          try {
+            const listingResponse = await fetch(
+              `${LISTING_SERVICE_URL}/listings/${order.listingId}`,
+              { method: 'GET', headers: createAuthHeaders(authResult.token) }
+            );
+            if (listingResponse.ok) {
+              listing = sanitizeListing(await listingResponse.json());
+            }
+          } catch {
+            // non-fatal — listing unavailable
           }
-        } catch {
-          // non-fatal — listing unavailable
         }
 
         return {
