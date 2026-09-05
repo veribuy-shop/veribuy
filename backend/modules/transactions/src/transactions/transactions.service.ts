@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   HttpException,
   OnModuleInit,
 } from '@nestjs/common';
@@ -66,6 +67,13 @@ export class TransactionsService implements OnModuleInit {
     this.stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
       apiVersion: '2026-01-28.clover',
     });
+
+    // Run background cleanup for expired pending orders every 5 minutes
+    setInterval(() => {
+      this.cleanupExpiredPendingOrders().catch((err) => {
+        this.logger.warn(`Cleanup expired pending orders error: ${err.message}`);
+      });
+    }, 5 * 60 * 1000);
   }
 
   async createOrder(createOrderDto: CreateOrderDto) {
@@ -94,16 +102,20 @@ export class TransactionsService implements OnModuleInit {
     // Compute total: item price + buyer protection fee + shipping
     const totalAmount = Math.round((numericAmount + protectionFee + numericShipping) * 100) / 100;
 
-    // Snapshot listing details for invoice generation — fire-and-forget on failure
+    // Snapshot listing details for invoice generation — check availability
     let listingTitle: string | null = null;
     let listingDescription: string | null = null;
     let listingCategory: string | null = null;
     try {
       const listing = await this.fetchListing(listingId);
+      if (listing && (listing.status === 'SOLD' || listing.status === 'DELISTED')) {
+        throw new BadRequestException('This listing is no longer available for purchase');
+      }
       listingTitle = listing?.title ?? null;
       listingDescription = listing?.description ?? null;
       listingCategory = listing?.deviceType ?? listing?.brand ?? null;
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof BadRequestException) throw err;
       this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
     }
 
@@ -184,6 +196,9 @@ export class TransactionsService implements OnModuleInit {
         shippingAddress: shippingAddress as any,
       },
     });
+
+    // Temporarily reserve listing during checkout
+    this.updateListingStatus(listingId, 'INACTIVE').catch(() => {});
 
     return {
       order,
@@ -420,6 +435,13 @@ export class TransactionsService implements OnModuleInit {
       });
     }
 
+    // If order was cancelled, restore listing status back to ACTIVE
+    if (updateOrderStatusDto.status === 'CANCELLED' && order.listingId) {
+      this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
+        this.logger.error('Failed to restore listing status to ACTIVE on cancel', error?.stack ?? error);
+      });
+    }
+
     return updatedOrder;
   }
 
@@ -433,6 +455,76 @@ export class TransactionsService implements OnModuleInit {
     }
 
     return order;
+  }
+
+  /**
+   * Delete an unpaid PENDING or CANCELLED order record and restore listing back to ACTIVE.
+   */
+  async deletePendingOrder(orderId: string, userId: string, userRole: string) {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (userRole !== 'ADMIN' && order.buyerId !== userId && order.sellerId !== userId) {
+      throw new ForbiddenException('You can only delete orders you are involved in');
+    }
+
+    if (order.status !== 'PENDING' && order.status !== 'CANCELLED') {
+      throw new BadRequestException(`Only PENDING or CANCELLED orders can be deleted. Current status: ${order.status}`);
+    }
+
+    if (order.paymentIntentId) {
+      try {
+        await this.stripe.paymentIntents.cancel(order.paymentIntentId);
+      } catch (err) {
+        this.logger.warn(`Could not cancel Stripe payment intent: ${(err as Error).message}`);
+      }
+    }
+
+    await this.prisma.order.delete({
+      where: { id: orderId },
+    });
+
+    if (order.listingId) {
+      this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
+        this.logger.error('Failed to restore listing status to ACTIVE on delete', error?.stack ?? error);
+      });
+    }
+
+    return { success: true, message: 'Pending order deleted and listing restored to active queue' };
+  }
+
+  /**
+   * Automatically cancel unpaid PENDING checkout orders older than 30 minutes
+   * and restore listings back to ACTIVE status.
+   */
+  async cleanupExpiredPendingOrders() {
+    const expiryThreshold = new Date(Date.now() - 30 * 60 * 1000);
+    const staleOrders = await this.prisma.order.findMany({
+      where: {
+        status: 'PENDING',
+        createdAt: { lt: expiryThreshold },
+      },
+    });
+
+    for (const order of staleOrders) {
+      try {
+        await this.prisma.order.update({
+          where: { id: order.id },
+          data: { status: 'CANCELLED' },
+        });
+
+        if (order.listingId) {
+          await this.updateListingStatus(order.listingId, 'ACTIVE').catch(() => {});
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to expire pending order ${order.id}: ${(err as Error).message}`);
+      }
+    }
   }
 
   async getOrderByPaymentIntentId(paymentIntentId: string) {

@@ -354,6 +354,28 @@ function AdminDashboardContent() {
     }
   };
 
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm('Are you sure you want to remove this unpaid order attempt and restore the listing to active queue?')) return;
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const res = await authFetch(`/api/admin/orders/${orderId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Failed to delete order');
+      }
+      setActionMessage({ type: 'success', text: `Order attempt #${orderId.substring(0, 8)} removed successfully` });
+      await fetchAll();
+      setTimeout(() => setActionMessage(null), 3000);
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err.message || 'Failed to delete order' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Metrics
   const activeListingsCount = listings.filter((l) => l.status === 'ACTIVE').length;
   const pendingVerifications = verifications.filter((v) => ['PENDING', 'IN_PROGRESS', 'REQUIRES_REVIEW'].includes(v.status));
@@ -1138,6 +1160,14 @@ function AdminDashboardContent() {
                               className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg"
                             >
                               Refund
+                            </button>
+                          )}
+                          {['PENDING', 'CANCELLED'].includes(o.status) && (
+                            <button
+                              onClick={() => handleDeleteOrder(o.id)}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg"
+                            >
+                              Delete Attempt
                             </button>
                           )}
                         </td>
