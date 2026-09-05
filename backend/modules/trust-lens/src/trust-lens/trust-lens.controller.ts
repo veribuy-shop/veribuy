@@ -21,6 +21,17 @@ export class TrustLensController {
     return this.trustlensService.getAllVerificationRequests(pagination);
   }
 
+  @Get('imei-registry')
+  @Roles('ADMIN')
+  getImeiRegistry(
+    @Query() pagination: PaginationDto,
+    @Query('search') search?: string,
+    @Query('flagged') flagged?: string,
+  ) {
+    const isFlaggedOnly = flagged === 'true' || flagged === '1';
+    return this.trustlensService.getImeiRegistry(pagination, search, isFlaggedOnly);
+  }
+
   @Get(':listingId')
   @Roles('BUYER', 'SELLER', 'ADMIN')
   async findOne(
