@@ -21,8 +21,10 @@ import {
   Cpu,
   Layers,
   Sparkles,
+  Store,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BrandLogo } from '@/components/brand-logo';
 
 type CheckResult = 'CLEAN' | 'FLAGGED' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN';
 type TrustLensStatus = 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW';
@@ -52,32 +54,32 @@ const CHECK_CONFIG: Record<
   CLEAN: {
     icon: CheckCircle2,
     label: 'Clean & Verified',
-    className: 'text-emerald-400',
-    bgClassName: 'bg-emerald-500/10 border-emerald-500/30',
+    className: 'text-emerald-700',
+    bgClassName: 'bg-emerald-50 border-emerald-200',
   },
   FLAGGED: {
     icon: XCircle,
     label: 'Flagged / Blacklisted',
-    className: 'text-red-400',
-    bgClassName: 'bg-red-500/10 border-red-500/30',
+    className: 'text-red-700',
+    bgClassName: 'bg-red-50 border-red-200',
   },
   LOCKED: {
     icon: Lock,
     label: 'Activation Locked',
-    className: 'text-red-400',
-    bgClassName: 'bg-red-500/10 border-red-500/30',
+    className: 'text-red-700',
+    bgClassName: 'bg-red-50 border-red-200',
   },
   NOT_APPLICABLE: {
     icon: Minus,
     label: 'Not Applicable',
-    className: 'text-neutral-400',
-    bgClassName: 'bg-neutral-800 border-neutral-700',
+    className: 'text-slate-600',
+    bgClassName: 'bg-slate-100 border-slate-200',
   },
   NOT_RUN: {
     icon: Minus,
     label: 'Not Checked',
-    className: 'text-neutral-400',
-    bgClassName: 'bg-neutral-800 border-neutral-700',
+    className: 'text-slate-600',
+    bgClassName: 'bg-slate-100 border-slate-200',
   },
 };
 
@@ -90,47 +92,53 @@ const STATUS_CONFIG: Record<
     badgeClass: string;
     borderClass: string;
     textClass: string;
+    subTextClass: string;
   }
 > = {
   PASSED: {
     icon: ShieldCheck,
     title: 'Trust Lens™ Certified',
     description: 'This device passed all automated GSMA blacklist, activation lock, and serial integrity checks.',
-    badgeClass: 'bg-emerald-500 text-neutral-950',
-    borderClass: 'border-emerald-500/30 bg-emerald-950/20',
-    textClass: 'text-emerald-400',
+    badgeClass: 'bg-emerald-600 text-white',
+    borderClass: 'border-emerald-200 bg-emerald-50/70',
+    textClass: 'text-emerald-950',
+    subTextClass: 'text-emerald-800',
   },
   REQUIRES_REVIEW: {
     icon: AlertTriangle,
     title: 'Pending Manual Review',
     description: 'Automated telemetry flagged minor inconsistencies. Our verification team is inspecting the evidence.',
-    badgeClass: 'bg-amber-500 text-neutral-950',
-    borderClass: 'border-amber-500/30 bg-amber-950/20',
-    textClass: 'text-amber-400',
+    badgeClass: 'bg-amber-600 text-white',
+    borderClass: 'border-amber-200 bg-amber-50/70',
+    textClass: 'text-amber-950',
+    subTextClass: 'text-amber-800',
   },
   FAILED: {
     icon: ShieldX,
     title: 'Verification Failed',
     description: 'This hardware was flagged on global blacklist registries and is prohibited from being sold on VeriBuy.',
-    badgeClass: 'bg-red-500 text-white',
-    borderClass: 'border-red-500/30 bg-red-950/20',
-    textClass: 'text-red-400',
+    badgeClass: 'bg-red-600 text-white',
+    borderClass: 'border-red-200 bg-red-50/70',
+    textClass: 'text-red-950',
+    subTextClass: 'text-red-800',
   },
   IN_PROGRESS: {
     icon: Clock,
     title: 'Executing Diagnostics',
     description: 'Querying GSMA database, Apple GSX, and carrier registries in real time.',
-    badgeClass: 'bg-blue-500 text-neutral-950',
-    borderClass: 'border-blue-500/30 bg-blue-950/20',
-    textClass: 'text-blue-400',
+    badgeClass: 'bg-blue-600 text-white',
+    borderClass: 'border-blue-200 bg-blue-50/70',
+    textClass: 'text-blue-950',
+    subTextClass: 'text-blue-800',
   },
   PENDING: {
     icon: Clock,
     title: 'Queued for Verification',
     description: 'Diagnostic job has been registered and is waiting for execution.',
-    badgeClass: 'bg-neutral-500 text-neutral-950',
-    borderClass: 'border-neutral-700 bg-neutral-900',
-    textClass: 'text-neutral-400',
+    badgeClass: 'bg-slate-700 text-white',
+    borderClass: 'border-slate-200 bg-slate-50',
+    textClass: 'text-slate-900',
+    subTextClass: 'text-slate-600',
   },
 };
 
@@ -212,30 +220,44 @@ function VerificationReportContent({ id }: { id: string }) {
   const unstarted = !summary?.imeiCheckPerformed && !running;
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-100 py-10 md:py-16">
+    <div className="min-h-screen bg-slate-50 text-slate-900 py-8 md:py-14">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        {/* Navigation / Header */}
+        <div className="flex items-center justify-between mb-8">
+          <Link href="/" className="flex items-center gap-2">
+            <BrandLogo />
+          </Link>
+          <Link
+            href="/browse"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            <Store className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Browse Marketplace</span>
+          </Link>
+        </div>
+
         {/* Certificate Brand Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-3">
-            <Sparkles className="w-3.5 h-3.5" /> Trust Lens™ Diagnostic Certificate
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold uppercase tracking-wider mb-3">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> Trust Lens™ Diagnostic Certificate
           </div>
-          <h1 className="text-2xl md:text-4xl font-bold text-white tracking-tight">
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
             Hardware Verification Report
           </h1>
-          <p className="text-neutral-400 text-sm md:text-base mt-2">
+          <p className="text-slate-600 text-sm md:text-base mt-1.5">
             Cryptographically sealed diagnostic audit powered by VeriBuy
           </p>
         </div>
 
         {/* Certificate Card */}
-        <div className="bg-neutral-900/80 border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl mb-8 backdrop-blur-sm">
+        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm mb-8">
           {/* Status Banner */}
           <div className={cn('p-6 md:p-8 border-b', Status.borderClass)}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div
                   className={cn(
-                    'w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-lg',
+                    'w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-md',
                     Status.badgeClass
                   )}
                 >
@@ -249,7 +271,7 @@ function VerificationReportContent({ id }: { id: string }) {
                   <h2 className={cn('text-lg md:text-xl font-bold tracking-tight', Status.textClass)}>
                     {Status.title}
                   </h2>
-                  <p className="text-xs md:text-sm text-neutral-300 mt-1 max-w-md">
+                  <p className={cn('text-xs md:text-sm mt-1 max-w-md font-medium', Status.subTextClass)}>
                     {Status.description}
                   </p>
                 </div>
@@ -257,8 +279,8 @@ function VerificationReportContent({ id }: { id: string }) {
 
               {/* Polling / Live indicator */}
               {running && (
-                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-mono self-start sm:self-auto">
-                  <span className="w-2 h-2 rounded-full bg-blue-400 motion-safe:animate-ping" />
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-100/80 border border-blue-200 text-blue-800 text-xs font-mono font-semibold self-start sm:self-auto">
+                  <span className="w-2 h-2 rounded-full bg-blue-600 motion-safe:animate-ping" />
                   Live Polling GSMA API
                 </div>
               )}
@@ -267,9 +289,9 @@ function VerificationReportContent({ id }: { id: string }) {
 
           {/* Pre-check notice */}
           {unstarted && (
-            <div className="px-6 py-4 bg-amber-500/10 border-b border-amber-500/20 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 shrink-0 text-amber-400 mt-0.5" aria-hidden="true" />
-              <p className="text-xs text-amber-200">
+            <div className="px-6 py-4 bg-amber-50 border-b border-amber-200 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" aria-hidden="true" />
+              <p className="text-xs text-amber-800 font-medium">
                 Automated carrier verification has not run yet. This device remains in escrow pending completion.
               </p>
             </div>
@@ -278,8 +300,8 @@ function VerificationReportContent({ id }: { id: string }) {
           {/* Registry Checks List */}
           <div className="p-6 md:p-8 space-y-6">
             <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-400 mb-4 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-400" /> Carrier & Database Registry Audits
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Carrier & Database Registry Audits
               </h3>
 
               {summary?.imeiCheckPerformed && summary?.checks ? (
@@ -310,26 +332,26 @@ function VerificationReportContent({ id }: { id: string }) {
                     return (
                       <div
                         key={check.label}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-neutral-950/60 border border-neutral-800 hover:border-neutral-700 transition-colors"
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-slate-50/80 border border-slate-200 hover:border-slate-300 transition-colors"
                       >
                         <div className="flex items-start gap-3">
                           <div
                             className={cn(
-                              'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 sm:mt-0',
+                              'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border mt-0.5 sm:mt-0 shadow-sm',
                               cfg.bgClassName
                             )}
                           >
                             <CheckIcon className={cn('w-4 h-4', cfg.className)} />
                           </div>
                           <div>
-                            <p className="text-sm font-bold text-white">{check.label}</p>
-                            <p className="text-xs text-neutral-400 mt-0.5">{check.desc}</p>
+                            <p className="text-sm font-bold text-slate-900">{check.label}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">{check.desc}</p>
                           </div>
                         </div>
 
                         <span
                           className={cn(
-                            'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border self-start sm:self-auto shrink-0',
+                            'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border self-start sm:self-auto shrink-0 shadow-sm',
                             cfg.bgClassName,
                             cfg.className
                           )}
@@ -342,13 +364,13 @@ function VerificationReportContent({ id }: { id: string }) {
                 </div>
               ) : running ? (
                 <div className="text-center py-12">
-                  <Loader2 className="w-8 h-8 text-emerald-400 motion-safe:animate-spin mx-auto mb-3" />
-                  <p className="text-sm text-neutral-300 font-medium">Scanning GSMA & Carrier Registries...</p>
-                  <p className="text-xs text-neutral-500 mt-1">This audit completes automatically in 15-30 seconds</p>
+                  <Loader2 className="w-8 h-8 text-emerald-600 motion-safe:animate-spin mx-auto mb-3" />
+                  <p className="text-sm text-slate-800 font-bold">Scanning GSMA & Carrier Registries...</p>
+                  <p className="text-xs text-slate-500 mt-1">This audit completes automatically in 15-30 seconds</p>
                 </div>
               ) : (
-                <div className="text-center py-8 text-neutral-400 text-sm">
-                  <Minus className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
+                <div className="text-center py-8 text-slate-500 text-sm">
+                  <Minus className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                   No check telemetry available.
                 </div>
               )}
@@ -356,24 +378,24 @@ function VerificationReportContent({ id }: { id: string }) {
 
             {/* Extracted Device Attributes */}
             {summary?.deviceAttributes && summary.deviceAttributes.length > 0 && (
-              <div className="pt-4 border-t border-neutral-800">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-neutral-400 mb-4 flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-emerald-400" /> Extracted Hardware Specs
+              <div className="pt-4 border-t border-slate-200">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-emerald-600" /> Extracted Hardware Specs
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {summary.deviceAttributes.map((attr) => (
                     <div
                       key={attr.label}
-                      className="p-3.5 rounded-2xl bg-neutral-950/60 border border-neutral-800 flex items-center gap-3"
+                      className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200 flex items-center gap-3"
                     >
-                      <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center text-neutral-400 shrink-0">
-                        <Smartphone className="w-4 h-4" />
+                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shrink-0 shadow-sm">
+                        <Smartphone className="w-4 h-4 text-emerald-600" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <span className="text-[11px] uppercase tracking-wider text-neutral-500 block">
+                        <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-500 block">
                           {attr.label}
                         </span>
-                        <span className="text-xs font-bold text-white truncate block">
+                        <span className="text-xs font-bold text-slate-900 truncate block">
                           {attr.value}
                         </span>
                       </div>
@@ -385,7 +407,7 @@ function VerificationReportContent({ id }: { id: string }) {
 
             {/* Error banner if any */}
             {error && (
-              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-400 text-xs text-center">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-xs font-semibold text-center">
                 {error}
               </div>
             )}
@@ -397,7 +419,7 @@ function VerificationReportContent({ id }: { id: string }) {
           <button
             type="button"
             onClick={() => router.push(`/listings/${id}`)}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-950 transition-colors"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm rounded-xl shadow-sm transition-colors"
           >
             View Verified Listing <ArrowRight className="w-4 h-4" />
           </button>
@@ -405,11 +427,11 @@ function VerificationReportContent({ id }: { id: string }) {
           <button
             type="button"
             onClick={handleShare}
-            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 font-semibold text-sm rounded-xl transition-colors"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-semibold text-sm rounded-xl shadow-sm transition-colors"
           >
             {copied ? (
               <>
-                <Check className="w-4 h-4 text-emerald-400" /> Certificate Link Copied
+                <Check className="w-4 h-4 text-emerald-600" /> Certificate Link Copied
               </>
             ) : (
               <>
@@ -420,7 +442,7 @@ function VerificationReportContent({ id }: { id: string }) {
 
           <Link
             href="/dashboard"
-            className="inline-flex items-center justify-center px-6 py-3.5 bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-neutral-400 hover:text-white font-medium text-sm rounded-xl transition-colors"
+            className="inline-flex items-center justify-center px-6 py-3.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-900 font-semibold text-sm rounded-xl shadow-sm transition-colors"
           >
             Go to Dashboard
           </Link>

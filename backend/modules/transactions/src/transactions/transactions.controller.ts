@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Body,
   Param,
   Query,
@@ -189,6 +190,15 @@ export class TransactionsController {
       throw new ForbiddenException('You can only view orders you are involved in');
     }
     return order;
+  }
+
+  @Delete('orders/:orderId')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  async deletePendingOrder(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transactionsService.deletePendingOrder(orderId, user.userId, user.role);
   }
 
   @Post('orders/:orderId/refund')

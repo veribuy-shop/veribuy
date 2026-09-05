@@ -149,6 +149,24 @@ export default function OrdersPage() {
     }
   };
 
+  const handleCancelOrder = async (e: React.MouseEvent, orderId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to cancel this checkout attempt and release the item?')) return;
+    try {
+      const res = await fetch(`/api/checkout/orders/${orderId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setBuyingOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setSellingOrders((prev) => prev.filter((o) => o.id !== orderId));
+      }
+    } catch (err) {
+      console.error('Failed to cancel order:', err);
+    }
+  };
+
   const getStatusBadge = (status: OrderStatus) => {
     switch (status) {
       case 'COMPLETED':
@@ -270,9 +288,19 @@ export default function OrdersPage() {
             )}
           </span>
 
-          <span className="inline-flex items-center gap-1 text-emerald-600 group-hover:text-emerald-700 transition-colors">
-            View Details <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-          </span>
+          <div className="flex items-center gap-2">
+            {order.status === 'PENDING' && (
+              <button
+                onClick={(e) => handleCancelOrder(e, order.id)}
+                className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-medium transition-colors"
+              >
+                Cancel Attempt
+              </button>
+            )}
+            <span className="inline-flex items-center gap-1 text-emerald-600 group-hover:text-emerald-700 transition-colors">
+              View Details <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </div>
         </div>
       </Link>
     );

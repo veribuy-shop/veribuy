@@ -107,3 +107,46 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ orderId: string }> }
+) {
+  try {
+    const authResult = getAccessToken(req);
+    if ('error' in authResult) {
+      return authResult.error;
+    }
+
+    const { orderId } = await params;
+
+    if (!UUID_RE.test(orderId)) {
+      return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });
+    }
+
+    const response = await fetch(
+      `${TRANSACTION_SERVICE_URL}/transactions/orders/${orderId}`,
+      {
+        method: 'DELETE',
+        headers: createAuthHeaders(authResult.token),
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: data.message || 'Failed to delete pending order' },
+        { status: response.status }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: 'Pending order deleted' });
+  } catch (error) {
+    console.error('Error deleting pending order:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

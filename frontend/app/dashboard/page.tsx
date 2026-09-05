@@ -382,6 +382,22 @@ function DashboardContent() {
     }
   };
 
+  const handleCancelOrder = async (orderId: string) => {
+    if (!confirm('Are you sure you want to cancel this checkout attempt and release the item?')) return;
+    try {
+      const res = await authFetch(`/api/checkout/orders/${orderId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setBuyerOrders((prev) => prev.filter((o) => o.id !== orderId));
+        setSellerOrders((prev) => prev.filter((o) => o.id !== orderId));
+        await fetchAll();
+      }
+    } catch (err) {
+      console.error('Failed to cancel order:', err);
+    }
+  };
+
   // Metrics
   const activeListingsCount = listings.filter((l) => l.status === 'ACTIVE').length;
   const inTransitPurchases = buyerOrders.filter((o) => o.status === 'SHIPPED').length;
@@ -1115,12 +1131,20 @@ function DashboardContent() {
                         </div>
 
                         {o.status === 'PENDING' ? (
-                          <Link
-                            href={`/checkout?listingId=${o.listingId || ''}&resume=true`}
-                            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
-                          >
-                            Resume Checkout
-                          </Link>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/checkout?listingId=${o.listingId || ''}&resume=true`}
+                              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
+                            >
+                              Resume
+                            </Link>
+                            <button
+                              onClick={() => handleCancelOrder(o.id)}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold text-xs rounded-xl transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         ) : (
                           <Link
                             href={`/orders/${o.id}/tracking`}
@@ -1215,17 +1239,27 @@ function DashboardContent() {
                           </span>
                         </div>
 
-                        <Link
-                          href={`/orders/${o.id}/tracking`}
-                          className={cn(
-                            'px-4 py-2 font-semibold text-xs rounded-xl border transition-colors flex items-center gap-1.5 shadow-sm',
-                            isDarkMode
-                              ? 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border-neutral-700'
-                              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                        <div className="flex items-center gap-2">
+                          {o.status === 'PENDING' && (
+                            <button
+                              onClick={() => handleCancelOrder(o.id)}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold text-xs rounded-xl transition-colors"
+                            >
+                              Cancel Attempt
+                            </button>
                           )}
-                        >
-                          View Order
-                        </Link>
+                          <Link
+                            href={`/orders/${o.id}/tracking`}
+                            className={cn(
+                              'px-4 py-2 font-semibold text-xs rounded-xl border transition-colors flex items-center gap-1.5 shadow-sm',
+                              isDarkMode
+                                ? 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border-neutral-700'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                            )}
+                          >
+                            View Order
+                          </Link>
+                        </div>
                       </div>
                     </div>
                   );
