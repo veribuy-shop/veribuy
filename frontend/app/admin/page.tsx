@@ -668,20 +668,44 @@ function AdminDashboardContent() {
               {activeTab === 'settings' && 'Global Marketplace Settings'}
             </h1>
             <p className={cn('text-sm mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-              VeriBuy Operations &bull; Core Monolith API, PostgreSQL 17, Redis Cache & Escrow Engine
+              {activeTab === 'dashboard' && 'Real-time marketplace overview, volume, and operational metrics.'}
+              {activeTab === 'verification' && 'Manage Trust Lens™ hardware verification checks, IMEI scans, and device reviews.'}
+              {activeTab === 'listings' && 'Manage marketplace inventory, catalog items, and listing moderation.'}
+              {activeTab === 'orders' && 'Monitor escrow states, buyer/seller fulfillment, releases, and disputes.'}
+              {activeTab === 'users' && 'Search, manage, and audit registered buyer, seller, and administrator accounts.'}
+              {activeTab === 'analytics' && 'Platform volume, transaction velocity, fee revenue, and conversion insights.'}
+              {activeTab === 'health' && 'Core Monolith API, PostgreSQL 17, Redis Cache, and service dependencies.'}
+              {activeTab === 'settings' && 'Configure dynamic platform fees, buyer protection rates, and preferences.'}
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <div
+            <button
+              onClick={() => fetchAll()}
+              disabled={loading}
               className={cn(
-                'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-mono font-semibold',
-                isDarkMode ? 'bg-neutral-900 border-neutral-800 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition-all shadow-xs',
+                isDarkMode
+                  ? 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
               )}
+              title="Refresh live data"
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
-              API: 200 OK
-            </div>
+              <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin text-emerald-600')} />
+              <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
+
+            {activeTab === 'health' && (
+              <div
+                className={cn(
+                  'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-mono font-semibold',
+                  isDarkMode ? 'bg-neutral-900 border-neutral-800 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                )}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
+                API: 200 OK
+              </div>
+            )}
           </div>
         </div>
 
