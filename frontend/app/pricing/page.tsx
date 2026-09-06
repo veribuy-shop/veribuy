@@ -5,13 +5,6 @@ import {
   ShieldCheck,
   ArrowRight,
   Sparkles,
-  Lock,
-  Percent,
-  CheckCircle2,
-  XCircle,
-  RotateCcw,
-  Zap,
-  HelpCircle,
 } from 'lucide-react';
 import { getBuyerProtectionFeePercent, calculateProtectionFee } from '@/lib/fees';
 import { formatPrice } from '@/lib/currency';
@@ -29,49 +22,6 @@ export default function PricingPage() {
   const examplePrice = 500;
   const exampleFee = calculateProtectionFee(examplePrice);
   const exampleTotal = Math.round((examplePrice + exampleFee) * 100) / 100;
-
-  const platformComparisons = [
-    {
-      platform: 'VeriBuy',
-      sellerFee: '0%',
-      sellerPayout: '100% Payout (£500)',
-      buyerProtection: `Variable (~${feePercent}%)`,
-      imeiCheck: 'Automated 100% of devices',
-      escrow: 'Yes (Stripe Escrow)',
-      returnWindow: '48-hour (2 days) guarantee',
-      isVeriBuy: true,
-    },
-    {
-      platform: 'eBay UK',
-      sellerFee: '12.8% + £0.30',
-      sellerPayout: '£435.70 (-£64.30)',
-      buyerProtection: 'Included in high item prices',
-      imeiCheck: 'None (Self-reported)',
-      escrow: 'No (Delayed seller holds)',
-      returnWindow: 'Varies by seller',
-      isVeriBuy: false,
-    },
-    {
-      platform: 'Back Market',
-      sellerFee: '10% – 12%',
-      sellerPayout: '£440.00 (-£60.00)',
-      buyerProtection: 'Built into refurbished markup',
-      imeiCheck: 'Merchant self-audited',
-      escrow: 'Merchant payout cycle',
-      returnWindow: '30 days',
-      isVeriBuy: false,
-    },
-    {
-      platform: 'Gumtree / Facebook',
-      sellerFee: '0%',
-      sellerPayout: 'Cash / Direct Bank Transfer',
-      buyerProtection: 'Zero protection',
-      imeiCheck: 'None (High scam risk)',
-      escrow: 'No escrow',
-      returnWindow: 'Sold as seen (No returns)',
-      isVeriBuy: false,
-    },
-  ];
 
   return (
     <div className="min-h-screen bg-white">
@@ -285,55 +235,6 @@ export default function PricingPage() {
           <p className="mt-6 text-xs text-gray-500 text-center leading-relaxed">
             * The Buyer Protection fee is dynamically calculated at checkout based on device tier and value, covering escrow security, hardware audit reports, and the 48-hour (2 days) money-back return guarantee.
           </p>
-        </div>
-
-        {/* Competitor Platform Comparison Table */}
-        <div>
-          <div className="text-center max-w-2xl mx-auto mb-8">
-            <h3 className="text-2xl font-black text-gray-900 tracking-tight">
-              Marketplace Fee Comparison
-            </h3>
-            <p className="text-sm text-gray-500 mt-1">
-              See how VeriBuy saves sellers money while providing superior buyer verification.
-            </p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm border border-[var(--color-border)] rounded-2xl overflow-hidden shadow-sm">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-                  <th className="p-4 font-bold text-gray-900">Platform</th>
-                  <th className="p-4 font-bold text-gray-900">Seller Fee</th>
-                  <th className="p-4 font-bold text-gray-900">£500 Sale Payout</th>
-                  <th className="p-4 font-bold text-gray-900">IMEI Check</th>
-                  <th className="p-4 font-bold text-gray-900">Escrow</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--color-border)] text-xs">
-                {platformComparisons.map((row) => (
-                  <tr
-                    key={row.platform}
-                    className={row.isVeriBuy ? 'bg-emerald-50/60 font-medium' : 'hover:bg-gray-50/50 transition-colors'}
-                  >
-                    <td className="p-4 font-bold text-gray-900">
-                      {row.isVeriBuy ? (
-                        <div className="flex items-center gap-1.5 text-[var(--color-green)] font-black">
-                          <ShieldCheck className="w-4 h-4" />
-                          <span>{row.platform}</span>
-                        </div>
-                      ) : (
-                        row.platform
-                      )}
-                    </td>
-                    <td className="p-4 font-bold">{row.sellerFee}</td>
-                    <td className="p-4">{row.sellerPayout}</td>
-                    <td className="p-4">{row.imeiCheck}</td>
-                    <td className="p-4">{row.escrow}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       </section>
     </div>
