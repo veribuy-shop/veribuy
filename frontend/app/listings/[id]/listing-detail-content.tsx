@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import Link from 'next/link';
 import ContactSellerModal from '@/components/ContactSellerModal';
+import MakeOfferModal from '@/components/MakeOfferModal';
+import ImageLightboxModal from '@/components/ImageLightboxModal';
 import ConfirmModal from '@/components/confirm-modal';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
@@ -48,6 +50,11 @@ import {
   FileWarning,
   Truck,
   RotateCcw,
+  Maximize2,
+  MapPin,
+  Calendar,
+  UserCheck,
+  Star,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -60,6 +67,16 @@ type TrustLensStatus = 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'REQUIR
 type IntegrityFlag = 'CLEAN' | 'IMEI_MISMATCH' | 'ICLOUD_LOCKED' | 'REPORTED_STOLEN' | 'BLACKLISTED' | 'SERIAL_MISMATCH';
 type EvidenceType = 'DEVICE_IMAGE' | 'SCREEN_IMAGE' | 'BODY_IMAGE' | 'SETTINGS_SCREENSHOT' | 'IMEI_SCREENSHOT' | 'PACKAGING_IMAGE' | 'ACCESSORIES_IMAGE' | 'OTHER';
 type CheckResult = 'CLEAN' | 'FLAGGED' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN';
+
+interface ListingSeller {
+  displayName?: string;
+  avatarUrl?: string | null;
+  joinedYear?: number | null;
+  location?: string | null;
+  city?: string | null;
+  country?: string | null;
+  sellerRating?: number | null;
+}
 
 interface Listing {
   id: string;
@@ -81,6 +98,7 @@ interface Listing {
   trustLensStatus: TrustLensStatus;
   viewCount: number;
   publishedAt?: string;
+  seller?: ListingSeller | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -224,11 +242,6 @@ function estimateRetailPrice(price: number, brand: string): number | null {
 
 const VIEWER_ID_KEY = 'vb_viewer_id';
 
-/**
- * A stable, non-sensitive per-browser token used to dedupe listing view counts.
- * Persisted in localStorage so every poll/refresh from this browser maps to the
- * same viewer and is only counted once per listing (server-side 24h window).
- */
 function getViewerId(): string {
   if (typeof window === 'undefined') return '';
   let id = window.localStorage.getItem(VIEWER_ID_KEY);
@@ -251,6 +264,8 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const [listing, setListing] = useState<Listing | null>(null);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const [showLightbox, setShowLightbox] = useState(false);
+  const [showOfferModal, setShowOfferModal] = useState(false);
   const [verificationSummary, setVerificationSummary] = useState<VerificationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [imeiChecking, setImeiChecking] = useState(false);
@@ -260,14 +275,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // PERF-04: Consolidate three independent fetches into a single useEffect
-  // using Promise.all so they run in parallel. AbortController cancels
-  // in-flight requests when `id` changes.
-  //
-  // The listing's Trust Lens check runs asynchronously after submission. When a
-  // listing is still in PENDING / IN_PROGRESS we poll the listing + verification
-  // summary so the outcome surfaces immediately once the check completes, then
-  // stop polling once a terminal status (PASSED/REQUIRES_REVIEW/FAILED) is seen.
   useEffect(() => {
     const controller = new AbortController();
     const { signal } = controller;
@@ -292,9 +299,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
       if (verificationRes.ok) {
         const verificationData = await verificationRes.json();
         setVerificationSummary(verificationData);
-        // Prefer the live (Redis-cached) check state when present — it reflects
-        // the backend worker's actual progress even before the listing service
-        // catches up with the terminal status.
         const live = (verificationData as any)?.liveStatus;
         setImeiChecking(live === 'IN_PROGRESS' || (live == null && !isTerminal(String(listingData.trustLensStatus ?? 'PENDING'))));
         return { data: listingData, done: isTerminal(live ?? String(listingData.trustLensStatus ?? 'PENDING')) };
@@ -315,15 +319,8 @@ export default function ListingDetailContent({ id }: { id: string }) {
           setEvidenceItems(evidenceData.items ?? []);
         }
 
-        // Show the page immediately — the IMEI check continues polling in the
-        // background and updates the verification badge as it progresses, so the
-        // user is never staring at a loading screen while the check runs.
         if (!signal.aborted) setLoading(false);
 
-        // Poll while the IMEI check is still running so the outcome shows
-        // promptly. Uses adaptive backoff: fast at first (snappy feel) then
-        // slowing, and stops the instant the live status reaches a terminal
-        // state — so the spinner clears as soon as the check resolves.
         if (signal.aborted) return;
         polling = true;
         const MAX_POLL_MS = 45_000;
@@ -437,27 +434,10 @@ export default function ListingDetailContent({ id }: { id: string }) {
     });
   };
 
-  // Verification checks for checklist UI
-  const verificationChecks: { label: string; helpText: string; result: CheckResult }[] = [];
-  if (verificationSummary?.checks) {
-    verificationChecks.push({
-      label: 'GSMA Blacklist',
-      helpText: 'Checked against global carrier blacklist databases',
-      result: verificationSummary.checks.gsmaBlacklist,
-    });
-    verificationChecks.push({
-      label: 'Stolen Device Report',
-      helpText: 'Cross-referenced with stolen device registries',
-      result: verificationSummary.checks.stolenReport,
-    });
-    if (verificationSummary.isAppleDevice) {
-      verificationChecks.push({
-        label: 'iCloud / Find My',
-        helpText: 'Checked iCloud lock and Find My iPhone status',
-        result: verificationSummary.checks.icloudStatus,
-      });
-    }
-  }
+  // Seller metadata defaults
+  const sellerJoinYear = listing.seller?.joinedYear || (listing.createdAt ? new Date(listing.createdAt).getFullYear() : new Date().getFullYear());
+  const sellerLocation = listing.seller?.location || listing.seller?.city || 'United Kingdom';
+  const sellerDisplayName = listing.seller?.displayName || 'Verified Seller';
 
   // Device specifications
   const specs: { icon: typeof Smartphone; label: string; value: string }[] = [
@@ -471,10 +451,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
   if (listing.color) {
     specs.push({ icon: Palette, label: 'Colour', value: listing.color });
   }
-
-  /* ---------------------------------------------------------------- */
-  /*  Render                                                           */
-  /* ---------------------------------------------------------------- */
 
   const handleDeleteListing = async () => {
     if (!listing) return;
@@ -529,7 +505,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
 
   const securityChecks: SecurityCheckItem[] = [];
 
-  // Real pass/fail checks (GSMA blacklist, iCloud lock, stolen report).
   if (verificationSummary?.checks) {
     if (verificationSummary.checks.gsmaBlacklist !== 'NOT_RUN' && verificationSummary.checks.gsmaBlacklist !== 'NOT_APPLICABLE') {
       const isClean = verificationSummary.checks.gsmaBlacklist === 'CLEAN';
@@ -566,8 +541,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
     }
   }
 
-  // Real device attributes returned by the checker (Model, Warranty, SIM-Lock,
-  // Activation, FMI, …) — parsed into individual structured rows.
   const deviceAttributes = (verificationSummary?.deviceAttributes ?? []).map((attr) => ({
     label: attr.label,
     value: attr.value,
@@ -606,13 +579,31 @@ export default function ListingDetailContent({ id }: { id: string }) {
 
           {/* LEFT: Image gallery (7 cols on lg) */}
           <div className="lg:col-span-7">
-            <div className="relative bg-[var(--color-surface-alt)] rounded-2xl overflow-hidden border border-[var(--color-border)] aspect-[4/3] flex items-center justify-center mb-3 shadow-xs">
+            <div
+              className="relative bg-[var(--color-surface-alt)] rounded-2xl overflow-hidden border border-[var(--color-border)] aspect-[4/3] flex items-center justify-center mb-3 shadow-xs group cursor-zoom-in"
+              onClick={() => hasImages && setShowLightbox(true)}
+              role="button"
+              tabIndex={0}
+              aria-label="Click to enlarge image"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  if (hasImages) setShowLightbox(true);
+                }
+              }}
+            >
               {hasImages ? (
-                <img
-                  src={allImages[selectedImageIndex]?.fileUrl}
-                  alt={listing.title}
-                  className="w-full h-full object-contain p-2"
-                />
+                <>
+                  <img
+                    src={allImages[selectedImageIndex]?.fileUrl}
+                    alt={listing.title}
+                    className="w-full h-full object-contain p-2 transition-transform duration-300 group-hover:scale-[1.02]"
+                  />
+                  <div className="absolute top-3 right-3 px-2.5 py-1.5 rounded-full bg-black/60 backdrop-blur-xs text-white text-xs font-semibold flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
+                    <Maximize2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Click to enlarge</span>
+                  </div>
+                </>
               ) : (
                 <div className="text-center p-6">
                   <ImageIcon className="w-16 h-16 text-[var(--color-border)] mx-auto mb-2" aria-hidden="true" />
@@ -624,7 +615,10 @@ export default function ListingDetailContent({ id }: { id: string }) {
                 <>
                   <button
                     type="button"
-                    onClick={() => navigateImage('prev')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigateImage('prev');
+                    }}
                     aria-label="Previous image"
                     className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/95 shadow-md flex items-center justify-center hover:bg-white transition-all text-gray-700 hover:text-black border border-gray-100"
                   >
@@ -632,7 +626,10 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => navigateImage('next')}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigateImage('next');
+                    }}
                     aria-label="Next image"
                     className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/95 shadow-md flex items-center justify-center hover:bg-white transition-all text-gray-700 hover:text-black border border-gray-100"
                   >
@@ -672,59 +669,61 @@ export default function ListingDetailContent({ id }: { id: string }) {
             )}
           </div>
 
-          {/* RIGHT: Title, grade, price, buy (5 cols on lg, sticky) */}
+          {/* RIGHT: Title, grade, price, seller info, buy (5 cols on lg, sticky) */}
           <div className="lg:col-span-5 lg:sticky lg:top-24">
-            <div className="bg-white rounded-2xl border border-[var(--color-border)] p-6 shadow-sm">
-              <h1 className="text-2xl sm:text-3xl font-black text-gray-900 leading-tight mb-3">
-                {listing.title}
-              </h1>
+            <div className="bg-white rounded-2xl border border-[var(--color-border)] p-6 shadow-sm space-y-5">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-black text-gray-900 leading-tight mb-3">
+                  {listing.title}
+                </h1>
 
-              {/* Condition Grade badge + responsive tooltip */}
-              {grade && listing.conditionGrade && (
-                <div className="relative mb-5 inline-block">
-                  <button
-                    type="button"
-                    onClick={() => setShowGradeTooltip(!showGradeTooltip)}
-                    onMouseEnter={() => setShowGradeTooltip(true)}
-                    onMouseLeave={() => setShowGradeTooltip(false)}
-                    onFocus={() => setShowGradeTooltip(true)}
-                    onBlur={() => setShowGradeTooltip(false)}
-                    className={cn(
-                      'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider transition-all',
-                      grade.border,
-                      grade.text,
-                      grade.bg,
-                    )}
-                    aria-describedby="grade-tooltip"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Verified Grade {listing.conditionGrade} ({grade.label})
-                    <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px] leading-none ml-0.5" aria-hidden="true">i</span>
-                  </button>
-                  {showGradeTooltip && (
-                    <div
-                      id="grade-tooltip"
-                      role="tooltip"
-                      className="absolute left-0 sm:left-full top-full sm:top-0 mt-2 sm:mt-0 sm:ml-3 z-30 bg-gray-900 text-white border border-gray-800 rounded-xl shadow-xl p-4 w-64 text-left"
+                {/* Condition Grade badge + responsive tooltip */}
+                {grade && listing.conditionGrade && (
+                  <div className="relative inline-block">
+                    <button
+                      type="button"
+                      onClick={() => setShowGradeTooltip(!showGradeTooltip)}
+                      onMouseEnter={() => setShowGradeTooltip(true)}
+                      onMouseLeave={() => setShowGradeTooltip(false)}
+                      onFocus={() => setShowGradeTooltip(true)}
+                      onBlur={() => setShowGradeTooltip(false)}
+                      className={cn(
+                        'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider transition-all',
+                        grade.border,
+                        grade.text,
+                        grade.bg,
+                      )}
+                      aria-describedby="grade-tooltip"
                     >
-                      <p className="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">
-                        Grade {listing.conditionGrade} Criteria:
-                      </p>
-                      <ul className="space-y-1.5 text-xs text-gray-300">
-                        {GRADE_CRITERIA[listing.conditionGrade].map((line, i) => (
-                          <li key={i} className="flex items-start gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                            <span>{line.replace(/,/g, '')}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Verified Grade {listing.conditionGrade} ({grade.label})
+                      <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px] leading-none ml-0.5" aria-hidden="true">i</span>
+                    </button>
+                    {showGradeTooltip && (
+                      <div
+                        id="grade-tooltip"
+                        role="tooltip"
+                        className="absolute left-0 sm:left-full top-full sm:top-0 mt-2 sm:mt-0 sm:ml-3 z-30 bg-gray-900 text-white border border-gray-800 rounded-xl shadow-xl p-4 w-64 text-left"
+                      >
+                        <p className="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">
+                          Grade {listing.conditionGrade} Criteria:
+                        </p>
+                        <ul className="space-y-1.5 text-xs text-gray-300">
+                          {GRADE_CRITERIA[listing.conditionGrade].map((line, i) => (
+                            <li key={i} className="flex items-start gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                              <span>{line.replace(/,/g, '')}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Price Display */}
-              <div className="mb-4 pb-4 border-b border-gray-100">
+              <div className="pb-4 border-b border-gray-100">
                 <div className="flex items-baseline gap-2">
                   <span className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
                     {formatPrice(listing.price, listing.currency)}
@@ -743,9 +742,37 @@ export default function ListingDetailContent({ id }: { id: string }) {
                 )}
               </div>
 
+              {/* Seller Trust & Origin Details */}
+              <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-[var(--color-green)] font-bold flex items-center justify-center text-sm">
+                    {sellerDisplayName.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-gray-900">{sellerDisplayName}</span>
+                      <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-green)]" />
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-gray-400" />
+                        Member since {sellerJoinYear}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-semibold text-gray-700 shadow-2xs">
+                    <MapPin className="w-3 h-3 text-emerald-600" />
+                    <span>{sellerLocation}</span>
+                  </span>
+                </div>
+              </div>
+
               {/* Actions & CTAs */}
               {isSeller ? (
-                <div className="space-y-3 mb-6">
+                <div className="space-y-2.5">
                   <div className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 text-xs font-bold text-sky-800 text-center uppercase tracking-wider">
                     You are the seller of this listing
                   </div>
@@ -772,7 +799,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   </button>
                 </div>
               ) : listing.trustLensStatus === 'PASSED' ? (
-                <div className="space-y-3 mb-6">
+                <div className="space-y-2.5">
                   {user?.role === 'ADMIN' ? (
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-center">
                       <div className="flex items-center justify-center gap-2 text-amber-800 font-bold text-sm mb-1">
@@ -805,22 +832,38 @@ export default function ListingDetailContent({ id }: { id: string }) {
                     </button>
                   )}
 
-                  <button
-                    onClick={() => {
-                      if (!user) {
-                        router.push(`/login?redirect=/listings/${listing.id}`);
-                        return;
-                      }
-                      setShowContactModal(true);
-                    }}
-                    className="flex items-center justify-center gap-2 w-full px-6 py-3 border border-[var(--color-border)] text-gray-800 rounded-xl font-bold text-sm hover:border-[var(--color-green)] hover:text-[var(--color-green)] transition-colors"
-                  >
-                    <MessageCircle className="w-4 h-4" aria-hidden="true" />
-                    <span>Contact Seller</span>
-                  </button>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          router.push(`/login?redirect=/listings/${listing.id}`);
+                          return;
+                        }
+                        setShowOfferModal(true);
+                      }}
+                      className="flex items-center justify-center gap-2 py-3 px-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl font-bold text-xs hover:bg-emerald-100/80 transition-colors shadow-2xs"
+                    >
+                      <Tag className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Make an Offer</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (!user) {
+                          router.push(`/login?redirect=/listings/${listing.id}`);
+                          return;
+                        }
+                        setShowContactModal(true);
+                      }}
+                      className="flex items-center justify-center gap-2 py-3 px-3 border border-gray-200 text-gray-800 rounded-xl font-bold text-xs hover:border-[var(--color-green)] hover:text-[var(--color-green)] transition-colors"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span>Contact Seller</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <div className={cn('rounded-xl border p-4 mb-6', trustStatus.bgClassName)}>
+                <div className={cn('rounded-xl border p-4', trustStatus.bgClassName)}>
                   <div className="flex items-start gap-3">
                     <TrustIcon className={cn('w-5 h-5 shrink-0 mt-0.5', trustStatus.textClassName)} aria-hidden="true" />
                     <div>
@@ -861,17 +904,18 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   <div className="w-6 h-6 rounded-full bg-emerald-50 text-[var(--color-green)] flex items-center justify-center shrink-0">
                     <Truck className="w-3.5 h-3.5" />
                   </div>
-                  <span><strong>Tracked &amp; Insured:</strong> Signed delivery on all shipments.</span>
+                  <span><strong>Tracked Delivery:</strong> Reliable tracked shipping on all orders.</span>
                 </div>
               </div>
 
               {/* Quick specs */}
-              <div className="mt-5 pt-4 border-t border-gray-100 space-y-2 text-xs">
+              <div className="pt-4 border-t border-gray-100 space-y-2 text-xs">
                 {[
                   { label: 'Brand', value: listing.brand },
                   { label: 'Model', value: listing.model },
                   ...(listing.storageCapacity ? [{ label: 'Storage', value: listing.storageCapacity }] : []),
                   ...(listing.color ? [{ label: 'Colour', value: listing.color }] : []),
+                  { label: 'Ships From', value: sellerLocation },
                   { label: 'Views', value: String(listing.viewCount) },
                 ].map((row) => (
                   <div key={row.label} className="flex justify-between items-center py-0.5">
@@ -1151,6 +1195,31 @@ export default function ListingDetailContent({ id }: { id: string }) {
         </section>
 
       </div>
+
+      {/* Lightbox Modal */}
+      {hasImages && (
+        <ImageLightboxModal
+          isOpen={showLightbox}
+          onClose={() => setShowLightbox(false)}
+          images={allImages}
+          initialIndex={selectedImageIndex}
+          title={listing.title}
+        />
+      )}
+
+      {/* Make an Offer Modal */}
+      {user && listing && (
+        <MakeOfferModal
+          isOpen={showOfferModal}
+          onClose={() => setShowOfferModal(false)}
+          listingId={listing.id}
+          listingTitle={listing.title}
+          askingPrice={numericPrice}
+          currency={listing.currency}
+          sellerId={listing.sellerId}
+          buyerId={user.id}
+        />
+      )}
 
       {/* Contact Seller Modal */}
       {user && listing && (

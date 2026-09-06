@@ -12,7 +12,10 @@ import {
   Sparkles,
   MessageSquare,
   AlertCircle,
+  PhoneCall,
+  ArrowRight,
 } from 'lucide-react';
+import RequestCallbackModal from '@/components/RequestCallbackModal';
 
 export default function ContactPage() {
   const [name, setName] = useState('');
@@ -22,6 +25,7 @@ export default function ContactPage() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showCallbackModal, setShowCallbackModal] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +100,7 @@ export default function ContactPage() {
             We&apos;re Here to Help
           </h1>
           <p className="text-base sm:text-lg text-emerald-100/90 max-w-xl mx-auto leading-relaxed">
-            Have questions about a listing, Trust Lens™ check, escrow payment, or dispute? Send our team a message below.
+            Have questions about a listing, Trust Lens™ check, escrow payment, or dispute? Send our team a message or request a call back.
           </p>
         </div>
       </section>
@@ -250,6 +254,25 @@ export default function ContactPage() {
 
           {/* Info Sidebar (5 cols) */}
           <div className="md:col-span-5 space-y-5">
+            {/* Phone Callback Card */}
+            <div className="bg-gradient-to-br from-emerald-900 to-slate-900 text-white rounded-3xl p-6 shadow-md border border-emerald-800/40">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center mb-3">
+                <PhoneCall className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-black mb-1">Want Us to Call You?</h3>
+              <p className="text-xs text-emerald-100/80 leading-relaxed mb-4">
+                Leave your contact number and our support team will give you a call back ASAP to discuss your inquiry.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowCallbackModal(true)}
+                className="w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-gray-950 rounded-xl font-bold text-xs uppercase tracking-wider transition-colors shadow-sm flex items-center justify-center gap-2"
+              >
+                <span>Request a Call Back</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
             <div className="bg-white rounded-3xl p-6 border border-[var(--color-border)] shadow-xs">
               <h3 className="text-base font-black text-gray-900 mb-2 flex items-center gap-2">
                 <Mail className="w-4 h-4 text-[var(--color-green)]" />
@@ -287,6 +310,12 @@ export default function ContactPage() {
           </div>
         </div>
       </section>
+
+      {/* Callback Modal */}
+      <RequestCallbackModal
+        isOpen={showCallbackModal}
+        onClose={() => setShowCallbackModal(false)}
+      />
     </div>
   );
 }

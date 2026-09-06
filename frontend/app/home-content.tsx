@@ -397,9 +397,6 @@ export default function HomeContent() {
           >
             Why Buy on VeriBuy vs. Unverified Classifieds?
           </h2>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">
-            See why buyers and sellers choose VeriBuy over Gumtree, Facebook Marketplace, or eBay.
-          </p>
         </div>
 
         <div className="overflow-x-auto">

@@ -21,6 +21,7 @@ import * as crypto from 'crypto';
 import { NotificationsService } from './notifications.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ContactUsDto } from './dto/contact-us.dto';
+import { RequestCallbackDto } from './dto/request-callback.dto';
 import { JwtAuthGuard, RolesGuard, Public, CurrentUser, PaginationDto } from '@veribuy/common';
 
 @Controller('notifications')
@@ -76,6 +77,17 @@ export class NotificationsController {
   async contactUs(@Body() dto: ContactUsDto) {
     await this.notificationsService.contactUs(dto);
     return { ok: true };
+  }
+
+  // ─── Public: Request a Callback ──────────────────────────────────────────────
+  // 5 submissions per hour per IP
+  @Post('request-callback')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
+  async requestCallback(@Body() dto: RequestCallbackDto) {
+    await this.notificationsService.requestCallback(dto);
+    return { ok: true, message: 'Callback request received. Our support team will call you shortly.' };
   }
 
   // ─── In-app messages ─────────────────────────────────────────────────────────

@@ -282,7 +282,75 @@ export class EmailService {
     });
   }
 
-  // ─── Contact Us ──────────────────────────────────────────────────────────────
+  // ─── Contact Us & Callback Requests ──────────────────────────────────────────
+
+  async sendCallbackRequestEmail(data: {
+    name: string;
+    phoneNumber: string;
+    email?: string;
+    message?: string;
+    preferredTime?: string;
+  }): Promise<void> {
+    const adminBodyHtml = `
+      <p style="margin-top:0;font-size:15px;color:#0f172a;font-weight:600;">
+        📞 Customer Callback Request Received
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;font-size:14px;">
+        <tr><td style="color:#64748b;width:120px;padding:6px 0;">Customer Name:</td><td><strong>${this.escape(data.name)}</strong></td></tr>
+        <tr><td style="color:#64748b;padding:6px 0;">Phone Number:</td><td><strong style="font-size:16px;color:#059669;">${this.escape(data.phoneNumber)}</strong></td></tr>
+        ${data.email ? `<tr><td style="color:#64748b;padding:6px 0;">Email:</td><td>${this.escape(data.email)}</td></tr>` : ''}
+        ${data.preferredTime ? `<tr><td style="color:#64748b;padding:6px 0;">Preferred Time:</td><td>${this.escape(data.preferredTime)}</td></tr>` : ''}
+      </table>
+      ${data.message ? `
+        <p style="font-size:13px;color:#64748b;margin-bottom:6px;"><strong>Inquiry Details:</strong></p>
+        <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px;white-space:pre-wrap;font-size:14px;color:#1e293b;line-height:1.6;">${this.escape(data.message)}</div>
+      ` : ''}
+    `;
+
+    const adminHtml = this.buildEmailTemplate({
+      title: 'Customer Callback Requested',
+      badgeText: 'Call Back Request',
+      badgeType: 'warning',
+      bodyHtml: adminBodyHtml,
+      cta: {
+        label: `Call ${data.phoneNumber}`,
+        url: `tel:${encodeURIComponent(data.phoneNumber)}`,
+      },
+    });
+
+    await this.send({
+      to: this.contactEmail,
+      replyTo: data.email || undefined,
+      subject: `[Callback Request] ${data.name} (${data.phoneNumber})`,
+      html: adminHtml,
+    });
+
+    if (data.email) {
+      const userBodyHtml = `
+        <p style="margin-top:0;">Hi <strong>${this.escape(data.name)}</strong>,</p>
+        <p>We received your request for a phone callback. One of our UK support team specialists will call you at <strong style="color:#059669;">${this.escape(data.phoneNumber)}</strong> as soon as possible.</p>
+        <p style="font-size:13px;color:#64748b;">If you need urgent assistance in the meantime, feel free to reply directly to this email.</p>
+      `;
+
+      const userHtml = this.buildEmailTemplate({
+        title: 'Callback Request Received',
+        previewText: 'We have received your callback request and will phone you shortly.',
+        badgeText: 'Call Scheduled',
+        badgeType: 'success',
+        bodyHtml: userBodyHtml,
+        cta: {
+          label: 'Visit Help Center',
+          url: `${this.appUrl}/help`,
+        },
+      });
+
+      await this.send({
+        to: data.email,
+        subject: 'We received your callback request — VeriBuy Support',
+        html: userHtml,
+      }).catch((err) => this.logger.warn(`Failed to send callback user ack: ${err.message}`));
+    }
+  }
 
   async sendContactUsEmail(data: {
     fromName: string;

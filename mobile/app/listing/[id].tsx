@@ -1,10 +1,19 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 import { Button, Card, Screen, StatusPill } from '@/src/components/ui';
-import { evidenceService, listingsService, ordersService, trustService } from '@/src/services';
+import { evidenceService, listingsService, messagesService, ordersService, trustService } from '@/src/services';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
 import { EvidenceItem, Listing, TrustLensReport, User } from '@/src/types/entities';
@@ -19,6 +28,19 @@ export default function ListingDetailScreen() {
   const [uploading, setUploading] = useState(false);
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState('');
+
+  // Image Zoom Lightbox state
+  const [lightboxVisible, setLightboxVisible] = useState(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
+
+  // Make an Offer modal state
+  const [offerModalVisible, setOfferModalVisible] = useState(false);
+  const [offerPrice, setOfferPrice] = useState('');
+  const [offerNote, setOfferNote] = useState('');
+  const [offerSubmitting, setOfferSubmitting] = useState(false);
+  const [offerSuccess, setOfferSuccess] = useState(false);
+  const [offerError, setOfferError] = useState('');
+
   const profileUser = user as User | null;
 
   useEffect(() => {
@@ -68,6 +90,55 @@ export default function ListingDetailScreen() {
       pathname: '/conversation/[otherUserId]',
       params: { otherUserId: listing.sellerId, listingId: listing.id },
     });
+  };
+
+  const openOfferModal = () => {
+    if (!listing) return;
+    const suggested = Math.max(1, Math.round(listing.price * 0.9));
+    setOfferPrice(String(suggested));
+    setOfferNote('');
+    setOfferError('');
+    setOfferSuccess(false);
+    setOfferModalVisible(true);
+  };
+
+  const submitOffer = async () => {
+    if (!listing || !profileUser) return;
+    const numOffer = parseFloat(offerPrice);
+    if (!numOffer || numOffer <= 0) {
+      setOfferError('Please enter a valid offer amount');
+      return;
+    }
+    if (numOffer >= listing.price) {
+      setOfferError('Offer must be lower than the asking price.');
+      return;
+    }
+
+    setOfferSubmitting(true);
+    setOfferError('');
+    try {
+      const subject = `🏷️ Offer: ${formatPrice(numOffer, listing.currency)} for ${listing.title}`;
+      const content = `Hi! I would like to offer ${formatPrice(numOffer, listing.currency)} for your listing "${listing.title}".${
+        offerNote.trim() ? `\n\nBuyer note: ${offerNote.trim()}` : ''
+      }\n\nReady to complete payment via VeriBuy Escrow once accepted.`;
+
+      await messagesService.send({
+        recipientId: listing.sellerId,
+        listingId: listing.id,
+        subject,
+        content,
+      });
+
+      setOfferSuccess(true);
+      setTimeout(() => {
+        setOfferModalVisible(false);
+        setOfferSuccess(false);
+      }, 2000);
+    } catch (e: any) {
+      setOfferError(e?.message || 'Failed to submit offer.');
+    } finally {
+      setOfferSubmitting(false);
+    }
   };
 
   const onBuyNow = async () => {
@@ -123,16 +194,32 @@ export default function ListingDetailScreen() {
 
   const price = formatPrice(listing.price, listing.currency);
   const isOwn = profileUser?.id === listing.sellerId;
+  const sellerJoinYear = listing.seller?.joinedYear || (listing.createdAt ? new Date(listing.createdAt).getFullYear() : new Date().getFullYear());
+  const sellerLocation = listing.seller?.location || listing.seller?.city || 'United Kingdom';
+  const sellerName = listing.seller?.displayName || listing.seller?.name || 'Verified Seller';
+
+  const primaryImage = listing.images?.[0] || evidence[0]?.url;
 
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        {listing.images?.[0] ? (
-          <Image
-            source={{ uri: listing.images[0] }}
-            className="w-full h-56 rounded-xl mb-3 bg-warm-beige"
-            resizeMode="cover"
-          />
+        {primaryImage ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => {
+              setSelectedImageUri(primaryImage);
+              setLightboxVisible(true);
+            }}
+          >
+            <Image
+              source={{ uri: primaryImage }}
+              className="w-full h-64 rounded-xl mb-3 bg-warm-beige"
+              resizeMode="cover"
+            />
+            <View className="absolute bottom-5 right-3 bg-black/70 px-2.5 py-1 rounded-full">
+              <Text className="text-white text-xs font-semibold">🔍 Tap to enlarge</Text>
+            </View>
+          </TouchableOpacity>
         ) : (
           <View className="w-full h-56 rounded-xl mb-3 bg-warm-beige items-center justify-center">
             <Text className="text-warm-tan">No photo</Text>
@@ -154,11 +241,29 @@ export default function ListingDetailScreen() {
           <Text className="text-text mt-3">{listing.description}</Text>
         </Card>
 
+        {/* Seller Trust & Origin Card */}
+        <Card>
+          <View className="flex-row items-center justify-between">
+            <View>
+              <Text className="text-xs font-bold text-text-muted uppercase tracking-wider">Seller Information</Text>
+              <Text className="text-base font-bold text-text mt-0.5">👤 {sellerName}</Text>
+              <Text className="text-xs text-text-muted mt-0.5">📅 Member since {sellerJoinYear}</Text>
+            </View>
+            <View className="bg-emerald-50 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
+              <Text className="text-emerald-800 text-xs font-bold">📍 Ships from</Text>
+              <Text className="text-emerald-900 text-xs font-semibold">{sellerLocation}</Text>
+            </View>
+          </View>
+        </Card>
+
         {/* VeriBuy Escrow & Inspection Guarantee Banner */}
         <Card>
           <Text className="font-semibold text-text mb-1">🛡️ VeriBuy Buyer Protection</Text>
-          <Text className="text-text-muted text-sm leading-relaxed">
-            Your payment is securely held in escrow until delivery. You get a <Text className="font-bold text-text">48-Hour (2 Days)</Text> inspection window to verify the device condition before funds are released to the seller.
+          <Text className="text-text-muted text-sm leading-relaxed mb-2">
+            Your payment is securely held in escrow until delivery. You get a <Text className="font-bold text-text">48-Hour (2 Days)</Text> inspection window to verify the device condition before funds are released.
+          </Text>
+          <Text className="text-xs text-text-muted">
+            🚚 <Text className="font-semibold text-text">Tracked Delivery:</Text> Reliable tracked shipping on all orders.
           </Text>
         </Card>
 
@@ -179,12 +284,20 @@ export default function ListingDetailScreen() {
             <Text className="font-semibold text-text mb-2">Evidence ({evidence.length})</Text>
             <View className="flex-row flex-wrap">
               {evidence.map((item) => (
-                <Image
+                <TouchableOpacity
                   key={item.id}
-                  source={{ uri: item.url }}
-                  className="w-20 h-20 rounded-lg mr-2 mb-2"
-                  resizeMode="cover"
-                />
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedImageUri(item.url);
+                    setLightboxVisible(true);
+                  }}
+                >
+                  <Image
+                    source={{ uri: item.url }}
+                    className="w-20 h-20 rounded-lg mr-2 mb-2"
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
               ))}
             </View>
           </Card>
@@ -205,18 +318,115 @@ export default function ListingDetailScreen() {
         {error ? <Text className="text-danger text-sm mb-2">{error}</Text> : null}
 
         {!isOwn ? (
-          <>
+          <View className="gap-2.5 mt-2">
             <Button onPress={onBuyNow} loading={buying}>
-              Buy now
+              Buy with Escrow Protection
             </Button>
-            <TouchableOpacity onPress={onMessage} className="mt-3 py-3 items-center rounded-xl bg-warm-beige">
-              <Text className="text-accent font-semibold">Message seller</Text>
-            </TouchableOpacity>
-          </>
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={openOfferModal}
+                className="flex-1 py-3 items-center rounded-xl bg-emerald-50 border border-emerald-200"
+              >
+                <Text className="text-emerald-800 font-bold text-sm">🏷️ Make an Offer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={onMessage}
+                className="flex-1 py-3 items-center rounded-xl bg-warm-beige"
+              >
+                <Text className="text-accent font-bold text-sm">💬 Message seller</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         ) : (
-          <Text className="text-warm-tan text-center">This is your listing</Text>
+          <Text className="text-warm-tan text-center mt-2">This is your listing</Text>
         )}
       </ScrollView>
+
+      {/* Image Lightbox Modal */}
+      <Modal
+        visible={lightboxVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setLightboxVisible(false)}
+      >
+        <View className="flex-1 bg-black/95 justify-center items-center p-4">
+          <TouchableOpacity
+            onPress={() => setLightboxVisible(false)}
+            className="absolute top-12 right-6 z-20 bg-white/20 px-3 py-1.5 rounded-full"
+          >
+            <Text className="text-white font-bold text-base">✕ Close</Text>
+          </TouchableOpacity>
+          {selectedImageUri ? (
+            <Image
+              source={{ uri: selectedImageUri }}
+              className="w-full h-4/5"
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
+
+      {/* Make an Offer Modal */}
+      <Modal
+        visible={offerModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setOfferModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-end">
+          <View className="bg-white rounded-t-3xl p-6">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-xl font-bold text-text">Make an Offer</Text>
+              <TouchableOpacity onPress={() => setOfferModalVisible(false)}>
+                <Text className="text-text-muted font-bold text-lg">✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {offerSuccess ? (
+              <View className="py-8 items-center">
+                <Text className="text-4xl mb-2">🎉</Text>
+                <Text className="text-lg font-bold text-emerald-800">Offer Sent to Seller!</Text>
+                <Text className="text-xs text-text-muted text-center mt-1">
+                  The seller will receive a notification and can reply to negotiate or accept.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text className="text-xs text-text-muted mb-3">
+                  Asking Price: <Text className="font-bold text-text">{price}</Text>
+                </Text>
+
+                {offerError ? (
+                  <Text className="text-danger text-xs font-semibold mb-2">{offerError}</Text>
+                ) : null}
+
+                <Text className="text-xs font-bold text-text uppercase mb-1">Your Offer (£ GBP)</Text>
+                <TextInput
+                  value={offerPrice}
+                  onChangeText={setOfferPrice}
+                  keyboardType="numeric"
+                  placeholder="e.g. 450"
+                  className="border border-border rounded-xl px-4 py-3 text-lg font-bold text-text mb-3"
+                />
+
+                <Text className="text-xs font-bold text-text uppercase mb-1">Note to Seller (Optional)</Text>
+                <TextInput
+                  value={offerNote}
+                  onChangeText={setOfferNote}
+                  placeholder="e.g. Can complete payment today!"
+                  className="border border-border rounded-xl px-4 py-2.5 text-xs text-text mb-4"
+                  maxLength={200}
+                />
+
+                <Button onPress={submitOffer} loading={offerSubmitting}>
+                  Submit Offer
+                </Button>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
+
