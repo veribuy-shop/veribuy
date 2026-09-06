@@ -68,4 +68,14 @@ export class CreateListingDto {
   @IsString()
   @MaxLength(50)
   serialNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  location?: string;
 }

@@ -40,6 +40,7 @@ import {
   Moon,
   Store,
   Filter,
+  MapPin,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -221,6 +222,11 @@ function DashboardContent() {
   const [profileLastName, setProfileLastName] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
   const [profileBio, setProfileBio] = useState('');
+  const [profileCity, setProfileCity] = useState('');
+  const [profileState, setProfileState] = useState('');
+  const [profilePostalCode, setProfilePostalCode] = useState('');
+  const [profileCountry, setProfileCountry] = useState('United Kingdom');
+  const [profileLine1, setProfileLine1] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
@@ -316,6 +322,11 @@ function DashboardContent() {
         setProfileLastName(p.lastName ?? '');
         setProfilePhone(p.phone ?? '');
         setProfileBio(p.bio ?? '');
+        setProfileCity(p.address?.city ?? p.city ?? '');
+        setProfileState(p.address?.state ?? '');
+        setProfilePostalCode(p.address?.postalCode ?? '');
+        setProfileCountry(p.address?.country ?? p.country ?? 'United Kingdom');
+        setProfileLine1(p.address?.line1 ?? '');
       }
     } catch (e) {
       console.error('Dashboard fetch error:', e);
@@ -352,10 +363,15 @@ function DashboardContent() {
           lastName: profileLastName,
           phone: profilePhone,
           bio: profileBio,
+          city: profileCity,
+          state: profileState,
+          postalCode: profilePostalCode,
+          country: profileCountry,
+          line1: profileLine1,
         }),
       });
       if (!res.ok) throw new Error('Failed to update profile');
-      setProfileSuccess('Profile updated successfully');
+      setProfileSuccess('Profile and location updated successfully');
       setTimeout(() => setProfileSuccess(''), 3000);
     } catch (err: any) {
       setProfileError(err.message || 'Error updating profile');
@@ -1539,6 +1555,89 @@ function DashboardContent() {
                     isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                   )}
                 />
+              </div>
+
+              {/* Location & Shipping Origin Card */}
+              <div className={cn('border rounded-2xl p-5 space-y-4', isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50/80 border-slate-200')}>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                      Dispatch Location &amp; Shipping Address
+                    </h4>
+                    <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                      Displayed on your listings as the origin (e.g. &quot;Ships from London, UK&quot;) and used for shipping.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                  <div>
+                    <label className={cn('text-xs font-semibold block mb-1', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
+                      City / Town
+                    </label>
+                    <input
+                      type="text"
+                      value={profileCity}
+                      onChange={(e) => setProfileCity(e.target.value)}
+                      placeholder="e.g. London, Manchester, Leeds"
+                      className={cn(
+                        'w-full border rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500',
+                        isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label className={cn('text-xs font-semibold block mb-1', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
+                      County / Region
+                    </label>
+                    <input
+                      type="text"
+                      value={profileState}
+                      onChange={(e) => setProfileState(e.target.value)}
+                      placeholder="e.g. Greater London, West Midlands"
+                      className={cn(
+                        'w-full border rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500',
+                        isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className={cn('text-xs font-semibold block mb-1', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
+                      Postal Code
+                    </label>
+                    <input
+                      type="text"
+                      value={profilePostalCode}
+                      onChange={(e) => setProfilePostalCode(e.target.value)}
+                      placeholder="e.g. SW1A 1AA"
+                      className={cn(
+                        'w-full border rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500',
+                        isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label className={cn('text-xs font-semibold block mb-1', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
+                      Country
+                    </label>
+                    <input
+                      type="text"
+                      value={profileCountry}
+                      onChange={(e) => setProfileCountry(e.target.value)}
+                      placeholder="United Kingdom"
+                      className={cn(
+                        'w-full border rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500',
+                        isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                      )}
+                    />
+                  </div>
+                </div>
               </div>
 
               <button

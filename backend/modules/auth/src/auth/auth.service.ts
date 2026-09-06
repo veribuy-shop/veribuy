@@ -74,6 +74,29 @@ export class AuthService {
           role: true,
         },
       });
+
+      // Auto-create user profile and address
+      await this.prisma.profile.create({
+        data: {
+          userId: user.id,
+          displayName: dto.name,
+          ...(dto.city
+            ? {
+                address: {
+                  create: {
+                    line1: '',
+                    city: dto.city,
+                    state: '',
+                    postalCode: '',
+                    country: dto.country || 'United Kingdom',
+                  },
+                },
+              }
+            : {}),
+        },
+      }).catch((profileErr) => {
+        this.logger.warn(`Failed to auto-create initial profile for ${user.id}: ${profileErr?.message}`);
+      });
     } catch (err: any) {
       // P2002 = unique constraint violation (email already exists)
       if (err?.code === 'P2002') {

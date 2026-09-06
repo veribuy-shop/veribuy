@@ -131,6 +131,32 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const hasAddressUpdates =
+      dto.city !== undefined ||
+      dto.state !== undefined ||
+      dto.postalCode !== undefined ||
+      dto.country !== undefined ||
+      dto.line1 !== undefined ||
+      dto.line2 !== undefined ||
+      dto.address !== undefined;
+
+    const addressCreate = {
+      line1: dto.address?.line1 ?? dto.line1 ?? '',
+      line2: dto.address?.line2 ?? dto.line2 ?? null,
+      city: dto.address?.city ?? dto.city ?? '',
+      state: dto.address?.state ?? dto.state ?? '',
+      postalCode: dto.address?.postalCode ?? dto.postalCode ?? '',
+      country: dto.address?.country ?? dto.country ?? 'United Kingdom',
+    };
+
+    const addressUpdate: Record<string, any> = {};
+    if (dto.address?.line1 !== undefined || dto.line1 !== undefined) addressUpdate.line1 = dto.address?.line1 ?? dto.line1;
+    if (dto.address?.line2 !== undefined || dto.line2 !== undefined) addressUpdate.line2 = dto.address?.line2 ?? dto.line2;
+    if (dto.address?.city !== undefined || dto.city !== undefined) addressUpdate.city = dto.address?.city ?? dto.city;
+    if (dto.address?.state !== undefined || dto.state !== undefined) addressUpdate.state = dto.address?.state ?? dto.state;
+    if (dto.address?.postalCode !== undefined || dto.postalCode !== undefined) addressUpdate.postalCode = dto.address?.postalCode ?? dto.postalCode;
+    if (dto.address?.country !== undefined || dto.country !== undefined) addressUpdate.country = dto.address?.country ?? dto.country;
+
     const profile = await this.prisma.profile.upsert({
       where: { userId },
       update: {
@@ -140,6 +166,14 @@ export class UsersService {
         ...(dto.bio !== undefined && { bio: dto.bio }),
         ...(dto.phone !== undefined && { phone: dto.phone }),
         ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+        ...(hasAddressUpdates && {
+          address: {
+            upsert: {
+              create: addressCreate,
+              update: addressUpdate,
+            },
+          },
+        }),
       },
       create: {
         userId,
@@ -149,6 +183,11 @@ export class UsersService {
         bio: dto.bio,
         phone: dto.phone,
         avatarUrl: dto.avatarUrl,
+        ...(hasAddressUpdates && {
+          address: {
+            create: addressCreate,
+          },
+        }),
       },
       select: PROFILE_SELECT,
     });

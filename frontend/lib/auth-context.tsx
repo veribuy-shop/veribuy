@@ -14,7 +14,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string, redirectTo?: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, city?: string, country?: string) => Promise<void>;
   logout: () => void;
   /** Fetch wrapper that auto-retries once on 401 after refreshing the token. */
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -154,12 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (name: string, email: string, password: string) => {
+  const register = async (name: string, email: string, password: string, city?: string, country?: string) => {
     const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name, email, password, ...(city ? { city } : {}), ...(country ? { country } : {}) }),
     });
 
     const data = await response.json();
