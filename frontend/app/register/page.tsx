@@ -32,6 +32,7 @@ export default function RegisterPage() {
   const [step, setStep]                   = useState<1 | 2>(1);
   const [name, setName]                   = useState('');
   const [email, setEmail]                 = useState('');
+  const [city, setCity]                   = useState('');
   const [password, setPassword]           = useState('');
   const [showPassword, setShowPassword]   = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -57,7 +58,7 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
     try {
-      await register(name, email, password);
+      await register(name, email, password, city.trim() || undefined, 'United Kingdom');
     } catch (err: any) {
       setError(err.message || 'Failed to create account. Please try again.');
       setLoading(false);
@@ -167,6 +168,29 @@ export default function RegisterPage() {
               />
             </div>
 
+            {/* City / Town (Optional) */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <label htmlFor="reg-city" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                  City / Town <span className="text-gray-400 font-normal normal-case">(Optional)</span>
+                </label>
+                <span className="text-[11px] text-gray-400">Used for shipping origin</span>
+              </div>
+              <input
+                id="reg-city"
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                autoComplete="address-level2"
+                placeholder="e.g. London, Manchester, Birmingham"
+                className={cn(
+                  'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                  'text-gray-900 placeholder:text-gray-400',
+                  'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                )}
+              />
+            </div>
+
             {/* Password */}
             <div>
               <label htmlFor="reg-password" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
@@ -260,6 +284,10 @@ export default function RegisterPage() {
                 <div className="flex justify-between">
                   <span className="text-gray-500">Email:</span>
                   <span className="font-bold text-gray-900">{email}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Location:</span>
+                  <span className="font-bold text-gray-900">{city.trim() ? `${city.trim()}, UK` : 'United Kingdom'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Seller Commission:</span>

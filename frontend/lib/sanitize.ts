@@ -40,6 +40,16 @@ export interface SafeUser {
   createdAt: string;
 }
 
+export interface SafeProfileAddress {
+  id?: string;
+  line1?: string;
+  line2?: string | null;
+  city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
+}
+
 export interface SafeProfile {
   id: string;
   userId: string;
@@ -53,6 +63,10 @@ export interface SafeProfile {
   sellerRating: number | null;
   totalSales: number;
   totalPurchases: number;
+  address?: SafeProfileAddress | null;
+  city?: string | null;
+  country?: string | null;
+  location?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -237,6 +251,10 @@ export function sanitizeUser(raw: Record<string, any>): SafeUser {
 
 /** Own profile — returned only to the authenticated owner. */
 export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
+  const city = raw.address?.city ?? raw.city ?? null;
+  const country = raw.address?.country ?? raw.country ?? null;
+  const location = city && country ? `${city}, ${country}` : city || country || null;
+
   return {
     id: raw.id ?? '',
     userId: raw.userId ?? '',
@@ -250,6 +268,20 @@ export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
     sellerRating: raw.sellerRating != null ? Number(raw.sellerRating) : null,
     totalSales: Number(raw.totalSales ?? 0),
     totalPurchases: Number(raw.totalPurchases ?? 0),
+    address: raw.address
+      ? {
+          id: raw.address.id,
+          line1: raw.address.line1 ?? '',
+          line2: raw.address.line2 ?? null,
+          city: raw.address.city ?? '',
+          state: raw.address.state ?? '',
+          postalCode: raw.address.postalCode ?? '',
+          country: raw.address.country ?? '',
+        }
+      : null,
+    city,
+    country,
+    location,
     createdAt: raw.createdAt ?? '',
     updatedAt: raw.updatedAt ?? '',
   };

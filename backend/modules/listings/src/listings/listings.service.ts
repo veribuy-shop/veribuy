@@ -98,6 +98,43 @@ export class UlistingsService {
       );
     }
 
+    // If dispatch location/city was specified, save it to the seller's profile address
+    const locationCity = (dto.city || dto.location || '').trim();
+    if (locationCity && dto.sellerId) {
+      this.prisma.profile.upsert({
+        where: { userId: dto.sellerId },
+        update: {
+          address: {
+            upsert: {
+              create: {
+                city: locationCity,
+                line1: '',
+                state: '',
+                postalCode: '',
+                country: 'United Kingdom',
+              },
+              update: {
+                city: locationCity,
+              },
+            },
+          },
+        },
+        create: {
+          userId: dto.sellerId,
+          displayName: 'Seller',
+          address: {
+            create: {
+              city: locationCity,
+              line1: '',
+              state: '',
+              postalCode: '',
+              country: 'United Kingdom',
+            },
+          },
+        },
+      }).catch((err: Error) => this.logger.warn(`Failed to update seller dispatch location: ${err?.message}`));
+    }
+
     // Fire-and-forget: notify seller of successful listing submission
     this.getSellerInfo(listing.sellerId).then((seller) => {
       if (seller) {

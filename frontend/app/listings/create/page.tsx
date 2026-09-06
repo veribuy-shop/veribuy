@@ -68,6 +68,7 @@ interface ListingFormData {
   model: string;
   title: string;
   description: string;
+  city?: string;
   
   // Step 2: Condition
   conditionGrade: ConditionGrade;
@@ -195,6 +196,7 @@ export default function CreateListingPage() {
     model: '',
     title: '',
     description: '',
+    city: '',
     conditionGrade: 'B',
     cosmeticCondition: '',
     functionalIssues: '',
@@ -207,6 +209,23 @@ export default function CreateListingPage() {
     screenImages: [],
     settingsScreenshot: [],
   });
+
+  // Pre-fill seller's dispatch city from their saved profile
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/users/${user.id}/profile`, { credentials: 'include' });
+        if (res.ok) {
+          const profile = await res.json();
+          const userCity = profile?.address?.city || profile?.city;
+          if (userCity) {
+            setFormData(prev => ({ ...prev, city: prev.city || userCity }));
+          }
+        }
+      } catch {}
+    })();
+  }, [user?.id]);
 
   // PERF-06: useObjectURLs must be called after formData is declared so the
   // initial empty arrays are accessible on first render.
@@ -355,6 +374,7 @@ export default function CreateListingPage() {
         conditionGrade: formData.conditionGrade,
         imei: formData.imei || undefined,
         serialNumber: formData.serialNumber || undefined,
+        city: formData.city || undefined,
       };
 
       const response = await authFetch('/api/listings', {
@@ -643,6 +663,26 @@ export default function CreateListingPage() {
                   className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 />
                 <p id="listing-description-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">{formData.description.length}/2000 characters (minimum 50)</p>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label htmlFor="listing-city" className="block text-sm font-medium text-[var(--color-text)]">
+                    Dispatch Location / Ships From <span className="text-gray-400 font-normal text-xs">(City / Town)</span>
+                  </label>
+                  <span className="text-xs text-gray-400">e.g. London, Manchester</span>
+                </div>
+                <input
+                  id="listing-city"
+                  type="text"
+                  value={formData.city || ''}
+                  onChange={(e) => updateFormData('city', e.target.value)}
+                  placeholder="e.g. London, UK"
+                  className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                />
+                <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                  Displayed on your listing as the dispatch location and used to compute buyer shipping.
+                </p>
               </div>
             </div>
           )}
