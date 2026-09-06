@@ -254,36 +254,91 @@ export class UlistingsService {
     // in the shared DB (logical `evidence` schema); we fetch them in ONE query for
     // the page's listing IDs (no N+1) and take the first image per pack.
     const listingIds = data.map((l) => l.id);
+    const sellerIds = Array.from(new Set(data.map((l) => l.sellerId)));
     let coverImages: Map<string, string> = new Map();
+    let sellersMap: Map<string, any> = new Map();
+
     if (listingIds.length > 0) {
       try {
-        const packs = await this.prisma.evidencePack.findMany({
-          where: { listingId: { in: listingIds } },
-          select: {
-            listingId: true,
-            items: {
-              select: { url: true },
-              orderBy: { createdAt: 'asc' as const },
+        const [packs, profiles, users] = await Promise.all([
+          this.prisma.evidencePack.findMany({
+            where: { listingId: { in: listingIds } },
+            select: {
+              listingId: true,
+              items: {
+                select: { url: true },
+                orderBy: { createdAt: 'asc' as const },
+              },
             },
-          },
-        });
+          }),
+          this.prisma.profile.findMany({
+            where: { userId: { in: sellerIds } },
+            select: {
+              userId: true,
+              displayName: true,
+              firstName: true,
+              lastName: true,
+              avatarUrl: true,
+              sellerRating: true,
+              createdAt: true,
+              address: {
+                select: {
+                  city: true,
+                  country: true,
+                  state: true,
+                },
+              },
+            },
+          }),
+          this.prisma.user.findMany({
+            where: { id: { in: sellerIds } },
+            select: { id: true, createdAt: true },
+          }),
+        ]);
+
         coverImages = new Map(
           packs
             .map((p): [string, string] => [p.listingId, p.items[0]?.url ?? ''])
             .filter(([, url]) => url.length > 0),
         );
+
+        const usersMap = new Map(users.map((u) => [u.id, u.createdAt]));
+        profiles.forEach((p) => {
+          const userCreated = usersMap.get(p.userId) || p.createdAt;
+          const joinedYear = userCreated ? new Date(userCreated).getFullYear() : new Date().getFullYear();
+          const city = p.address?.city || 'London';
+          const country = p.address?.country || 'UK';
+          const location = `${city}, ${country}`;
+          const displayName = p.displayName || (p.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : 'Verified Seller');
+          sellersMap.set(p.userId, {
+            displayName,
+            avatarUrl: p.avatarUrl,
+            joinedYear,
+            location,
+            city,
+            country,
+            sellerRating: p.sellerRating ?? 5.0,
+          });
+        });
       } catch (err) {
-        this.logger.warn(`Failed to fetch evidence covers for listings: ${(err as Error).message}`);
+        this.logger.warn(`Failed to fetch evidence covers or seller info for listings: ${(err as Error).message}`);
       }
     }
 
-    const withImages = data.map((l) => ({
+    const withImagesAndSeller = data.map((l) => ({
       ...l,
       imageUrl: coverImages.get(l.id) ?? null,
+      seller: sellersMap.get(l.sellerId) || {
+        displayName: 'Verified Seller',
+        joinedYear: new Date(l.createdAt).getFullYear(),
+        location: 'London, UK',
+        city: 'London',
+        country: 'UK',
+      },
     }));
 
     return {
-      data: withImages,
+      data: withImagesAndSeller,
       pagination: {
         page,
         limit,
@@ -336,6 +391,13 @@ export class UlistingsService {
         throw new NotFoundException('Listing not found');
       }
 
+      // Enrich with seller public profile (join year, location, rating)
+      const seller = await this.getPublicSellerDetails(listing.sellerId);
+      listing = {
+        ...listing,
+        seller,
+      };
+
       // Cache for 5 minutes — fail open
       try {
         await this.redis.set(cacheKey, listing, 300);
@@ -347,6 +409,70 @@ export class UlistingsService {
     await this.countViewOnce(id, viewerId);
 
     return listing;
+  }
+
+  /**
+   * Fetch public seller details (displayName, join year, location/city/country, rating)
+   */
+  async getPublicSellerDetails(sellerId: string) {
+    try {
+      const [user, profile] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: sellerId },
+          select: { createdAt: true },
+        }),
+        this.prisma.profile.findUnique({
+          where: { userId: sellerId },
+          select: {
+            displayName: true,
+            firstName: true,
+            lastName: true,
+            avatarUrl: true,
+            sellerRating: true,
+            verificationStatus: true,
+            createdAt: true,
+            address: {
+              select: {
+                city: true,
+                state: true,
+                country: true,
+                postalCode: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+      const joinedYear = (user?.createdAt || profile?.createdAt)?.getFullYear() || new Date().getFullYear();
+      const city = profile?.address?.city || 'London';
+      const country = profile?.address?.country || 'UK';
+      const state = profile?.address?.state || '';
+      const postalCode = profile?.address?.postalCode || '';
+      const location = city && country ? `${city}, ${country}` : city || country || 'United Kingdom';
+      const displayName = profile?.displayName || (profile?.firstName ? `${profile.firstName} ${profile.lastName || ''}`.trim() : 'Verified Seller');
+
+      return {
+        displayName,
+        avatarUrl: profile?.avatarUrl ?? null,
+        joinedYear,
+        location,
+        city,
+        country,
+        state,
+        postalCode,
+        sellerRating: profile?.sellerRating ?? 5.0,
+      };
+    } catch {
+      return {
+        displayName: 'Verified Seller',
+        avatarUrl: null,
+        joinedYear: new Date().getFullYear(),
+        location: 'London, UK',
+        city: 'London',
+        country: 'UK',
+        sellerRating: 5.0,
+      };
+    }
   }
 
   /** Count a listing view once per viewer within a 24h window (dedupe). */

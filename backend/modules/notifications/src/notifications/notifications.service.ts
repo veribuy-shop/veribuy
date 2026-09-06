@@ -369,4 +369,15 @@ export class NotificationsService {
   }): Promise<void> {
     await this.email.sendContactUsEmail(data);
   }
+
+  // Request Callback — fires immediate phone callback request email to support team
+  async requestCallback(data: {
+    name: string;
+    phoneNumber: string;
+    email?: string;
+    message?: string;
+    preferredTime?: string;
+  }): Promise<void> {
+    await this.email.sendCallbackRequestEmail(data);
+  }
 }

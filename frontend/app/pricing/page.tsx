@@ -271,7 +271,7 @@ export default function PricingPage() {
                   <span className="font-bold text-gray-900">{formatPrice(exampleFee, 'GBP')}</span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-400">
-                  <span>Tracked &amp; Insured Shipping:</span>
+                  <span>Tracked Shipping:</span>
                   <span>Calculated at checkout</span>
                 </div>
                 <div className="border-t border-gray-100 pt-3 flex justify-between text-base font-black text-gray-900">

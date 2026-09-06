@@ -60,6 +60,11 @@ export interface SafeProfile {
 export interface SafePublicProfile {
   displayName: string;
   avatarUrl: string | null;
+  joinedYear?: number | null;
+  location?: string | null;
+  city?: string | null;
+  country?: string | null;
+  sellerRating?: number | null;
 }
 
 export interface SafeAdminProfile {
@@ -88,6 +93,8 @@ export interface SafePublicListing {
   viewCount: number;
   publishedAt: string | null;
   imageUrl: string | null;
+  images?: Array<{ id?: string; url: string }> | string[];
+  seller?: SafePublicProfile | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -252,8 +259,13 @@ export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
 export function sanitizePublicProfile(raw: Record<string, any> | null): SafePublicProfile | null {
   if (!raw) return null;
   return {
-    displayName: raw.displayName ?? '',
+    displayName: raw.displayName ?? raw.name ?? 'Verified Seller',
     avatarUrl: raw.avatarUrl ?? null,
+    joinedYear: raw.joinedYear ?? (raw.createdAt ? new Date(raw.createdAt).getFullYear() : null),
+    location: raw.location ?? (raw.city && raw.country ? `${raw.city}, ${raw.country}` : raw.city || raw.country || null),
+    city: raw.city ?? null,
+    country: raw.country ?? null,
+    sellerRating: raw.sellerRating != null ? Number(raw.sellerRating) : null,
   };
 }
 
@@ -288,6 +300,8 @@ export function sanitizePublicListing(raw: Record<string, any>): SafePublicListi
     viewCount: Number(raw.viewCount ?? 0),
     publishedAt: raw.publishedAt ?? null,
     imageUrl: raw.imageUrl ?? null,
+    images: Array.isArray(raw.images) ? raw.images : [],
+    seller: raw.seller ? sanitizePublicProfile(raw.seller) : null,
     createdAt: raw.createdAt ?? '',
     updatedAt: raw.updatedAt ?? '',
   };

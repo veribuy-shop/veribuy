@@ -41,7 +41,17 @@ export interface Listing {
   trustLensStatus?: string;
   createdAt: string;
   updatedAt: string;
-  seller?: { id: string; name: string; email: string; trustScore?: number };
+  seller?: {
+    id?: string;
+    name?: string;
+    displayName?: string;
+    email?: string;
+    joinedYear?: number;
+    location?: string;
+    city?: string;
+    country?: string;
+    trustScore?: number;
+  };
 }
 
 export interface TrustLensReport {
