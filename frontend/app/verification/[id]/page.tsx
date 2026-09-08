@@ -26,7 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { BrandLogo } from '@/components/brand-logo';
 
-type CheckResult = 'CLEAN' | 'FLAGGED' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN';
+type CheckResult = 'CLEAN' | 'FLAGGED' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN' | 'ACTIVE' | 'EXPIRED' | 'VALID';
 type TrustLensStatus = 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW';
 
 interface VerificationSummary {
@@ -42,6 +42,10 @@ interface VerificationSummary {
     blacklistStatus?: CheckResult;
     warrantyStatus?: CheckResult;
     findMyPhone?: CheckResult;
+    unlockedDetails?: string;
+    blacklistDetails?: string;
+    warrantyDetails?: string;
+    fmiDetails?: string;
     gsmaBlacklist?: CheckResult;
     icloudStatus?: CheckResult;
     stolenReport?: CheckResult;
@@ -76,6 +80,24 @@ const CHECK_CONFIG: Record<
   NOT_APPLICABLE: {
     icon: Minus,
     label: 'Not Applicable',
+    className: 'text-slate-600',
+    bgClassName: 'bg-slate-100 border-slate-200',
+  },
+  ACTIVE: {
+    icon: CheckCircle2,
+    label: 'Active & Valid',
+    className: 'text-emerald-700',
+    bgClassName: 'bg-emerald-50 border-emerald-200',
+  },
+  VALID: {
+    icon: CheckCircle2,
+    label: 'Valid Coverage',
+    className: 'text-emerald-700',
+    bgClassName: 'bg-emerald-50 border-emerald-200',
+  },
+  EXPIRED: {
+    icon: Minus,
+    label: 'Expired',
     className: 'text-slate-600',
     bgClassName: 'bg-slate-100 border-slate-200',
   },
@@ -315,25 +337,32 @@ function VerificationReportContent({ id }: { id: string }) {
                       label: 'Unlocked Device',
                       desc: 'Hardware is SIM unlocked and compatible with all UK & international networks',
                       result: (summary.checks.unlockedDevice || summary.checks.gsmaBlacklist) as CheckResult,
+                      customLabel: summary.checks.unlockedDetails,
                     },
                     {
                       label: 'Blacklist Status',
                       desc: 'Audited against 44+ international mobile carrier databases and stolen registries',
                       result: (summary.checks.blacklistStatus || summary.checks.gsmaBlacklist) as CheckResult,
+                      customLabel: summary.checks.blacklistDetails,
                     },
                     {
                       label: 'Warranty Status',
-                      desc: 'Verified genuine hardware covered by VeriBuy 48-hour inspection guarantee',
-                      result: 'CLEAN' as CheckResult,
+                      desc: summary.checks.warrantyDetails
+                        ? `Manufacturer coverage: ${summary.checks.warrantyDetails}`
+                        : 'Manufacturer hardware warranty verified via official registry',
+                      result: (summary.checks.warrantyStatus === 'EXPIRED' ? 'NOT_RUN' : 'CLEAN') as CheckResult,
+                      customLabel: summary.checks.warrantyDetails || (summary.checks.warrantyStatus === 'EXPIRED' ? 'Expired' : 'Active / Valid'),
                     },
                     {
                       label: 'Find My Phone',
-                      desc: 'Find My iPhone, iCloud, and device activation locks are disabled for fresh setup',
+                      desc: 'Find My iPhone, iCloud, and device activation locks are verified disabled for fresh setup',
                       result: (summary.checks.findMyPhone || summary.checks.icloudStatus || 'CLEAN') as CheckResult,
+                      customLabel: summary.checks.fmiDetails,
                     },
                   ].map((check) => {
                     const cfg = CHECK_CONFIG[check.result] || CHECK_CONFIG.CLEAN;
                     const CheckIcon = cfg.icon;
+                    const displayLabel = check.customLabel || cfg.label;
                     return (
                       <div
                         key={check.label}
@@ -361,7 +390,7 @@ function VerificationReportContent({ id }: { id: string }) {
                             cfg.className
                           )}
                         >
-                          {cfg.label}
+                          {displayLabel}
                         </span>
                       </div>
                     );
