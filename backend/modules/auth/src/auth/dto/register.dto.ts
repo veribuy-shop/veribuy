@@ -22,11 +22,41 @@ export class RegisterDto {
   })
   password: string;
 
+  @IsString()
+  @MinLength(5)
+  @MaxLength(25)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  phone: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(150)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  line1: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  line2?: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  city: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(100)
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  city?: string;
+  state?: string;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(20)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  postalCode: string;
 
   @IsOptional()
   @IsString()

@@ -611,9 +611,9 @@ export default function BrowseContent() {
               </div>
             )}
 
-            {/* Device Listings Grid */}
+            {/* Device Listings Grid - Compact eBay Style */}
             {!loading && !error && listings.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6" aria-label="Device listings">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5" aria-label="Device listings">
                 {listings.map((item) => {
                   const grade = item.conditionGrade ? GRADE_CONFIG[item.conditionGrade] : null;
                   const itemPrice = typeof item.price === 'string' ? parseFloat(item.price) : item.price;
@@ -621,34 +621,34 @@ export default function BrowseContent() {
                     <Link
                       key={item.id}
                       href={`/listings/${item.id}`}
-                      className="group bg-white rounded-2xl border border-[var(--color-border)] hover:border-[var(--color-green)]/80 hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col"
+                      className="group bg-white rounded-xl border border-gray-200/90 hover:border-emerald-600 hover:shadow-md transition-all duration-150 overflow-hidden flex flex-col h-full"
                     >
-                      {/* Image container */}
-                      <div className="relative aspect-[4/3] bg-[var(--color-surface-alt)] overflow-hidden">
+                      {/* Square Image container */}
+                      <div className="relative aspect-square bg-gray-50/70 p-3 flex items-center justify-center overflow-hidden border-b border-gray-100">
                         {item.imageUrl ? (
                           <img
                             src={item.imageUrl}
                             alt={item.title}
                             loading="lazy"
-                            className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            className="w-full h-full object-contain p-2 transition-transform duration-200 group-hover:scale-105"
                           />
                         ) : (
                           <div className="w-full h-full flex flex-col items-center justify-center text-[var(--color-text-muted)]">
-                            <Smartphone className="w-12 h-12 stroke-[1.25] mb-1 opacity-60" />
-                            <span className="text-xs font-semibold capitalize">{item.deviceType.toLowerCase()}</span>
+                            <Smartphone className="w-10 h-10 stroke-[1.25] mb-1 opacity-60" />
+                            <span className="text-[11px] font-semibold capitalize">{item.deviceType.toLowerCase()}</span>
                           </div>
                         )}
 
                         {/* Top Badges */}
-                        <div className="absolute top-3 left-3 flex items-center gap-1.5">
+                        <div className="absolute top-2 left-2 flex items-center gap-1">
                           {grade && (
-                            <span className={`text-[11px] font-extrabold px-2.5 py-1 rounded-lg shadow-sm ${grade.badgeClass}`}>
+                            <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded shadow-2xs ${grade.badgeClass}`}>
                               {grade.label}
                             </span>
                           )}
                           {item.trustLensStatus === 'PASSED' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white/95 text-[var(--color-green)] backdrop-blur-sm shadow-sm border border-emerald-100">
-                              <ShieldCheck className="w-3.5 h-3.5" />
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-white/95 text-emerald-800 backdrop-blur-2xs shadow-2xs border border-emerald-200">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
                               Verified
                             </span>
                           )}
@@ -656,27 +656,25 @@ export default function BrowseContent() {
                       </div>
 
                       {/* Content */}
-                      <div className="p-4 flex-1 flex flex-col justify-between">
+                      <div className="p-3 flex-1 flex flex-col justify-between gap-1.5">
                         <div>
-                          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
-                            {item.brand} {item.model}
+                          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">
+                            {item.brand}
                           </p>
-                          <h3 className="font-bold text-sm text-[var(--color-text)] line-clamp-2 leading-snug group-hover:text-[var(--color-green)] transition-colors mb-2">
+                          <h3 className="font-semibold text-xs sm:text-sm text-gray-900 line-clamp-2 leading-snug group-hover:text-emerald-700 transition-colors mb-1">
                             {item.title}
                           </h3>
                         </div>
 
-                        <div className="pt-3 border-t border-[var(--color-border)]/60 flex items-end justify-between mt-3">
-                          <div>
-                            <span className="text-xs text-[var(--color-text-muted)] block">Total Price</span>
-                            <span className="text-lg font-black text-[var(--color-text)]">
+                        <div className="pt-2 border-t border-gray-100 mt-auto">
+                          <div className="flex items-baseline justify-between">
+                            <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
                               {formatPrice(itemPrice, item.currency)}
                             </span>
                           </div>
-
-                          <span className="text-xs font-bold text-[var(--color-green)] group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
-                            View Device <ArrowRight className="w-3.5 h-3.5" />
-                          </span>
+                          <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
+                            Tracked delivery · 0% fee
+                          </p>
                         </div>
                       </div>
                     </Link>

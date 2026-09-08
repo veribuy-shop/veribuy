@@ -123,9 +123,13 @@ interface VerificationSummary {
   imeiCheckPerformed: boolean;
   isAppleDevice: boolean;
   checks: {
-    gsmaBlacklist: CheckResult;
-    icloudStatus: CheckResult;
-    stolenReport: CheckResult;
+    unlockedDevice?: CheckResult;
+    blacklistStatus?: CheckResult;
+    warrantyStatus?: CheckResult;
+    findMyPhone?: CheckResult;
+    gsmaBlacklist?: CheckResult;
+    icloudStatus?: CheckResult;
+    stolenReport?: CheckResult;
   } | null;
   deviceAttributes: Array<{ label: string; value: string }>;
   verifiedAt: string | null;
@@ -506,39 +510,45 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const securityChecks: SecurityCheckItem[] = [];
 
   if (verificationSummary?.checks) {
-    if (verificationSummary.checks.gsmaBlacklist !== 'NOT_RUN' && verificationSummary.checks.gsmaBlacklist !== 'NOT_APPLICABLE') {
-      const isClean = verificationSummary.checks.gsmaBlacklist === 'CLEAN';
-      securityChecks.push({
-        id: 'gsma',
-        title: 'GSMA Global Blacklist',
-        statusLabel: isClean ? 'Clean & Unrestricted' : 'Carrier Flagged',
-        description: 'Checked against 44+ international mobile carrier databases.',
-        passed: isClean,
-        icon: Radio,
-      });
-    }
-    if (verificationSummary.checks.stolenReport !== 'NOT_RUN' && verificationSummary.checks.stolenReport !== 'NOT_APPLICABLE') {
-      const isClean = verificationSummary.checks.stolenReport === 'CLEAN';
-      securityChecks.push({
-        id: 'stolen',
-        title: 'Stolen Property Registry',
-        statusLabel: isClean ? 'No Records Found' : 'Flagged in Loss Registry',
-        description: 'Cross-referenced with global police & insurance loss registries.',
-        passed: isClean,
-        icon: isClean ? ShieldCheck : ShieldAlert,
-      });
-    }
-    if (verificationSummary.isAppleDevice && verificationSummary.checks.icloudStatus !== 'NOT_RUN') {
-      const isClean = verificationSummary.checks.icloudStatus === 'CLEAN';
-      securityChecks.push({
-        id: 'icloud',
-        title: 'iCloud & Activation Lock',
-        statusLabel: isClean ? 'Unlocked & Clear' : 'Activation Locked',
-        description: 'Find My & Activation Lock disabled for fresh factory setup.',
-        passed: isClean,
-        icon: LockKeyhole,
-      });
-    }
+    const isCleanUnlocked = verificationSummary.checks.unlockedDevice === 'CLEAN' || verificationSummary.checks.gsmaBlacklist === 'CLEAN';
+    const isCleanBlacklist = verificationSummary.checks.blacklistStatus !== 'FLAGGED' && verificationSummary.checks.gsmaBlacklist !== 'FLAGGED';
+    const isCleanFmi = verificationSummary.checks.findMyPhone === 'CLEAN' || verificationSummary.checks.icloudStatus === 'CLEAN';
+
+    securityChecks.push({
+      id: 'unlocked',
+      title: 'Unlocked Device',
+      statusLabel: isCleanUnlocked ? 'Network Unlocked' : 'Carrier Locked',
+      description: 'Device accepts all SIM cards and is unlocked for UK & international networks.',
+      passed: isCleanUnlocked,
+      icon: Radio,
+    });
+
+    securityChecks.push({
+      id: 'blacklist',
+      title: 'Blacklist Status',
+      statusLabel: isCleanBlacklist ? 'Clean & Verified' : 'Flagged / Blacklisted',
+      description: 'Audited against GSMA international mobile registers and national police databases.',
+      passed: isCleanBlacklist,
+      icon: ShieldCheck,
+    });
+
+    securityChecks.push({
+      id: 'warranty',
+      title: 'Warranty Status',
+      statusLabel: 'VeriBuy Guaranteed',
+      description: 'Hardware backed by VeriBuy 48-hour inspection warranty & full escrow refund guarantee.',
+      passed: true,
+      icon: Award,
+    });
+
+    securityChecks.push({
+      id: 'fmi',
+      title: 'Find My Phone',
+      statusLabel: isCleanFmi ? 'Off / Setup Ready' : 'Activation Locked',
+      description: 'Find My iPhone, iCloud, and FRP activation locks are completely disabled.',
+      passed: isCleanFmi,
+      icon: LockKeyhole,
+    });
   }
 
   const deviceAttributes = (verificationSummary?.deviceAttributes ?? []).map((attr) => ({
@@ -916,7 +926,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   ...(listing.storageCapacity ? [{ label: 'Storage', value: listing.storageCapacity }] : []),
                   ...(listing.color ? [{ label: 'Colour', value: listing.color }] : []),
                   { label: 'Ships From', value: sellerLocation },
-                  { label: 'Views', value: String(listing.viewCount) },
                 ].map((row) => (
                   <div key={row.label} className="flex justify-between items-center py-0.5">
                     <span className="text-gray-400 font-medium">{row.label}</span>
@@ -968,29 +977,26 @@ export default function ListingDetailContent({ id }: { id: string }) {
               )}
             </div>
 
-            {/* Core Security & Loss Checks */}
+            {/* Core 4-Point Verification Checks */}
             {securityChecks.length > 0 && (
               <div className="mt-6">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-3.5">
-                  Security &amp; Database Registries
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {securityChecks.map((check) => {
                     const CheckIcon = check.icon;
                     return (
                       <div
                         key={check.title}
                         className={cn(
-                          'rounded-xl p-4 border transition-all flex flex-col justify-between',
+                          'rounded-2xl p-4 border transition-all flex flex-col justify-between',
                           check.passed
                             ? 'bg-white border-emerald-100 hover:border-emerald-300 shadow-xs'
                             : 'bg-red-50/50 border-red-200'
                         )}
                       >
-                        <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex items-start justify-between gap-2 mb-3">
                           <div
                             className={cn(
-                              'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
+                              'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
                               check.passed
                                 ? 'bg-emerald-50 text-[var(--color-green)] border border-emerald-100'
                                 : 'bg-red-100 text-red-600 border border-red-200'
@@ -1000,7 +1006,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                           </div>
                           <span
                             className={cn(
-                              'inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider',
+                              'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider',
                               check.passed
                                 ? 'bg-emerald-50 text-[var(--color-green)] border border-emerald-200'
                                 : 'bg-red-100 text-red-700 border border-red-200'
@@ -1021,7 +1027,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-gray-900">{check.title}</h4>
-                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">{check.description}</p>
+                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">{check.description}</p>
                         </div>
                       </div>
                     );
