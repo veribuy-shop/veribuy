@@ -41,7 +41,9 @@ import {
   Store,
   Filter,
   MapPin,
+  Phone,
 } from 'lucide-react';
+import { PhoneVerificationModal } from '@/components/phone-verification-modal';
 import {
   AreaChart,
   Area,
@@ -227,6 +229,9 @@ function DashboardContent() {
   const [profilePostalCode, setProfilePostalCode] = useState('');
   const [profileCountry, setProfileCountry] = useState('United Kingdom');
   const [profileLine1, setProfileLine1] = useState('');
+  const [profileIsPhoneVerified, setProfileIsPhoneVerified] = useState(false);
+  const [profileIsAddressVerified, setProfileIsAddressVerified] = useState(false);
+  const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileError, setProfileError] = useState('');
@@ -327,6 +332,8 @@ function DashboardContent() {
         setProfilePostalCode(p.address?.postalCode ?? '');
         setProfileCountry(p.address?.country ?? p.country ?? 'United Kingdom');
         setProfileLine1(p.address?.line1 ?? '');
+        setProfileIsPhoneVerified(Boolean(p.isPhoneVerified));
+        setProfileIsAddressVerified(Boolean(p.address?.isAddressVerified || p.isAddressVerified));
       }
     } catch (e) {
       console.error('Dashboard fetch error:', e);
@@ -1526,19 +1533,48 @@ function DashboardContent() {
               </div>
 
               <div>
-                <label className={cn('text-xs font-semibold block mb-1.5', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  value={profilePhone}
-                  onChange={(e) => setProfilePhone(e.target.value)}
-                  placeholder="+44 7700 900077"
-                  className={cn(
-                    'w-full border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500',
-                    isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className={cn('text-xs font-semibold', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
+                    Phone Number
+                  </label>
+                  {profileIsPhoneVerified ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3" /> UK Phone Verified
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsPhoneModalOpen(true)}
+                      className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline flex items-center gap-1"
+                    >
+                      <Phone className="w-3 h-3" /> Verify via SMS OTP
+                    </button>
                   )}
-                />
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="tel"
+                    value={profilePhone}
+                    onChange={(e) => {
+                      setProfilePhone(e.target.value);
+                      setProfileIsPhoneVerified(false);
+                    }}
+                    placeholder="+44 7700 900077"
+                    className={cn(
+                      'flex-1 border rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500',
+                      isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    )}
+                  />
+                  {!profileIsPhoneVerified && profilePhone && (
+                    <button
+                      type="button"
+                      onClick={() => setIsPhoneModalOpen(true)}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+                    >
+                      Verify
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -1841,6 +1877,19 @@ function DashboardContent() {
           </div>
         )}
       </main>
+
+      {/* UK Phone SMS OTP Modal */}
+      <PhoneVerificationModal
+        isOpen={isPhoneModalOpen}
+        initialPhone={profilePhone}
+        onClose={() => setIsPhoneModalOpen(false)}
+        onVerified={(verifiedPhone) => {
+          setProfilePhone(verifiedPhone);
+          setProfileIsPhoneVerified(true);
+          setProfileSuccess('Phone number verified successfully!');
+          setTimeout(() => setProfileSuccess(''), 3000);
+        }}
+      />
     </div>
   );
 }

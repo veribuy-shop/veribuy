@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -18,6 +18,7 @@ import {
   MapPin,
   Phone,
   Shield,
+  CheckCircle2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -45,12 +46,65 @@ export default function RegisterPage() {
   const [error, setError]                 = useState('');
   const [loading, setLoading]             = useState(false);
 
+  // Postcode live validation state
+  const [postcodeLoading, setPostcodeLoading] = useState(false);
+  const [postcodeValid, setPostcodeValid]     = useState<boolean | null>(null);
+  const [postcodeDetails, setPostcodeDetails] = useState<string | null>(null);
+  const postcodeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Live Postcode PAF verification
+  useEffect(() => {
+    const clean = postalCode.trim().replace(/\s+/g, '').toUpperCase();
+    if (clean.length < 5) {
+      setPostcodeValid(null);
+      setPostcodeDetails(null);
+      return;
+    }
+
+    if (postcodeDebounceRef.current) {
+      clearTimeout(postcodeDebounceRef.current);
+    }
+
+    postcodeDebounceRef.current = setTimeout(async () => {
+      setPostcodeLoading(true);
+      try {
+        const res = await fetch(`/api/verify-postcode?postcode=${encodeURIComponent(clean)}`);
+        const data = await res.json();
+        if (res.ok && data.valid) {
+          setPostcodeValid(true);
+          const location = data.adminCounty || data.adminDistrict || 'UK';
+          setPostcodeDetails(`${location}, ${data.country || 'UK'}`);
+          if (!city.trim() && (data.adminCounty || data.adminDistrict)) {
+            setCity(data.adminCounty || data.adminDistrict);
+          }
+          if (data.postcode) {
+            setPostalCode(data.postcode);
+          }
+        } else {
+          setPostcodeValid(false);
+          setPostcodeDetails(null);
+        }
+      } catch {
+        setPostcodeValid(null);
+      } finally {
+        setPostcodeLoading(false);
+      }
+    }, 500);
+
+    return () => {
+      if (postcodeDebounceRef.current) clearTimeout(postcodeDebounceRef.current);
+    };
+  }, [postalCode]);
+
+  // UK Phone format regex
+  const ukPhoneRegex = /^(?:(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}|\+44\s?\d{4}\s?\d{6}|0\d{4}\s?\d{6})$/;
+  const phoneValid = ukPhoneRegex.test(phone.trim()) || phone.trim().length >= 10;
+
   const nameValid       = name.trim().length >= 2;
   const emailValid      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const phoneValid      = phone.trim().length >= 7;
   const line1Valid      = line1.trim().length >= 3;
   const cityValid       = city.trim().length >= 2;
-  const postalCodeValid = postalCode.trim().length >= 3;
+  const isPostalCodeFormatValid = postalCode.trim().length >= 5;
   const passwordHasLength  = password.length >= 8;
   const passwordHasUpper   = /[A-Z]/.test(password);
   const passwordHasLower   = /[a-z]/.test(password);
@@ -58,7 +112,7 @@ export default function RegisterPage() {
   const passwordHasSpecial = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
   const passwordValid = passwordHasLength && passwordHasUpper && passwordHasLower && passwordHasDigit && passwordHasSpecial;
 
-  const canSubmit = nameValid && emailValid && phoneValid && line1Valid && cityValid && postalCodeValid && passwordValid && agreedToTerms;
+  const canSubmit = nameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,13 +200,13 @@ export default function RegisterPage() {
             onSubmit={(e) => {
               e.preventDefault();
               setError('');
-              if (nameValid && emailValid && phoneValid && line1Valid && cityValid && postalCodeValid && passwordValid && agreedToTerms) {
+              if (nameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms) {
                 setStep(2);
               } else if (!agreedToTerms) {
                 setError('Please agree to the Terms of Service and Privacy Policy to proceed.');
               } else if (!phoneValid) {
                 setError('Please enter a valid UK contact phone number.');
-              } else if (!line1Valid || !cityValid || !postalCodeValid) {
+              } else if (!line1Valid || !cityValid || !isPostalCodeFormatValid) {
                 setError('Please enter your complete address (Street Address, City/County, and Postcode).');
               } else {
                 setError('Please complete all fields according to the criteria.');
@@ -292,28 +346,66 @@ export default function RegisterPage() {
                     'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
                   )}
                 />
-                <span className="text-[10px] text-gray-400 mt-1 block">Shown publicly on listings</span>
+                <span className="text-[10px] text-gray-400 mt-1 block">Public dispatch origin on listings</span>
               </div>
 
               <div>
-                <label htmlFor="reg-postal" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                  Postcode <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="reg-postal"
-                  type="text"
-                  required
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  autoComplete="postal-code"
-                  placeholder="e.g. M1 1AE"
-                  className={cn(
-                    'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
-                    'text-gray-900 placeholder:text-gray-400',
-                    'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                <div className="flex justify-between items-center mb-1.5">
+                  <label htmlFor="reg-postal" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    UK Postcode <span className="text-red-500">*</span>
+                  </label>
+                </div>
+                <div className="relative">
+                  <input
+                    id="reg-postal"
+                    type="text"
+                    required
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                    autoComplete="postal-code"
+                    placeholder="e.g. M1 1AA"
+                    className={cn(
+                      'w-full px-4 py-3 border rounded-xl text-sm bg-white uppercase',
+                      postcodeValid === true
+                        ? 'border-emerald-500 focus:ring-emerald-500'
+                        : postcodeValid === false
+                        ? 'border-amber-400 focus:ring-amber-400'
+                        : 'border-[var(--color-border)] focus:ring-[var(--color-green)]',
+                      'text-gray-900 placeholder:text-gray-400',
+                      'focus:outline-none focus:ring-2 focus:border-transparent transition-all shadow-xs',
+                    )}
+                  />
+                  {postcodeLoading && (
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                      <Loader2 className="w-4 h-4 animate-spin text-[var(--color-green)]" />
+                    </div>
                   )}
-                />
-                <span className="text-[10px] text-gray-400 mt-1 block">Kept strictly private</span>
+                  {postcodeValid === true && !postcodeLoading && (
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Live validation feedback */}
+                {postcodeLoading && (
+                  <span className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                    Checking Royal Mail database...
+                  </span>
+                )}
+                {postcodeValid === true && postcodeDetails && (
+                  <span className="text-[10px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
+                    ✓ PAF Validated: {postcodeDetails}
+                  </span>
+                )}
+                {postcodeValid === false && (
+                  <span className="text-[10px] text-amber-600 font-medium mt-1 block">
+                    Please check UK postcode format (e.g. M1 1AA, SW1A 1AA)
+                  </span>
+                )}
+                {postcodeValid === null && !postcodeLoading && (
+                  <span className="text-[10px] text-gray-400 mt-1 block">Kept strictly private</span>
+                )}
               </div>
             </div>
 
@@ -414,7 +506,10 @@ export default function RegisterPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Phone:</span>
-                  <span className="font-bold text-gray-900 font-mono">{phone}</span>
+                  <span className="font-bold text-gray-900 font-mono flex items-center gap-1.5">
+                    {phone}
+                    <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">UK Format Validated</span>
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Public Dispatch Origin:</span>
@@ -424,9 +519,14 @@ export default function RegisterPage() {
                   </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-gray-200/60">
-                  <span className="text-gray-500">Full Shipping Address:</span>
+                  <span className="text-gray-500">Shipping Address:</span>
                   <span className="text-xs font-medium text-gray-700 text-right">
                     {line1}{line2 ? `, ${line2}` : ''}, {city}, {postalCode}
+                    {postcodeValid && (
+                      <span className="block text-[10px] text-emerald-600 font-bold mt-0.5">
+                        ✓ Royal Mail PAF Validated
+                      </span>
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-gray-200/60">

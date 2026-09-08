@@ -26,6 +26,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
+import { VerifyPhoneOtpDto } from './dto/verify-phone-otp.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto } from '@veribuy/common';
 
 interface AuthenticatedUser {
@@ -38,6 +40,38 @@ interface AuthenticatedUser {
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  // Postcode lookup for UK addresses
+  @Get('postcode-lookup/:postcode')
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  async lookupPostcode(@Param('postcode') postcode: string) {
+    return this.authService.lookupUkPostcode(postcode);
+  }
+
+  // Send Phone verification OTP
+  @Post('phone/send-otp')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async sendPhoneOtp(
+    @Body() dto: SendPhoneOtpDto,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.authService.sendPhoneOtp(dto, user?.userId);
+  }
+
+  // Verify Phone OTP
+  @Post('phone/verify-otp')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async verifyPhoneOtp(
+    @Body() dto: VerifyPhoneOtpDto,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    return this.authService.verifyPhoneOtp(dto, user?.userId);
+  }
 
   // 10 verify-email requests per minute per IP (clicked from email link)
   @Get('verify-email')

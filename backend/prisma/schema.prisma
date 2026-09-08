@@ -62,6 +62,8 @@ model Profile {
   avatarUrl          String?            @map("avatar_url")
   bio                String?
   phone              String?
+  isPhoneVerified    Boolean            @default(false) @map("is_phone_verified")
+  phoneVerifiedAt    DateTime?          @map("phone_verified_at")
   sellerRating       Float?             @map("seller_rating")
   totalSales         Int                @default(0) @map("total_sales")
   totalPurchases     Int                @default(0) @map("total_purchases")
@@ -79,15 +81,17 @@ model Profile {
 }
 
 model Address {
-  id         String  @id @default(uuid())
-  profileId  String  @unique @map("profile_id")
-  profile    Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  line1      String
-  line2      String?
-  city       String
-  state      String
-  postalCode String  @map("postal_code")
-  country    String
+  id                String    @id @default(uuid())
+  profileId         String    @unique @map("profile_id")
+  profile           Profile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  line1             String
+  line2             String?
+  city              String
+  state             String
+  postalCode        String    @map("postal_code")
+  country           String
+  isAddressVerified Boolean   @default(false) @map("is_address_verified")
+  addressVerifiedAt DateTime? @map("address_verified_at")
 
   @@schema("users")
   @@map("addresses")

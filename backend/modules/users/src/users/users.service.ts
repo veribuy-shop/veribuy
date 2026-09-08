@@ -19,6 +19,8 @@ const PROFILE_SELECT = {
   bio: true,
   avatarUrl: true,
   phone: true,
+  isPhoneVerified: true,
+  phoneVerifiedAt: true,
   verificationStatus: true,
   sellerRating: true,
   totalSales: true,
@@ -34,6 +36,8 @@ const PROFILE_SELECT = {
       state: true,
       postalCode: true,
       country: true,
+      isAddressVerified: true,
+      addressVerifiedAt: true,
     },
   },
 } as const;
