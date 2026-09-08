@@ -10,12 +10,14 @@ import {
   EyeOff,
   Loader2,
   Check,
-  BadgeCheck,
   RotateCcw,
   Sparkles,
   ArrowRight,
   AlertCircle,
   Coins,
+  MapPin,
+  Phone,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,22 +34,31 @@ export default function RegisterPage() {
   const [step, setStep]                   = useState<1 | 2>(1);
   const [name, setName]                   = useState('');
   const [email, setEmail]                 = useState('');
+  const [phone, setPhone]                 = useState('');
+  const [line1, setLine1]                 = useState('');
+  const [line2, setLine2]                 = useState('');
   const [city, setCity]                   = useState('');
+  const [postalCode, setPostalCode]       = useState('');
   const [password, setPassword]           = useState('');
   const [showPassword, setShowPassword]   = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError]                 = useState('');
   const [loading, setLoading]             = useState(false);
 
-  const nameValid  = name.trim().length >= 2;
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const passwordHasLength    = password.length >= 8;
-  const passwordHasUpper     = /[A-Z]/.test(password);
-  const passwordHasLower     = /[a-z]/.test(password);
-  const passwordHasDigit     = /\d/.test(password);
-  const passwordHasSpecial   = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
+  const nameValid       = name.trim().length >= 2;
+  const emailValid      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const phoneValid      = phone.trim().length >= 7;
+  const line1Valid      = line1.trim().length >= 3;
+  const cityValid       = city.trim().length >= 2;
+  const postalCodeValid = postalCode.trim().length >= 3;
+  const passwordHasLength  = password.length >= 8;
+  const passwordHasUpper   = /[A-Z]/.test(password);
+  const passwordHasLower   = /[a-z]/.test(password);
+  const passwordHasDigit   = /\d/.test(password);
+  const passwordHasSpecial = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
   const passwordValid = passwordHasLength && passwordHasUpper && passwordHasLower && passwordHasDigit && passwordHasSpecial;
-  const canSubmit  = nameValid && emailValid && passwordValid && agreedToTerms;
+
+  const canSubmit = nameValid && emailValid && phoneValid && line1Valid && cityValid && postalCodeValid && passwordValid && agreedToTerms;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +69,17 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
     try {
-      await register(name, email, password, city.trim() || undefined, 'United Kingdom');
+      await register({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        phone: phone.trim(),
+        line1: line1.trim(),
+        line2: line2.trim() || undefined,
+        city: city.trim(),
+        postalCode: postalCode.trim().toUpperCase(),
+        country: 'United Kingdom',
+      });
     } catch (err: any) {
       setError(err.message || 'Failed to create account. Please try again.');
       setLoading(false);
@@ -73,7 +94,7 @@ export default function RegisterPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between text-xs font-bold mb-2">
             <span className={cn(step === 1 ? 'text-[var(--color-green)]' : 'text-gray-400')}>
-              Step 1: Account Details
+              Step 1: Account &amp; Address Details
             </span>
             <span className={cn(step === 2 ? 'text-[var(--color-green)]' : 'text-gray-400')}>
               Step 2: Confirmation
@@ -111,16 +132,28 @@ export default function RegisterPage() {
           </div>
         )}
 
+        {/* Privacy Callout Banner */}
+        <div className="mb-6 p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 flex items-start gap-3">
+          <Shield className="w-5 h-5 text-[var(--color-green)] shrink-0 mt-0.5" />
+          <p className="text-xs text-emerald-900 leading-relaxed font-medium">
+            <strong>Privacy Guarantee:</strong> Your full address and phone number are securely stored for verified escrow transactions. Only your <strong>City / County</strong> (e.g. Manchester, Liverpool) will be visible to buyers as your dispatch origin.
+          </p>
+        </div>
+
         {/* -- Step 1: Form Fields -- */}
         {step === 1 && (
           <form
             onSubmit={(e) => {
               e.preventDefault();
               setError('');
-              if (nameValid && emailValid && passwordValid && agreedToTerms) {
+              if (nameValid && emailValid && phoneValid && line1Valid && cityValid && postalCodeValid && passwordValid && agreedToTerms) {
                 setStep(2);
               } else if (!agreedToTerms) {
                 setError('Please agree to the Terms of Service and Privacy Policy to proceed.');
+              } else if (!phoneValid) {
+                setError('Please enter a valid UK contact phone number.');
+              } else if (!line1Valid || !cityValid || !postalCodeValid) {
+                setError('Please enter your complete address (Street Address, City/County, and Postcode).');
               } else {
                 setError('Please complete all fields according to the criteria.');
               }
@@ -131,11 +164,12 @@ export default function RegisterPage() {
             {/* Full Name */}
             <div>
               <label htmlFor="reg-name" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                Full Name
+                Full Name <span className="text-red-500">*</span>
               </label>
               <input
                 id="reg-name"
                 type="text"
+                required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 autoComplete="name"
@@ -151,11 +185,12 @@ export default function RegisterPage() {
             {/* Email Address */}
             <div>
               <label htmlFor="reg-email" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                Email Address
+                Email Address <span className="text-red-500">*</span>
               </label>
               <input
                 id="reg-email"
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
@@ -168,21 +203,24 @@ export default function RegisterPage() {
               />
             </div>
 
-            {/* City / Town (Optional) */}
+            {/* Phone Number */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label htmlFor="reg-city" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-                  City / Town <span className="text-gray-400 font-normal normal-case">(Optional)</span>
+                <label htmlFor="reg-phone" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                  Phone Number <span className="text-red-500">*</span>
                 </label>
-                <span className="text-[11px] text-gray-400">Used for shipping origin</span>
+                <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                  <Phone className="w-3 h-3 text-emerald-600" /> Private to your account
+                </span>
               </div>
               <input
-                id="reg-city"
-                type="text"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                autoComplete="address-level2"
-                placeholder="e.g. London, Manchester, Birmingham"
+                id="reg-phone"
+                type="tel"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                autoComplete="tel"
+                placeholder="e.g. 07123 456789 or +44 7123 456789"
                 className={cn(
                   'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
                   'text-gray-900 placeholder:text-gray-400',
@@ -191,15 +229,104 @@ export default function RegisterPage() {
               />
             </div>
 
+            {/* Street Address Line 1 */}
+            <div>
+              <label htmlFor="reg-line1" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                Street Address <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="reg-line1"
+                type="text"
+                required
+                value={line1}
+                onChange={(e) => setLine1(e.target.value)}
+                autoComplete="address-line1"
+                placeholder="e.g. 24 Market Street"
+                className={cn(
+                  'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                  'text-gray-900 placeholder:text-gray-400',
+                  'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                )}
+              />
+            </div>
+
+            {/* Street Address Line 2 (Optional) */}
+            <div>
+              <label htmlFor="reg-line2" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                Apartment / Suite <span className="text-gray-400 font-normal normal-case">(Optional)</span>
+              </label>
+              <input
+                id="reg-line2"
+                type="text"
+                value={line2}
+                onChange={(e) => setLine2(e.target.value)}
+                autoComplete="address-line2"
+                placeholder="e.g. Flat 3B"
+                className={cn(
+                  'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                  'text-gray-900 placeholder:text-gray-400',
+                  'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                )}
+              />
+            </div>
+
+            {/* City / UK County + Postcode */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label htmlFor="reg-city" className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    City / County <span className="text-red-500">*</span>
+                  </label>
+                </div>
+                <input
+                  id="reg-city"
+                  type="text"
+                  required
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  autoComplete="address-level2"
+                  placeholder="e.g. Manchester, Liverpool"
+                  className={cn(
+                    'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                    'text-gray-900 placeholder:text-gray-400',
+                    'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                  )}
+                />
+                <span className="text-[10px] text-gray-400 mt-1 block">Shown publicly on listings</span>
+              </div>
+
+              <div>
+                <label htmlFor="reg-postal" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                  Postcode <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="reg-postal"
+                  type="text"
+                  required
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  autoComplete="postal-code"
+                  placeholder="e.g. M1 1AE"
+                  className={cn(
+                    'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                    'text-gray-900 placeholder:text-gray-400',
+                    'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                  )}
+                />
+                <span className="text-[10px] text-gray-400 mt-1 block">Kept strictly private</span>
+              </div>
+            </div>
+
             {/* Password */}
             <div>
               <label htmlFor="reg-password" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                Password
+                Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
                   id="reg-password"
                   type={showPassword ? 'text' : 'password'}
+                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="new-password"
@@ -275,8 +402,8 @@ export default function RegisterPage() {
         {step === 2 && (
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div className="bg-[var(--color-surface-alt)] rounded-2xl p-5 border border-[var(--color-border)]">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Account Summary</h3>
-              <div className="space-y-2 text-sm">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Account &amp; Dispatch Summary</h3>
+              <div className="space-y-2.5 text-sm">
                 <div className="flex justify-between">
                   <span className="text-gray-500">Name:</span>
                   <span className="font-bold text-gray-900">{name}</span>
@@ -286,10 +413,23 @@ export default function RegisterPage() {
                   <span className="font-bold text-gray-900">{email}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Location:</span>
-                  <span className="font-bold text-gray-900">{city.trim() ? `${city.trim()}, UK` : 'United Kingdom'}</span>
+                  <span className="text-gray-500">Phone:</span>
+                  <span className="font-bold text-gray-900 font-mono">{phone}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-gray-500">Public Dispatch Origin:</span>
+                  <span className="font-bold text-[var(--color-green)] flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5" />
+                    {city.trim()}, UK
+                  </span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-gray-200/60">
+                  <span className="text-gray-500">Full Shipping Address:</span>
+                  <span className="text-xs font-medium text-gray-700 text-right">
+                    {line1}{line2 ? `, ${line2}` : ''}, {city}, {postalCode}
+                  </span>
+                </div>
+                <div className="flex justify-between pt-2 border-t border-gray-200/60">
                   <span className="text-gray-500">Seller Commission:</span>
                   <span className="font-bold text-[var(--color-green)]">0% Guaranteed</span>
                 </div>
@@ -367,7 +507,7 @@ export default function RegisterPage() {
             <p className="text-xs text-emerald-100/90 leading-relaxed italic mb-3">
               &ldquo;I sold my iPhone 14 Pro Max in 2 days. The IMEI check made the listing standout, and I kept 100% of my £750 sale price.&rdquo;
             </p>
-            <p className="text-[11px] font-bold text-emerald-300">&mdash; David M., London</p>
+            <p className="text-[11px] font-bold text-emerald-300">&mdash; David M., Manchester</p>
           </div>
         </div>
       </div>

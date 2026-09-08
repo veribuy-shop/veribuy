@@ -75,19 +75,21 @@ export class AuthService {
         },
       });
 
-      // Auto-create user profile and address
+      // Auto-create user profile and address with required full address & phone
       await this.prisma.profile.create({
         data: {
           userId: user.id,
           displayName: dto.name,
-          ...(dto.city
+          phone: dto.phone || null,
+          ...(dto.line1 && dto.city
             ? {
                 address: {
                   create: {
-                    line1: '',
+                    line1: dto.line1,
+                    line2: dto.line2 || null,
                     city: dto.city,
-                    state: '',
-                    postalCode: '',
+                    state: dto.state || dto.city,
+                    postalCode: dto.postalCode || '',
                     country: dto.country || 'United Kingdom',
                   },
                 },
@@ -453,13 +455,24 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    // Revoke all refresh tokens before deleting the user
-    await this.prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+    // 1. Delete associated profile and address records
+    const profile = await this.prisma.profile.findUnique({ where: { userId } });
+    if (profile) {
+      await this.prisma.address.deleteMany({ where: { profileId: profile.id } });
+      await this.prisma.profile.delete({ where: { id: profile.id } });
+    }
+
+    // 2. Delete all refresh tokens
+    await this.prisma.refreshToken.deleteMany({
+      where: { userId },
     });
 
-    // Hard delete (cascade deletes refresh tokens via FK)
+    // 3. Delete any user notifications
+    await this.prisma.notificationLog.deleteMany({
+      where: { userId },
+    });
+
+    // 4. Hard delete the user from auth.users
     await this.prisma.user.delete({
       where: { id: userId },
     });

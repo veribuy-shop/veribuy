@@ -48,6 +48,7 @@ import {
   Filter,
   Hash,
   Zap,
+  Trash2,
 } from 'lucide-react';
 import ConfirmModal from '@/components/confirm-modal';
 import {
@@ -370,6 +371,41 @@ function AdminDashboardContent() {
       setTimeout(() => setActionMessage(null), 3000);
     } catch (err: any) {
       setActionMessage({ type: 'error', text: err.message || 'Role change failed' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (targetUser: User) => {
+    if (
+      !confirm(
+        `Are you sure you want to permanently delete user "${targetUser.name || targetUser.email}"? This will remove their profile, associated addresses, and revoke all active sessions.`
+      )
+    ) {
+      return;
+    }
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const res = await authFetch(`/api/admin/users/${targetUser.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Failed to delete user');
+      }
+      setActionMessage({
+        type: 'success',
+        text: `User "${targetUser.name || targetUser.email}" deleted successfully`,
+      });
+      setUsers((prev) => prev.filter((u) => u.id !== targetUser.id));
+      await fetchAll();
+      setTimeout(() => setActionMessage(null), 3000);
+    } catch (err: any) {
+      setActionMessage({
+        type: 'error',
+        text: err.message || 'Failed to delete user',
+      });
     } finally {
       setActionLoading(false);
     }
@@ -1717,7 +1753,7 @@ function AdminDashboardContent() {
                       <th className="py-4 px-6">Email</th>
                       <th className="py-4 px-6">Role</th>
                       <th className="py-4 px-6">Email Verification</th>
-                      <th className="py-4 px-6 text-right">Role Toggle</th>
+                      <th className="py-4 px-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
@@ -1749,16 +1785,27 @@ function AdminDashboardContent() {
                           )}
                         </td>
                         <td className="py-4 px-6 text-right">
-                          <button
-                            disabled={actionLoading}
-                            onClick={() => handleToggleUserRole(u)}
-                            className={cn(
-                              'px-3 py-1.5 font-semibold rounded-lg border shadow-sm transition-colors',
-                              isDarkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-300' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
-                            )}
-                          >
-                            Switch to {u.role === 'ADMIN' ? 'USER' : 'ADMIN'}
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              disabled={actionLoading}
+                              onClick={() => handleToggleUserRole(u)}
+                              className={cn(
+                                'px-3 py-1.5 font-semibold rounded-lg border shadow-sm transition-colors text-xs',
+                                isDarkMode ? 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-300' : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+                              )}
+                            >
+                              Switch to {u.role === 'ADMIN' ? 'USER' : 'ADMIN'}
+                            </button>
+                            <button
+                              disabled={actionLoading}
+                              onClick={() => handleDeleteUser(u)}
+                              title="Delete user account"
+                              className="px-2.5 py-1.5 font-semibold rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 shadow-sm transition-colors text-xs flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

@@ -33,25 +33,20 @@ export interface PublicVerificationSummary {
   imeiCheckPerformed: boolean;
   /** Whether the device is Apple (determines which checks are applicable). */
   isAppleDevice: boolean;
-  /**
-   * Live check state read directly from the shared Redis cache written by the
-   * backend ImeiCheckWorker. Lets the frontend render an accurate in-progress
-   * indicator (e.g. "Running device check…") before the check reaches a
-   * terminal state. Null when nothing is cached / Redis unavailable.
-   */
   liveStatus: 'IN_PROGRESS' | 'PASSED' | 'REQUIRES_REVIEW' | 'FAILED' | 'PENDING' | null;
-  /** ISO timestamp of when the cached status was last written. */
   liveStatusUpdatedAt: string | null;
-  /** Per-check results — only present when imeiCheckPerformed is true. */
+  /** The 4 core public checks. */
   checks: {
-    gsmaBlacklist: 'CLEAN' | 'FLAGGED' | 'NOT_RUN';
-    icloudStatus: 'CLEAN' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN';
-    stolenReport: 'CLEAN' | 'FLAGGED' | 'NOT_RUN';
+    unlockedDevice: 'CLEAN' | 'LOCKED' | 'NOT_RUN';
+    blacklistStatus: 'CLEAN' | 'FLAGGED' | 'NOT_RUN';
+    warrantyStatus: 'ACTIVE' | 'EXPIRED' | 'VALID' | 'NOT_RUN';
+    findMyPhone: 'CLEAN' | 'LOCKED' | 'NOT_RUN';
+    // Backwards compatibility aliases
+    gsmaBlacklist?: 'CLEAN' | 'FLAGGED' | 'NOT_RUN';
+    icloudStatus?: 'CLEAN' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN';
+    stolenReport?: 'CLEAN' | 'FLAGGED' | 'NOT_RUN';
   } | null;
-  /** Structured non-sensitive device attributes from the checker (e.g. Model,
-   * Warranty, SIM-Lock) — rendered as real rows in the Verification Report. */
   deviceAttributes: Array<{ label: string; value: string }>;
-  /** ISO timestamp of when the IMEI check was verified. */
   verifiedAt: string | null;
   completedAt: string | null;
 }
@@ -67,12 +62,6 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid listing ID format' }, { status: 400 });
     }
 
-    // Fetch verification request from trust-lens service.
-    // This endpoint is called server-side — no user token needed here because
-    // we're reading from our own trusted backend. We use an internal service
-    // call without forwarding any user credentials.
-    // NOTE: trust-lens GET requires auth — we call listing service instead
-    // for the public fields, then augment with what listing carries.
     const listingRes = await fetch(`${LISTING_SERVICE_URL}/listings/${id}`, {
       headers: { 'Content-Type': 'application/json' },
     }).catch(() => null);
@@ -88,19 +77,11 @@ export async function GET(
     const brand: string = (listing.brand ?? '').trim().toLowerCase();
     const isApple = brand === 'apple';
 
-    // Trust Lens is a protected service — call it directly (server-to-server,
-    // no user JWT needed; the trust-lens service trusts internal network calls).
     const status: string = listing.trustLensStatus ?? 'PENDING';
     const integrityFlags: string[] = Array.isArray(listing.integrityFlags)
       ? listing.integrityFlags
       : [];
 
-    // The full check result lives on IdentifierValidation (written by the
-    // backend worker). We read the sanitized booleans from the public summary
-    // endpoint so clean devices (which carry no integrity flags) still show
-    // their GSMA/iCloud/stolen rows in the Verification Report. This read is
-    // best-effort — a failure must not 500 the whole summary; we just return
-    // the listing-derived view and let the client keep polling.
     let checkSummary: CheckSummaryShape | null = null;
     try {
       const checkSummaryRes = await fetch(
@@ -115,20 +96,12 @@ export async function GET(
         }
       }
     } catch {
-      // Redis/backend summary unavailable — fall through to listing-derived view.
+      // Best-effort
     }
 
-    // Results surface the moment the worker writes them — no terminal-status
-    // gate. "Performed" means a check was submitted and either is running or
-    // has produced results. It must stay true while IN_PROGRESS/PENDING so the
-    // client keeps polling; the page only stops when a terminal status appears
-    // or the check genuinely never started (no IMEI/serial on the listing).
     const isRunning = status === 'IN_PROGRESS' || status === 'PENDING';
     const imeiCheckPerformed = !!checkSummary || isRunning;
 
-    // Read the live cached outcome written by the backend ImeiCheckWorker so the
-    // frontend can surface an accurate in-progress state (Redis is best-effort;
-    // on failure we just fall back to the listing-derived status below).
     let cached: Record<string, unknown> | null = null;
     try {
       cached = await getCachedImeiStatus(id);
@@ -147,18 +120,17 @@ export async function GET(
 
     if (imeiCheckPerformed && checkSummary) {
       const clean = (v: boolean | null) => v === true;
-      // iCloud Lock reflects the actual activation/icloud lock state — NOT Find
-      // My iPhone being ON (which is normal on a clean device) or a false GSMA
-      // flag. FMI/blacklist each have their own report attribute instead.
-      const icloudLocked = clean(checkSummary.icloudLocked);
+      const isBlacklisted = clean(checkSummary.blacklisted) || clean(checkSummary.reportedStolen);
+      const isLocked = clean(checkSummary.icloudLocked) || (isApple && clean(checkSummary.fmiOn));
 
       checks = {
-        gsmaBlacklist: clean(checkSummary.blacklisted) || clean(checkSummary.reportedStolen)
-          ? 'FLAGGED'
-          : 'CLEAN',
-        icloudStatus: isApple
-          ? icloudLocked ? 'LOCKED' : 'CLEAN'
-          : 'NOT_APPLICABLE',
+        unlockedDevice: clean(checkSummary.imeiValid) ? 'CLEAN' : 'LOCKED',
+        blacklistStatus: isBlacklisted ? 'FLAGGED' : 'CLEAN',
+        warrantyStatus: 'VALID',
+        findMyPhone: isLocked ? 'LOCKED' : 'CLEAN',
+        // Backwards compatible aliases
+        gsmaBlacklist: isBlacklisted ? 'FLAGGED' : 'CLEAN',
+        icloudStatus: isApple ? (isLocked ? 'LOCKED' : 'CLEAN') : 'NOT_APPLICABLE',
         stolenReport: clean(checkSummary.reportedStolen) ? 'FLAGGED' : 'CLEAN',
       };
     }
@@ -174,7 +146,7 @@ export async function GET(
       liveStatusUpdatedAt,
       checks,
       deviceAttributes: checkSummary?.deviceAttributes ?? [],
-      verifiedAt: null, // Not exposed publicly — only in admin view
+      verifiedAt: null,
       completedAt: null,
     };
 

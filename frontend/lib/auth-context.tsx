@@ -10,11 +10,24 @@ interface User {
   role: 'BUYER' | 'SELLER' | 'ADMIN';
 }
 
+export interface RegisterData {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  state?: string;
+  postalCode: string;
+  country?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string, redirectTo?: string) => Promise<void>;
-  register: (name: string, email: string, password: string, city?: string, country?: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   /** Fetch wrapper that auto-retries once on 401 after refreshing the token. */
   authFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -154,23 +167,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (name: string, email: string, password: string, city?: string, country?: string) => {
+  const register = async (data: RegisterData) => {
     const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ name, email, password, ...(city ? { city } : {}), ...(country ? { country } : {}) }),
+      body: JSON.stringify(data),
     });
 
-    const data = await response.json();
+    const resData = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.message || 'Registration failed');
+      throw new Error(resData.message || resData.error || 'Registration failed');
     }
 
-    if (data.autoVerified) {
+    if (resData.autoVerified) {
       // Dev mode: email already verified — log user in directly
-      setUser(data.user);
+      setUser(resData.user);
       router.push('/dashboard');
     } else {
       // Production: email not yet verified — redirect to check-email page

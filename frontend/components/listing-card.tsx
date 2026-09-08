@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, Truck } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 
@@ -18,12 +18,13 @@ interface ListingCardProps {
   verified?: boolean;
   brand?: string;
   model?: string;
+  location?: string;
 }
 
 const GRADE_CONFIG = {
-  A: { label: 'A', className: 'bg-[var(--color-green)] text-white' },
-  B: { label: 'B', className: 'bg-sky-500 text-white' },
-  C: { label: 'C', className: 'bg-amber-500 text-white' },
+  A: { label: 'Grade A', sub: 'Pristine', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  B: { label: 'Grade B', sub: 'Good', className: 'bg-sky-100 text-sky-800 border-sky-200' },
+  C: { label: 'Grade C', sub: 'Fair', className: 'bg-amber-100 text-amber-800 border-amber-200' },
 } as const;
 
 export function ListingCard({
@@ -39,88 +40,96 @@ export function ListingCard({
   verified = true,
   brand,
   model,
+  location,
 }: ListingCardProps) {
-  const grade = GRADE_CONFIG[conditionGrade];
-  const savingsPercent = originalPrice
+  const grade = GRADE_CONFIG[conditionGrade] || GRADE_CONFIG.A;
+  const savingsPercent = originalPrice && originalPrice > price
     ? Math.round(((originalPrice - price) / originalPrice) * 100)
     : null;
 
   return (
     <Link
       href={href}
-      className="group relative bg-white rounded-2xl border border-[var(--color-border)] overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-[var(--color-primary-light)] hover:-translate-y-0.5 flex flex-col h-full"
+      className="group relative bg-white rounded-xl border border-gray-200/90 overflow-hidden hover:border-emerald-600 hover:shadow-md transition-all duration-150 flex flex-col h-full"
     >
-      {/* Image */}
-      <div className="relative aspect-[4/3] bg-[var(--color-surface-alt)] overflow-hidden">
+      {/* Product Image Frame */}
+      <div className="relative aspect-square bg-gray-50/70 p-3 flex items-center justify-center overflow-hidden border-b border-gray-100">
         {imageUrl ? (
           <Image
             src={imageUrl}
             alt={title}
             fill
-            sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="object-contain p-2 transition-transform duration-200 group-hover:scale-105"
           />
         ) : (
           <div className="flex items-center justify-center h-full">
-            <span className="text-5xl" aria-hidden="true">
-              {imageFallbackIcon || '📦'}
+            <span className="text-4xl" aria-hidden="true">
+              {imageFallbackIcon || '📱'}
             </span>
           </div>
         )}
 
-        {/* Grade badge - top left */}
-        <span
-          className={cn(
-            'absolute top-3 left-3 text-white text-xs font-bold px-2.5 py-1 rounded-lg',
-            grade.className,
-          )}
-        >
-          Grade {conditionGrade}
-        </span>
+        {/* Verification Pill - top left */}
+        {verified && (
+          <div className="absolute top-2.5 left-2.5 flex items-center gap-1 bg-white/95 backdrop-blur-xs border border-emerald-200 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-2xs">
+            <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+            <span>Verified</span>
+          </div>
+        )}
 
-        {/* Savings badge - top right */}
+        {/* Savings Badge - top right */}
         {savingsPercent && savingsPercent > 0 && (
-          <span className="absolute top-3 right-3 bg-[var(--color-primary)] text-white text-xs font-bold px-2.5 py-1 rounded-lg">
+          <span className="absolute top-2.5 right-2.5 bg-gray-900 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-2xs">
             Save {savingsPercent}%
           </span>
         )}
       </div>
 
-      {/* Content */}
-      <div className="flex flex-col flex-1 p-3">
-        {/* Verified + Grade row */}
-        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-          {verified && (
-            <div className="flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-green)]" aria-hidden="true" />
-              <span className="text-xs font-semibold text-[var(--color-green)]">Verified</span>
-            </div>
-          )}
-          <span
-            className={cn(
-              'text-xs font-bold px-1.5 py-0.5 rounded',
-              grade.className,
-            )}
-          >
-            {grade.label}
-          </span>
+      {/* Content Area */}
+      <div className="flex flex-col flex-1 p-3.5 justify-between gap-2">
+        <div>
+          {/* Title */}
+          <h3 className="font-semibold text-xs sm:text-sm text-gray-900 line-clamp-2 leading-snug group-hover:text-emerald-700 transition-colors mb-1.5">
+            {title}
+          </h3>
+
+          {/* Condition & Spec Badges */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded border', grade.className)}>
+              {grade.label}
+            </span>
+            <span className="text-[11px] text-gray-500 font-medium truncate">
+              {conditionLabel || (brand ? `${brand} ${model || ''}` : '')}
+            </span>
+          </div>
         </div>
 
-        {/* Title */}
-        <h3 className="font-semibold text-sm leading-snug text-[var(--color-text)] line-clamp-2 mb-1 group-hover:text-[var(--color-primary)] transition-colors">
-          {title}
-        </h3>
+        {/* Price & Shipping Info */}
+        <div className="pt-2 border-t border-gray-100 mt-auto">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
+              {formatPrice(price, currency)}
+            </span>
+            {originalPrice && originalPrice > price && (
+              <span className="text-xs text-gray-400 line-through">
+                {formatPrice(originalPrice, currency)}
+              </span>
+            )}
+          </div>
 
-        {/* Condition label */}
-        <p className="text-xs text-[var(--color-text-muted)] mb-2">
-          {conditionLabel}
-        </p>
-
-        {/* Price */}
-        <div className="mt-auto">
-          <span className="text-base font-bold text-[var(--color-text)]">
-            {formatPrice(price, currency)}
-          </span>
+          {/* Tracked shipping / location info */}
+          <div className="flex items-center justify-between text-[11px] text-gray-500 mt-1">
+            <span className="flex items-center gap-1 text-emerald-700 font-medium">
+              <Truck className="w-3 h-3" />
+              Tracked
+            </span>
+            {location && (
+              <span className="text-gray-400 truncate max-w-[110px]">
+                {location}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </Link>
