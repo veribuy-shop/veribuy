@@ -66,7 +66,7 @@ type ConditionGrade = 'A' | 'B' | 'C';
 type TrustLensStatus = 'PENDING' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW';
 type IntegrityFlag = 'CLEAN' | 'IMEI_MISMATCH' | 'ICLOUD_LOCKED' | 'REPORTED_STOLEN' | 'BLACKLISTED' | 'SERIAL_MISMATCH';
 type EvidenceType = 'DEVICE_IMAGE' | 'SCREEN_IMAGE' | 'BODY_IMAGE' | 'SETTINGS_SCREENSHOT' | 'IMEI_SCREENSHOT' | 'PACKAGING_IMAGE' | 'ACCESSORIES_IMAGE' | 'OTHER';
-type CheckResult = 'CLEAN' | 'FLAGGED' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN';
+type CheckResult = 'CLEAN' | 'FLAGGED' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN' | 'ACTIVE' | 'EXPIRED' | 'VALID';
 
 interface ListingSeller {
   displayName?: string;
@@ -127,6 +127,10 @@ interface VerificationSummary {
     blacklistStatus?: CheckResult;
     warrantyStatus?: CheckResult;
     findMyPhone?: CheckResult;
+    unlockedDetails?: string;
+    blacklistDetails?: string;
+    warrantyDetails?: string;
+    fmiDetails?: string;
     gsmaBlacklist?: CheckResult;
     icloudStatus?: CheckResult;
     stolenReport?: CheckResult;
@@ -225,6 +229,9 @@ const CHECK_RESULT_CONFIG: Record<
   LOCKED: { icon: Lock, label: 'Locked', className: 'text-red-600', bgClassName: 'bg-red-50' },
   NOT_APPLICABLE: { icon: Minus, label: 'N/A', className: 'text-[var(--color-text-muted)]', bgClassName: 'bg-gray-50' },
   NOT_RUN: { icon: Minus, label: 'Not checked', className: 'text-[var(--color-text-muted)]', bgClassName: 'bg-gray-50' },
+  ACTIVE: { icon: CheckCircle2, label: 'Active', className: 'text-emerald-600', bgClassName: 'bg-emerald-50' },
+  VALID: { icon: CheckCircle2, label: 'Valid', className: 'text-emerald-600', bgClassName: 'bg-emerald-50' },
+  EXPIRED: { icon: Minus, label: 'Expired', className: 'text-[var(--color-text-muted)]', bgClassName: 'bg-gray-50' },
 };
 
 const DEVICE_TYPE_ICON: Record<DeviceType, typeof Smartphone> = {
@@ -485,19 +492,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
     C: ['Visible screen wear,', 'Battery health 70%+,', 'Fully functional components,', 'Noticeable casing wear.'],
   };
 
-  const getAttributeIcon = (label: string) => {
-    const l = label.toLowerCase();
-    if (l.includes('warranty') || l.includes('coverage') || l.includes('applecare')) return Award;
-    if (l.includes('purchase') || l.includes('date')) return CalendarCheck;
-    if (l.includes('model') || l.includes('chip') || l.includes('processor')) return Cpu;
-    if (l.includes('sim') || l.includes('carrier') || l.includes('network') || l.includes('locked')) return Unlock;
-    if (l.includes('storage') || l.includes('capacity') || l.includes('gb') || l.includes('tb')) return HardDrive;
-    if (l.includes('icloud') || l.includes('fmi') || l.includes('activation') || l.includes('lock')) return LockKeyhole;
-    if (l.includes('imei') || l.includes('serial') || l.includes('meid')) return Fingerprint;
-    if (l.includes('region') || l.includes('country')) return Globe2;
-    return BadgeCheck;
-  };
-
   interface SecurityCheckItem {
     id: string;
     title: string;
@@ -513,12 +507,16 @@ export default function ListingDetailContent({ id }: { id: string }) {
     const isCleanUnlocked = verificationSummary.checks.unlockedDevice === 'CLEAN' || verificationSummary.checks.gsmaBlacklist === 'CLEAN';
     const isCleanBlacklist = verificationSummary.checks.blacklistStatus !== 'FLAGGED' && verificationSummary.checks.gsmaBlacklist !== 'FLAGGED';
     const isCleanFmi = verificationSummary.checks.findMyPhone === 'CLEAN' || verificationSummary.checks.icloudStatus === 'CLEAN';
+    const warrantyStatus = verificationSummary.checks.warrantyStatus;
+    const isWarrantyActive = warrantyStatus === 'ACTIVE' || warrantyStatus === 'VALID';
 
     securityChecks.push({
       id: 'unlocked',
       title: 'Unlocked Device',
-      statusLabel: isCleanUnlocked ? 'Network Unlocked' : 'Carrier Locked',
-      description: 'Device accepts all SIM cards and is unlocked for UK & international networks.',
+      statusLabel: verificationSummary.checks.unlockedDetails || (isCleanUnlocked ? 'Network Unlocked' : 'Carrier Locked'),
+      description: isCleanUnlocked
+        ? 'Device accepts all SIM cards and is unlocked for UK & international networks.'
+        : 'Device is carrier locked according to network registry.',
       passed: isCleanUnlocked,
       icon: Radio,
     });
@@ -526,8 +524,10 @@ export default function ListingDetailContent({ id }: { id: string }) {
     securityChecks.push({
       id: 'blacklist',
       title: 'Blacklist Status',
-      statusLabel: isCleanBlacklist ? 'Clean & Verified' : 'Flagged / Blacklisted',
-      description: 'Audited against GSMA international mobile registers and national police databases.',
+      statusLabel: verificationSummary.checks.blacklistDetails || (isCleanBlacklist ? 'Clean & Verified' : 'Flagged / Blacklisted'),
+      description: isCleanBlacklist
+        ? 'Audited against GSMA international mobile registers and national police databases.'
+        : 'Device flagged on lost/stolen registry databases.',
       passed: isCleanBlacklist,
       icon: ShieldCheck,
     });
@@ -535,27 +535,25 @@ export default function ListingDetailContent({ id }: { id: string }) {
     securityChecks.push({
       id: 'warranty',
       title: 'Warranty Status',
-      statusLabel: 'VeriBuy Guaranteed',
-      description: 'Hardware backed by VeriBuy 48-hour inspection warranty & full escrow refund guarantee.',
-      passed: true,
+      statusLabel: verificationSummary.checks.warrantyDetails || (isWarrantyActive ? 'Active / Valid' : 'Expired / Out of Warranty'),
+      description: isWarrantyActive
+        ? (verificationSummary.checks.warrantyDetails ? `Manufacturer coverage: ${verificationSummary.checks.warrantyDetails}` : 'Manufacturer hardware warranty is verified active.')
+        : 'Manufacturer limited warranty expired. Covered by VeriBuy 48-Hour Escrow Protection.',
+      passed: isWarrantyActive,
       icon: Award,
     });
 
     securityChecks.push({
       id: 'fmi',
       title: 'Find My Phone',
-      statusLabel: isCleanFmi ? 'Off / Setup Ready' : 'Activation Locked',
-      description: 'Find My iPhone, iCloud, and FRP activation locks are completely disabled.',
+      statusLabel: verificationSummary.checks.fmiDetails || (isCleanFmi ? 'Off / Setup Ready' : 'Activation Locked'),
+      description: isCleanFmi
+        ? 'Find My iPhone, iCloud, and FRP activation locks are completely disabled.'
+        : 'Device has an active activation or account lock.',
       passed: isCleanFmi,
       icon: LockKeyhole,
     });
   }
-
-  const deviceAttributes = (verificationSummary?.deviceAttributes ?? []).map((attr) => ({
-    label: attr.label,
-    value: attr.value,
-    icon: getAttributeIcon(attr.label),
-  }));
 
   return (
     <div className="min-h-screen bg-white">
@@ -949,12 +947,9 @@ export default function ListingDetailContent({ id }: { id: string }) {
             {/* Section Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-[var(--color-border)]">
               <div>
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-[var(--color-green)] border border-emerald-200 text-xs font-bold uppercase tracking-wider mb-2.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[var(--color-green)]" />
-                  Trust Lens™ Diagnostic Report
-                </div>
-                <h2 id="verification-heading" className="text-xl md:text-2xl font-bold text-gray-900">
-                  Hardware &amp; Database Verification
+                <h2 id="verification-heading" className="text-xl md:text-2xl font-bold text-gray-900 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-[var(--color-green)]" />
+                  <span>Trust Lens™ Diagnostic Report</span>
                 </h2>
                 <p className="text-xs md:text-sm text-[var(--color-text-muted)] mt-1">
                   Automated multi-point inspection verified before listing publication.
@@ -1039,40 +1034,8 @@ export default function ListingDetailContent({ id }: { id: string }) {
               </div>
             )}
 
-            {/* Verified Device Attributes & Hardware Diagnostics */}
-            {deviceAttributes.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--color-text-muted)] mb-3.5">
-                  Verified Diagnostics &amp; Hardware Details
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {deviceAttributes.map((attr) => {
-                    const AttrIcon = attr.icon;
-                    return (
-                      <div
-                        key={attr.label}
-                        className="bg-white rounded-xl p-3 border border-gray-100 shadow-xs flex items-center gap-3"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-[var(--color-surface-alt)] flex items-center justify-center shrink-0 text-[var(--color-text-muted)]">
-                          <AttrIcon className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-wider truncate">
-                            {attr.label}
-                          </p>
-                          <p className="text-xs font-bold text-gray-900 truncate">
-                            {attr.value}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* Fallback if no checks were run yet */}
-            {securityChecks.length === 0 && deviceAttributes.length === 0 && (
+            {securityChecks.length === 0 && (
               <div className={cn('rounded-xl border p-4 mt-6 flex items-center gap-3', trustStatus.bgClassName)}>
                 <TrustIcon className={cn('w-5 h-5 shrink-0', trustStatus.textClassName)} aria-hidden="true" />
                 <div>
