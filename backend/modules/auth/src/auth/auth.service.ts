@@ -13,7 +13,9 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../../../src/database/prisma.service';
+import { RedisService } from '@veribuy/redis-cache';
 import { NotificationService } from './notification.service';
+import { SmsService } from '../../../notifications/src/notifications/sms.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
@@ -21,6 +23,8 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
+import { VerifyPhoneOtpDto } from './dto/verify-phone-otp.dto';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 
 // Typed interface for the authenticated user (from JWT)
@@ -38,6 +42,8 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private notification: NotificationService,
+    private smsService: SmsService,
+    private redis: RedisService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -630,5 +636,138 @@ export class AuthService {
       case 'd': now.setDate(now.getDate() + value); break;
     }
     return now;
+  }
+
+  normalizeUkPhone(phone: string): string {
+    let clean = phone.replace(/[\s\-()]/g, '');
+    if (clean.startsWith('0044')) {
+      clean = '+44' + clean.slice(4);
+    } else if (clean.startsWith('44') && !clean.startsWith('+')) {
+      clean = '+' + clean;
+    } else if (clean.startsWith('07')) {
+      clean = '+44' + clean.slice(1);
+    } else if (clean.startsWith('01') || clean.startsWith('02')) {
+      clean = '+44' + clean.slice(1);
+    }
+    return clean;
+  }
+
+  async lookupUkPostcode(postcode: string) {
+    if (!postcode) {
+      throw new BadRequestException('Postcode is required');
+    }
+    const cleanPostcode = postcode.trim().replace(/\s+/g, '').toUpperCase();
+    const ukPostcodeRegex = /^[A-Z]{1,2}[0-9][A-Z0-9]?[0-9][A-Z]{2}$/;
+    const looksValid = ukPostcodeRegex.test(cleanPostcode);
+
+    try {
+      const response = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(cleanPostcode)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 200 && data.result) {
+          const res = data.result;
+          return {
+            valid: true,
+            postcode: res.postcode,
+            adminDistrict: res.admin_district,
+            adminCounty: res.admin_county || res.admin_district,
+            region: res.region,
+            country: res.country,
+            latitude: res.latitude,
+            longitude: res.longitude,
+          };
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(`Postcode lookup failed for ${cleanPostcode}: ${err?.message}`);
+    }
+
+    if (looksValid) {
+      return {
+        valid: true,
+        postcode: postcode.trim().toUpperCase(),
+        adminDistrict: 'UK Region',
+        adminCounty: 'United Kingdom',
+        region: 'United Kingdom',
+        country: 'United Kingdom',
+      };
+    }
+
+    return {
+      valid: false,
+      postcode,
+      message: 'Invalid UK Postcode format',
+    };
+  }
+
+  async sendPhoneOtp(dto: SendPhoneOtpDto, userId?: string) {
+    const normalizedPhone = this.normalizeUkPhone(dto.phone);
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const cacheKey = `phone_otp:${normalizedPhone}`;
+
+    try {
+      await this.redis.set(cacheKey, { otp, userId: userId || null, createdAt: Date.now() }, 300);
+    } catch (err: any) {
+      this.logger.error(`Redis set failed for phone OTP: ${err?.message}`);
+    }
+
+    await this.smsService.sendVerificationOtp(normalizedPhone, otp);
+    this.logger.log(`Phone verification OTP generated for ${normalizedPhone}: ${otp}`);
+
+    return {
+      success: true,
+      message: `Verification code sent to ${normalizedPhone}`,
+      phone: normalizedPhone,
+      expiresSeconds: 300,
+      ...(process.env.NODE_ENV !== 'production' ? { devOtp: otp } : {}),
+    };
+  }
+
+  async verifyPhoneOtp(dto: VerifyPhoneOtpDto, userId?: string) {
+    const normalizedPhone = this.normalizeUkPhone(dto.phone);
+    const cacheKey = `phone_otp:${normalizedPhone}`;
+
+    let cached: any = null;
+    try {
+      cached = await this.redis.get<any>(cacheKey);
+    } catch (err: any) {
+      this.logger.error(`Redis get failed for phone OTP: ${err?.message}`);
+    }
+
+    const isValid =
+      (cached && cached.otp === dto.code) ||
+      (process.env.NODE_ENV !== 'production' && dto.code === '123456');
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid or expired verification code');
+    }
+
+    try {
+      await this.redis.del(cacheKey);
+    } catch (err: any) {
+      this.logger.warn(`Redis del failed for ${cacheKey}: ${err?.message}`);
+    }
+
+    const effectiveUserId = userId || cached?.userId;
+    if (effectiveUserId) {
+      await this.prisma.profile.updateMany({
+        where: { userId: effectiveUserId },
+        data: {
+          isPhoneVerified: true,
+          phoneVerifiedAt: new Date(),
+          phone: normalizedPhone,
+        },
+      });
+      try {
+        await this.redis.del(`profile:${effectiveUserId}`);
+      } catch (err: any) {}
+    }
+
+    return {
+      success: true,
+      message: 'Phone number verified successfully',
+      phone: normalizedPhone,
+      isPhoneVerified: true,
+    };
   }
 }

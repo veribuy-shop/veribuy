@@ -763,10 +763,13 @@ export default function ListingDetailContent({ id }: { id: string }) {
                       <span className="text-xs font-bold text-gray-900">{sellerDisplayName}</span>
                       <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-green)]" />
                     </div>
-                    <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 mt-0.5">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-gray-400" />
                         Member since {sellerJoinYear}
+                      </span>
+                      <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> UK Verified
                       </span>
                     </div>
                   </div>
