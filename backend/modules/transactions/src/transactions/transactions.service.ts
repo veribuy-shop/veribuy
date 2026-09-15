@@ -94,16 +94,8 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Buyer and seller cannot be the same user');
     }
 
-    // Buyer Protection Fee (configurable via env variable, default 5%)
-    const rate = getBuyerProtectionFeeRate();
-    const numericAmount = Number(amount) || 0;
-    const numericShipping = Number(shippingFee) || 0;
-    const protectionFee = Math.round(numericAmount * rate * 100) / 100;
-
-    // Compute total: item price + buyer protection fee + shipping
-    const totalAmount = Math.round((numericAmount + protectionFee + numericShipping) * 100) / 100;
-
-    // Snapshot listing details for invoice generation — check availability
+    // Snapshot listing details for invoice generation & delivery terms
+    let isFreeShipping = false;
     let listingTitle: string | null = null;
     let listingDescription: string | null = null;
     let listingCategory: string | null = null;
@@ -112,6 +104,7 @@ export class TransactionsService implements OnModuleInit {
       if (listing && (listing.status === 'SOLD' || listing.status === 'DELISTED')) {
         throw new BadRequestException('This listing is no longer available for purchase');
       }
+      isFreeShipping = !!listing?.freeShipping;
       listingTitle = listing?.title ?? null;
       listingDescription = listing?.description ?? null;
       listingCategory = listing?.deviceType ?? listing?.brand ?? null;
@@ -119,6 +112,15 @@ export class TransactionsService implements OnModuleInit {
       if (err instanceof BadRequestException) throw err;
       this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
     }
+
+    // Buyer Protection Fee (configurable via env variable, default 5%)
+    const rate = getBuyerProtectionFeeRate();
+    const numericAmount = Number(amount) || 0;
+    const numericShipping = isFreeShipping ? 0 : (Number(shippingFee) || 0);
+    const protectionFee = Math.round(numericAmount * rate * 100) / 100;
+
+    // Compute total: item price + buyer protection fee + shipping (waived/0 if covered by seller)
+    const totalAmount = Math.round((numericAmount + protectionFee + numericShipping) * 100) / 100;
 
     // Check if an existing PENDING order already exists for this buyer and listing
     const existingPendingOrder = await this.prisma.order.findFirst({
@@ -151,7 +153,8 @@ export class TransactionsService implements OnModuleInit {
               amount: numericAmount,
               protectionFee,
               shippingFee: numericShipping > 0 ? numericShipping : null,
-              shippingService,
+              shippingService: isFreeShipping ? (shippingService || 'Free Delivery (Covered by Seller)') : shippingService,
+              freeShipping: isFreeShipping,
               totalAmount,
               currency,
               shippingAddress: shippingAddress as any,
@@ -189,7 +192,8 @@ export class TransactionsService implements OnModuleInit {
         amount: numericAmount,
         protectionFee,
         shippingFee: numericShipping > 0 ? numericShipping : null,
-        shippingService,
+        shippingService: isFreeShipping ? (shippingService || 'Free Delivery (Covered by Seller)') : shippingService,
+        freeShipping: isFreeShipping,
         totalAmount,
         currency,
         status: 'PENDING',
@@ -235,7 +239,8 @@ export class TransactionsService implements OnModuleInit {
     const protectionFee = Number(
       order.protectionFee ?? Math.round(Number(order.amount) * rate * 100) / 100,
     );
-    const newTotal = Math.round((Number(order.amount) + protectionFee + dto.shippingFee) * 100) / 100;
+    const effectiveShippingFee = order.freeShipping ? 0 : dto.shippingFee;
+    const newTotal = Math.round((Number(order.amount) + protectionFee + effectiveShippingFee) * 100) / 100;
 
     // Update Stripe PaymentIntent amount
     await this.stripe.paymentIntents.update(order.paymentIntentId, {

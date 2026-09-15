@@ -27,6 +27,8 @@ export interface SafeAuthUser {
   name: string;
   email: string;
   role: string;
+  accountType?: 'INDIVIDUAL' | 'BUSINESS';
+  companyName?: string | null;
 }
 
 /** Admin user record — includes account timestamps for admin user-management views. */
@@ -74,6 +76,8 @@ export interface SafeProfile {
 export interface SafePublicProfile {
   displayName: string;
   avatarUrl: string | null;
+  accountType?: 'INDIVIDUAL' | 'BUSINESS';
+  companyName?: string | null;
   joinedYear?: number | null;
   location?: string | null;
   city?: string | null;
@@ -98,6 +102,9 @@ export interface SafePublicListing {
   model: string;
   storageCapacity: string | null;
   color: string | null;
+  quantity?: number;
+  isBulkListing?: boolean;
+  freeShipping?: boolean;
   price: number;
   currency: string;
   status: string;
@@ -168,6 +175,9 @@ export interface SafeListing {
   model: string;
   storageCapacity: string | null;
   color: string | null;
+  quantity?: number;
+  isBulkListing?: boolean;
+  freeShipping?: boolean;
   price: number;
   currency: string;
   status: string;
@@ -195,6 +205,7 @@ export interface SafeOrder {
   protectionFee: number | null;
   shippingFee: number | null;
   shippingService: string | null;
+  freeShipping?: boolean;
   totalAmount: number | null;
   currency: string;
   status: string;
@@ -233,6 +244,8 @@ export function sanitizeAuthUser(raw: Record<string, any>): SafeAuthUser {
     name: raw.name ?? '',
     email: raw.email ?? '',
     role: raw.role ?? '',
+    accountType: raw.accountType ?? 'INDIVIDUAL',
+    companyName: raw.companyName ?? null,
   };
 }
 
@@ -407,6 +420,9 @@ export function sanitizeListing(raw: Record<string, any>): SafeListing {
     model: raw.model ?? '',
     storageCapacity: raw.storageCapacity ?? null,
     color: raw.color ?? null,
+    quantity: raw.quantity != null ? Number(raw.quantity) : 1,
+    isBulkListing: Boolean(raw.isBulkListing),
+    freeShipping: Boolean(raw.freeShipping),
     price: Number(raw.price ?? 0),
     currency: raw.currency ?? '',
     status: raw.status ?? '',
@@ -437,6 +453,7 @@ export function sanitizeOrder(raw: Record<string, any>): SafeOrder {
     protectionFee: raw.protectionFee != null ? Number(raw.protectionFee) : null,
     shippingFee: raw.shippingFee != null ? Number(raw.shippingFee) : null,
     shippingService: raw.shippingService ?? null,
+    freeShipping: Boolean(raw.freeShipping),
     totalAmount: raw.totalAmount != null ? Number(raw.totalAmount) : null,
     currency: raw.currency ?? '',
     status: raw.status ?? '',

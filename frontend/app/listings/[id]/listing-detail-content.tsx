@@ -55,6 +55,7 @@ import {
   Calendar,
   UserCheck,
   Star,
+  Building2,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -69,6 +70,8 @@ type EvidenceType = 'DEVICE_IMAGE' | 'SCREEN_IMAGE' | 'BODY_IMAGE' | 'SETTINGS_S
 type CheckResult = 'CLEAN' | 'FLAGGED' | 'LOCKED' | 'NOT_APPLICABLE' | 'NOT_RUN' | 'ACTIVE' | 'EXPIRED' | 'VALID';
 
 interface ListingSeller {
+  accountType?: 'INDIVIDUAL' | 'BUSINESS' | string;
+  companyName?: string | null;
   displayName?: string;
   avatarUrl?: string | null;
   joinedYear?: number | null;
@@ -88,6 +91,9 @@ interface Listing {
   model: string;
   storageCapacity?: string | null;
   color?: string | null;
+  quantity?: number;
+  isBulkListing?: boolean;
+  freeShipping?: boolean;
   price: number | string;
   currency: string;
   conditionGrade?: ConditionGrade;
@@ -462,6 +468,9 @@ export default function ListingDetailContent({ id }: { id: string }) {
   if (listing.color) {
     specs.push({ icon: Palette, label: 'Colour', value: listing.color });
   }
+  if (listing.isBulkListing && listing.quantity) {
+    specs.push({ icon: BadgeCheck, label: 'Available Stock', value: `${listing.quantity} units available` });
+  }
 
   const handleDeleteListing = async () => {
     if (!listing) return;
@@ -748,18 +757,48 @@ export default function ListingDetailContent({ id }: { id: string }) {
                     </span>
                   </div>
                 )}
+
+                {/* Delivery & Stock indicators */}
+                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+                  {listing.freeShipping ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                      <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                      Free UK Delivery (Covered by Seller)
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium">
+                      <Truck className="w-3.5 h-3.5 text-slate-500" />
+                      Standard UK Tracked Delivery
+                    </span>
+                  )}
+                  {listing.isBulkListing && listing.quantity && listing.quantity > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                      <BadgeCheck className="w-3.5 h-3.5 text-blue-600" />
+                      {listing.quantity} in stock
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Seller Trust & Origin Details */}
               <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-emerald-100 text-[var(--color-green)] font-bold flex items-center justify-center text-sm">
-                    {sellerDisplayName.charAt(0).toUpperCase()}
+                    {(listing.seller?.companyName || sellerDisplayName).charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold text-gray-900">{sellerDisplayName}</span>
-                      <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-green)]" />
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-bold text-gray-900">
+                        {listing.seller?.companyName || sellerDisplayName}
+                      </span>
+                      {listing.seller?.accountType === 'BUSINESS' ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          <Building2 className="w-3 h-3 text-emerald-700" />
+                          Business Seller
+                        </span>
+                      ) : (
+                        <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-green)]" />
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 mt-0.5">
                       <span className="flex items-center gap-1">

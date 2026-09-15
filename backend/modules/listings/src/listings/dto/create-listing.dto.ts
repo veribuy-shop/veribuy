@@ -9,6 +9,7 @@ import {
   MaxLength,
   MinLength,
   Matches,
+  IsBoolean,
 } from 'class-validator';
 import { DeviceType, ConditionGrade } from '.prisma/veribuy-client';
 
@@ -78,4 +79,27 @@ export class CreateListingDto {
   @IsString()
   @MaxLength(100)
   location?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  quantity?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  storageCapacity?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  freeShipping?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isBulkListing?: boolean;
 }

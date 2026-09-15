@@ -19,6 +19,8 @@ import {
   Phone,
   Shield,
   CheckCircle2,
+  Building2,
+  User as UserIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -33,7 +35,11 @@ export default function RegisterPage() {
   const { register } = useAuth();
 
   const [step, setStep]                   = useState<1 | 2>(1);
+  const [accountType, setAccountType]     = useState<'INDIVIDUAL' | 'BUSINESS'>('INDIVIDUAL');
   const [name, setName]                   = useState('');
+  const [companyName, setCompanyName]     = useState('');
+  const [companyNumber, setCompanyNumber] = useState('');
+  const [vatNumber, setVatNumber]         = useState('');
   const [email, setEmail]                 = useState('');
   const [phone, setPhone]                 = useState('');
   const [line1, setLine1]                 = useState('');
@@ -100,6 +106,7 @@ export default function RegisterPage() {
   const ukPhoneRegex = /^(?:(?:\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}|\+44\s?\d{4}\s?\d{6}|0\d{4}\s?\d{6})$/;
   const phoneValid = ukPhoneRegex.test(phone.trim()) || phone.trim().length >= 10;
 
+  const companyNameValid = accountType === 'INDIVIDUAL' || companyName.trim().length >= 2;
   const nameValid       = name.trim().length >= 2;
   const emailValid      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const line1Valid      = line1.trim().length >= 3;
@@ -112,7 +119,7 @@ export default function RegisterPage() {
   const passwordHasSpecial = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
   const passwordValid = passwordHasLength && passwordHasUpper && passwordHasLower && passwordHasDigit && passwordHasSpecial;
 
-  const canSubmit = nameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms;
+  const canSubmit = nameValid && companyNameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,6 +140,10 @@ export default function RegisterPage() {
         city: city.trim(),
         postalCode: postalCode.trim().toUpperCase(),
         country: 'United Kingdom',
+        accountType,
+        companyName: accountType === 'BUSINESS' ? companyName.trim() : undefined,
+        companyNumber: accountType === 'BUSINESS' && companyNumber.trim() ? companyNumber.trim() : undefined,
+        vatNumber: accountType === 'BUSINESS' && vatNumber.trim() ? vatNumber.trim() : undefined,
       });
     } catch (err: any) {
       setError(err.message || 'Failed to create account. Please try again.');
@@ -200,10 +211,12 @@ export default function RegisterPage() {
             onSubmit={(e) => {
               e.preventDefault();
               setError('');
-              if (nameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms) {
+              if (nameValid && companyNameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms) {
                 setStep(2);
               } else if (!agreedToTerms) {
                 setError('Please agree to the Terms of Service and Privacy Policy to proceed.');
+              } else if (accountType === 'BUSINESS' && !companyNameValid) {
+                setError('Please provide your registered Company / Organization Name.');
               } else if (!phoneValid) {
                 setError('Please enter a valid UK contact phone number.');
               } else if (!line1Valid || !cityValid || !isPostalCodeFormatValid) {
@@ -215,6 +228,116 @@ export default function RegisterPage() {
             className="space-y-4"
             noValidate
           >
+            {/* Account Type Selection */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-2">
+                Account Type <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAccountType('INDIVIDUAL')}
+                  className={cn(
+                    'p-3.5 rounded-xl border-2 text-left transition-all flex flex-col justify-between',
+                    accountType === 'INDIVIDUAL'
+                      ? 'border-[var(--color-green)] bg-emerald-50/50 shadow-xs ring-1 ring-[var(--color-green)]'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                      <UserIcon className="w-3.5 h-3.5 text-gray-500" />
+                      Personal
+                    </span>
+                    {accountType === 'INDIVIDUAL' && <CheckCircle2 className="w-4 h-4 text-[var(--color-green)]" />}
+                  </div>
+                  <p className="text-[11px] text-gray-500 leading-tight">Buy &amp; sell single pre-owned devices</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAccountType('BUSINESS')}
+                  className={cn(
+                    'p-3.5 rounded-xl border-2 text-left transition-all flex flex-col justify-between',
+                    accountType === 'BUSINESS'
+                      ? 'border-[var(--color-green)] bg-emerald-50/50 shadow-xs ring-1 ring-[var(--color-green)]'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-gray-500" />
+                      Business / Org
+                    </span>
+                    {accountType === 'BUSINESS' && <CheckCircle2 className="w-4 h-4 text-[var(--color-green)]" />}
+                  </div>
+                  <p className="text-[11px] text-gray-500 leading-tight">Retailer/refurbisher with bulk listings</p>
+                </button>
+              </div>
+            </div>
+
+            {/* Business Specific Fields */}
+            {accountType === 'BUSINESS' && (
+              <div className="p-4 rounded-xl bg-gray-50/80 border border-gray-200/80 space-y-3.5">
+                <div>
+                  <label htmlFor="reg-company-name" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                    Company / Organization Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="reg-company-name"
+                    type="text"
+                    required
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="e.g. Acme Tech Refurbishing Ltd"
+                    className={cn(
+                      'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                      'text-gray-900 placeholder:text-gray-400',
+                      'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                    )}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="reg-company-number" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                      Company Number <span className="text-gray-400 text-[10px] font-normal">(Optional)</span>
+                    </label>
+                    <input
+                      id="reg-company-number"
+                      type="text"
+                      value={companyNumber}
+                      onChange={(e) => setCompanyNumber(e.target.value)}
+                      placeholder="e.g. 12345678"
+                      className={cn(
+                        'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                        'text-gray-900 placeholder:text-gray-400',
+                        'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                      )}
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="reg-vat-number" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                      VAT Number <span className="text-gray-400 text-[10px] font-normal">(Optional)</span>
+                    </label>
+                    <input
+                      id="reg-vat-number"
+                      type="text"
+                      value={vatNumber}
+                      onChange={(e) => setVatNumber(e.target.value)}
+                      placeholder="e.g. GB 123 4567 89"
+                      className={cn(
+                        'w-full px-4 py-3 border border-[var(--color-border)] rounded-xl text-sm bg-white',
+                        'text-gray-900 placeholder:text-gray-400',
+                        'focus:outline-none focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent transition-all shadow-xs',
+                      )}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Full Name */}
             <div>
               <label htmlFor="reg-name" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
@@ -497,7 +620,19 @@ export default function RegisterPage() {
               <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Account &amp; Dispatch Summary</h3>
               <div className="space-y-2.5 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Name:</span>
+                  <span className="text-gray-500">Account Type:</span>
+                  <span className="font-bold text-gray-900">
+                    {accountType === 'BUSINESS' ? 'Business / Organization' : 'Personal Individual'}
+                  </span>
+                </div>
+                {accountType === 'BUSINESS' && companyName && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Company Name:</span>
+                    <span className="font-bold text-gray-900">{companyName}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">{accountType === 'BUSINESS' ? 'Representative:' : 'Name:'}</span>
                   <span className="font-bold text-gray-900">{name}</span>
                 </div>
                 <div className="flex justify-between">
