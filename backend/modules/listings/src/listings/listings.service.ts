@@ -28,6 +28,9 @@ const PUBLIC_SELECT = {
   conditionGrade: true,
   color: true,
   storageCapacity: true,
+  quantity: true,
+  isBulkListing: true,
+  freeShipping: true,
   status: true,
   trustLensStatus: true,
   integrityFlags: true,
@@ -50,7 +53,9 @@ export class UlistingsService {
 
   async create(dto: CreateListingDto): Promise<Listing> {
     const initialFlags: IntegrityFlag[] = [IntegrityFlag.CLEAN];
-    let initialTrustStatus: TrustLensStatus = TrustLensStatus.PENDING;
+    let initialTrustStatus: TrustLensStatus = dto.isBulkListing
+      ? TrustLensStatus.PASSED
+      : TrustLensStatus.PENDING;
 
     // Check if duplicate IMEI before creating
     const cleanImei = dto.imei ? dto.imei.replace(/[^0-9]/g, '').trim() : null;
@@ -80,6 +85,11 @@ export class UlistingsService {
         price: dto.price,
         currency: dto.currency || 'GBP',
         conditionGrade: dto.conditionGrade,
+        color: dto.color || null,
+        storageCapacity: dto.storageCapacity || null,
+        quantity: dto.quantity || 1,
+        isBulkListing: !!dto.isBulkListing,
+        freeShipping: !!dto.freeShipping,
         imei: dto.imei,
         serialNumber: dto.serialNumber,
         status: ListingStatus.DRAFT,
@@ -467,6 +477,8 @@ export class UlistingsService {
             avatarUrl: true,
             sellerRating: true,
             verificationStatus: true,
+            accountType: true,
+            companyName: true,
             createdAt: true,
             address: {
               select: {
@@ -486,10 +498,14 @@ export class UlistingsService {
       const state = profile?.address?.state || '';
       const postalCode = profile?.address?.postalCode || '';
       const location = city && country ? `${city}, ${country}` : city || country || 'United Kingdom';
-      const displayName = profile?.displayName || (profile?.firstName ? `${profile.firstName} ${profile.lastName || ''}`.trim() : 'Verified Seller');
+      const displayName = profile?.accountType === 'BUSINESS' && profile?.companyName
+        ? profile.companyName
+        : (profile?.displayName || (profile?.firstName ? `${profile.firstName} ${profile.lastName || ''}`.trim() : 'Verified Seller'));
 
       return {
         displayName,
+        accountType: profile?.accountType || 'INDIVIDUAL',
+        companyName: profile?.companyName ?? null,
         avatarUrl: profile?.avatarUrl ?? null,
         joinedYear,
         location,
@@ -502,6 +518,8 @@ export class UlistingsService {
     } catch {
       return {
         displayName: 'Verified Seller',
+        accountType: 'INDIVIDUAL',
+        companyName: null,
         avatarUrl: null,
         joinedYear: new Date().getFullYear(),
         location: 'London, UK',
@@ -596,13 +614,38 @@ export class UlistingsService {
 
   /** Internal service-to-service status update — bypasses state machine */
   async updateStatusInternal(id: string, status: ListingStatus): Promise<Listing> {
-    let updateData: any = { status };
-
-    if (status === ListingStatus.ACTIVE) {
-      updateData.publishedAt = new Date();
-    }
-
     try {
+      const current = await this.prisma.listing.findUnique({
+        where: { id },
+        select: { quantity: true, isBulkListing: true, status: true },
+      });
+
+      if (!current) {
+        throw new NotFoundException('Listing not found');
+      }
+
+      // If marking SOLD but multi-unit quantity exists, decrement quantity and keep listing ACTIVE
+      if (status === ListingStatus.SOLD && current.quantity > 1) {
+        const updated = await this.prisma.listing.update({
+          where: { id },
+          data: {
+            quantity: { decrement: 1 },
+            status: ListingStatus.ACTIVE,
+          },
+        });
+        await this.redis.del(`listing:${id}`).catch(() => {});
+        return updated;
+      }
+
+      let updateData: any = { status };
+
+      if (status === ListingStatus.ACTIVE) {
+        updateData.publishedAt = new Date();
+      }
+      if (status === ListingStatus.SOLD) {
+        updateData.quantity = 0;
+      }
+
       const updated = await this.prisma.listing.update({
         where: { id },
         data: updateData,

@@ -8,6 +8,8 @@ interface User {
   name: string;
   email: string;
   role: 'BUYER' | 'SELLER' | 'ADMIN';
+  accountType?: 'INDIVIDUAL' | 'BUSINESS';
+  companyName?: string | null;
 }
 
 export interface RegisterData {
@@ -21,6 +23,10 @@ export interface RegisterData {
   state?: string;
   postalCode: string;
   country?: string;
+  accountType?: 'INDIVIDUAL' | 'BUSINESS';
+  companyName?: string;
+  companyNumber?: string;
+  vatNumber?: string;
 }
 
 interface AuthContextType {

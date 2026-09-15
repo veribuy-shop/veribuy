@@ -39,6 +39,9 @@ interface Listing {
   brand: string;
   model: string;
   deviceType: string;
+  freeShipping?: boolean;
+  isBulkListing?: boolean;
+  quantity?: number;
 }
 
 interface PendingOrder {
@@ -151,9 +154,10 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
     itemPrice > 0 && protectionFee > 0
       ? Math.round((protectionFee / itemPrice) * 100)
       : getBuyerProtectionFeePercent();
-  const totalPrice = shippingQuote
-    ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
-    : Math.round((itemPrice + protectionFee) * 100) / 100;
+  const effectiveShippingFee = listing.freeShipping
+    ? 0
+    : (shippingQuote ? shippingQuote.totalFee : 0);
+  const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee) * 100) / 100;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,7 +185,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
           credentials: 'include',
           body: JSON.stringify({
             orderId: pendingOrder.id,
-            shippingFee: shippingQuote.totalFee,
+            shippingFee: listing.freeShipping ? 0 : shippingQuote.totalFee,
             shippingService: selectedService,
           }),
         });
@@ -423,9 +427,18 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
 
       {/* Shipping Service */}
       <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
-        <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Shipping Service</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-[var(--color-text)]">Shipping Service</h2>
+          {listing.freeShipping && (
+            <span className="text-xs bg-emerald-100 text-emerald-800 font-bold px-2.5 py-1 rounded-full">
+              Covered by Seller
+            </span>
+          )}
+        </div>
         <p className="text-sm text-[var(--color-text-muted)] mb-4">
-          All orders are shipped via Royal Mail with tracking and photo on delivery.
+          {listing.freeShipping
+            ? 'The seller is covering standard UK tracked shipping. You pay £0.00 for delivery at checkout.'
+            : 'All orders are shipped via Royal Mail with tracking and photo on delivery.'}
         </p>
 
         {shippingQuote ? (
@@ -460,14 +473,18 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
                       <span className="font-medium text-[var(--color-text)]">{quote.label}</span>
                     </div>
                     <p className="text-sm text-[var(--color-text-muted)] mt-1">{quote.estimate}</p>
-                    {quote.surcharge > 0 && (
+                    {quote.surcharge > 0 && !listing.freeShipping && (
                       <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
                         Includes {formatPrice(quote.surcharge, 'GBP')} remote area surcharge
                       </p>
                     )}
                   </div>
                   <span className="font-semibold text-[var(--color-text)]">
-                    {formatPrice(quote.totalFee, 'GBP')}
+                    {listing.freeShipping ? (
+                      <span className="text-emerald-700 font-bold">FREE (£0.00)</span>
+                    ) : (
+                      formatPrice(quote.totalFee, 'GBP')
+                    )}
                   </span>
                 </label>
               );
@@ -616,11 +633,10 @@ function CheckoutPageContent() {
         'SW1A 1AA', // default mainland postcode for initial PaymentIntent
         'TRACKED_48',
       );
+      const initialShippingFee = listingData.freeShipping ? 0 : defaultQuote.totalFee;
 
       // Step 2: Pre-create the order to get a clientSecret for PaymentElement.
-      // The shipping fee is set to the default mainland TRACKED_48 rate. It will
-      // be updated via PATCH /update-shipping before payment confirmation once
-      // the buyer enters their real postcode and selects a service tier.
+      // The shipping fee is set to 0 if seller covers delivery, or default mainland TRACKED_48 rate.
       const createOrderResponse = await fetch('/api/checkout/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -635,7 +651,7 @@ function CheckoutPageContent() {
               ? parseFloat(listingData.price)
               : listingData.price,
           currency: listingData.currency,
-          shippingFee: defaultQuote.totalFee,
+          shippingFee: initialShippingFee,
           shippingService: 'TRACKED_48',
           // shippingAddress will be collected from the form
           shippingAddress: null,
@@ -698,9 +714,10 @@ function CheckoutPageContent() {
     itemPrice > 0 && protectionFee > 0
       ? Math.round((protectionFee / itemPrice) * 100)
       : getBuyerProtectionFeePercent();
-  const totalPrice = shippingQuote
-    ? Math.round((itemPrice + protectionFee + shippingQuote.totalFee) * 100) / 100
-    : Math.round((itemPrice + protectionFee) * 100) / 100;
+  const effectiveShippingFee = listing?.freeShipping
+    ? 0
+    : (shippingQuote ? shippingQuote.totalFee : 0);
+  const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee) * 100) / 100;
 
   if (loading) {
     return (
@@ -802,7 +819,11 @@ function CheckoutPageContent() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--color-text-muted)]">Shipping:</span>
-                  {shippingQuote ? (
+                  {listing.freeShipping ? (
+                    <span className="font-semibold text-emerald-700">
+                      FREE (Covered by Seller)
+                    </span>
+                  ) : shippingQuote ? (
                     <span className="font-medium text-[var(--color-text)]">
                       {formatPrice(shippingQuote.totalFee, 'GBP')}
                     </span>

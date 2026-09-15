@@ -17,6 +17,9 @@ import {
   X,
   Battery,
   Layers,
+  Truck,
+  Building2,
+  PackageCheck,
 } from 'lucide-react';
 
 function validateImeiChecksum(imei: string): { valid: boolean; status: 'empty' | 'incomplete' | 'invalid' | 'valid'; message: string } {
@@ -70,15 +73,22 @@ interface ListingFormData {
   description: string;
   city?: string;
   
+  // Bulk / Inventory details
+  isBulkListing: boolean;
+  quantity: number;
+  color: string;
+  storageCapacity: string;
+  
   // Step 2: Condition
   conditionGrade: ConditionGrade;
   cosmeticCondition: string;
   functionalIssues: string;
   accessories: string[];
   
-  // Step 3: Pricing
+  // Step 3: Pricing & Delivery
   price: string;
   currency: string;
+  freeShipping: boolean;
   
   // Step 4: Device Identifiers & Evidence
   imei: string;
@@ -87,6 +97,36 @@ interface ListingFormData {
   screenImages: File[];
   settingsScreenshot: File[];
 }
+
+const COLOR_OPTIONS = [
+  'Space Black',
+  'Space Gray',
+  'Silver',
+  'Gold',
+  'Midnight',
+  'Starlight',
+  'Deep Purple',
+  'Natural Titanium',
+  'Black Titanium',
+  'White Titanium',
+  'Desert Titanium',
+  'Blue',
+  'Green',
+  'Red',
+  'White',
+  'Black',
+  'Other',
+];
+
+const STORAGE_OPTIONS = [
+  '64GB',
+  '128GB',
+  '256GB',
+  '512GB',
+  '1TB',
+  '2TB',
+  'Other',
+];
 
 const STEPS = [
   { id: 1, name: 'Device Details', description: 'Basic device information' },
@@ -197,18 +237,30 @@ export default function CreateListingPage() {
     title: '',
     description: '',
     city: '',
+    isBulkListing: user?.accountType === 'BUSINESS',
+    quantity: 1,
+    color: '',
+    storageCapacity: '',
     conditionGrade: 'B',
     cosmeticCondition: '',
     functionalIssues: '',
     accessories: [],
     price: '',
     currency: 'GBP',
+    freeShipping: false,
     imei: '',
     serialNumber: '',
     deviceImages: [],
     screenImages: [],
     settingsScreenshot: [],
   });
+
+  // Automatically enable bulk listing mode for business accounts
+  useEffect(() => {
+    if (user?.accountType === 'BUSINESS') {
+      setFormData(prev => ({ ...prev, isBulkListing: true }));
+    }
+  }, [user?.accountType]);
 
   // Pre-fill seller's dispatch city from their saved profile
   useEffect(() => {
@@ -293,6 +345,10 @@ export default function CreateListingPage() {
         setError('Description must be at least 50 characters');
         return false;
       }
+      if (formData.isBulkListing && (!formData.quantity || formData.quantity < 1)) {
+        setError('Please specify a valid inventory quantity (minimum 1 unit)');
+        return false;
+      }
     }
     
     if (step === 2) {
@@ -311,6 +367,15 @@ export default function CreateListingPage() {
     }
     
     if (step === 4) {
+      // For bulk inventory listings, IMEI is not required upfront; 1 representative photo is required
+      if (formData.isBulkListing) {
+        if (formData.deviceImages.length < 1) {
+          setError('Please upload at least 1 representative photo of the inventory batch');
+          return false;
+        }
+        return true;
+      }
+
       // Smartphones are verified by IMEI only (serial optional). This matches the
       // server-side Trust Lens requirement.
       if (formData.deviceType === 'SMARTPHONE') {
@@ -372,8 +437,13 @@ export default function CreateListingPage() {
         price: parseFloat(formData.price),
         currency: formData.currency,
         conditionGrade: formData.conditionGrade,
-        imei: formData.imei || undefined,
-        serialNumber: formData.serialNumber || undefined,
+        quantity: formData.isBulkListing ? (Number(formData.quantity) || 1) : 1,
+        color: formData.color || undefined,
+        storageCapacity: formData.storageCapacity || undefined,
+        freeShipping: formData.freeShipping,
+        isBulkListing: formData.isBulkListing,
+        imei: formData.isBulkListing ? undefined : (formData.imei || undefined),
+        serialNumber: formData.isBulkListing ? undefined : (formData.serialNumber || undefined),
         city: formData.city || undefined,
       };
 
@@ -432,6 +502,12 @@ export default function CreateListingPage() {
         setUploadProgress(
           Object.fromEntries(allFiles.map(({ file }) => [file.name, 100]))
         );
+      }
+
+      // For bulk listings, skip Trust Lens single-item IMEI verification and navigate to detail page
+      if (formData.isBulkListing) {
+        router.push(`/listings/${listing.id}`);
+        return;
       }
       
       // Step 3: Create verification request in Trust Lens
@@ -570,8 +646,129 @@ export default function CreateListingPage() {
           {/* Step 1: Device Details */}
           {currentStep === 1 && (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Device Details</h2>
-              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                <h2 className="text-xl font-semibold text-[var(--color-text)]">Device Details</h2>
+                {user?.accountType === 'BUSINESS' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <Building2 className="w-3.5 h-3.5 text-[var(--color-green)]" />
+                    Verified Business Account
+                  </span>
+                )}
+              </div>
+
+              {/* Organization Listing Mode Toggle for Business Sellers */}
+              {user?.accountType === 'BUSINESS' && (
+                <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-emerald-950 mb-2.5">
+                    Listing Mode
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => updateFormData('isBulkListing', true)}
+                      className={`p-3.5 rounded-xl border-2 text-left transition-all ${
+                        formData.isBulkListing
+                          ? 'border-[var(--color-green)] bg-white shadow-xs ring-1 ring-[var(--color-green)]'
+                          : 'border-emerald-100 bg-white/60 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold text-xs text-gray-900 mb-1">
+                        <span className="flex items-center gap-1.5">
+                          <PackageCheck className="w-3.5 h-3.5 text-[var(--color-green)]" />
+                          Bulk Inventory Listing
+                        </span>
+                        {formData.isBulkListing && <CheckCircle2 className="w-4 h-4 text-[var(--color-green)]" />}
+                      </div>
+                      <p className="text-[11px] text-gray-500">List multi-unit inventory by quantity, color, and storage without individual IMEIs.</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => updateFormData('isBulkListing', false)}
+                      className={`p-3.5 rounded-xl border-2 text-left transition-all ${
+                        !formData.isBulkListing
+                          ? 'border-[var(--color-green)] bg-white shadow-xs ring-1 ring-[var(--color-green)]'
+                          : 'border-emerald-100 bg-white/60 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold text-xs text-gray-900 mb-1">
+                        <span className="flex items-center gap-1.5">
+                          <Smartphone className="w-3.5 h-3.5 text-gray-600" />
+                          Single Device Listing
+                        </span>
+                        {!formData.isBulkListing && <CheckCircle2 className="w-4 h-4 text-[var(--color-green)]" />}
+                      </div>
+                      <p className="text-[11px] text-gray-500">List 1 specific device with individual IMEI and Trust Lens diagnostics.</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Bulk Specifications (Quantity, Color, Storage) */}
+              {formData.isBulkListing && (
+                <div className="p-4 rounded-xl bg-gray-50/90 border border-gray-200/90 space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 flex items-center gap-2">
+                    <PackageCheck className="w-4 h-4 text-[var(--color-green)]" />
+                    Inventory Specifications
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {/* Quantity */}
+                    <div>
+                      <label htmlFor="bulk-quantity" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                        Quantity in Stock <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="bulk-quantity"
+                        type="number"
+                        min="1"
+                        required
+                        value={formData.quantity}
+                        onChange={(e) => updateFormData('quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white text-sm"
+                      />
+                      <p className="mt-1 text-[11px] text-gray-400">Total units available</p>
+                    </div>
+
+                    {/* Color */}
+                    <div>
+                      <label htmlFor="bulk-color" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                        Color
+                      </label>
+                      <select
+                        id="bulk-color"
+                        value={formData.color}
+                        onChange={(e) => updateFormData('color', e.target.value)}
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white text-sm"
+                      >
+                        <option value="">Select color</option>
+                        {COLOR_OPTIONS.map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Storage Capacity */}
+                    <div>
+                      <label htmlFor="bulk-storage" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
+                        Storage Capacity
+                      </label>
+                      <select
+                        id="bulk-storage"
+                        value={formData.storageCapacity}
+                        onChange={(e) => updateFormData('storageCapacity', e.target.value)}
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white text-sm"
+                      >
+                        <option value="">Select storage</option>
+                        {STORAGE_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label htmlFor="device-type" className="block text-sm font-medium text-[var(--color-text)] mb-2">
                   Device Type <span className="text-red-500" aria-hidden="true">*</span>
@@ -924,151 +1121,265 @@ export default function CreateListingPage() {
                   <li>• Research similar devices on VeriBuy to set competitive prices</li>
                 </ul>
               </div>
+
+              {/* Delivery & Shipping Option */}
+              <div className="border-t border-[var(--color-border)] pt-6">
+                <label className="block text-sm font-semibold text-[var(--color-text)] mb-1">
+                  Delivery Method & Shipping Cost
+                </label>
+                <p className="text-sm text-[var(--color-text-muted)] mb-4">
+                  Choose whether you cover delivery or if the buyer pays for shipping at checkout.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div
+                    onClick={() => updateFormData('freeShipping', false)}
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      !formData.freeShipping
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
+                        : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Truck className="w-5 h-5 text-[var(--color-text-muted)]" />
+                        <span className="font-semibold text-sm text-[var(--color-text)]">Buyer Pays Shipping</span>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                        !formData.freeShipping ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-gray-300'
+                      }`}>
+                        {!formData.freeShipping && <div className="w-2 h-2 rounded-full bg-white" />}
+                      </div>
+                    </div>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                      Standard tracked UK courier shipping fee (£12.00) will be paid by the buyer during checkout.
+                    </p>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                      Buyer protection fee is calculated separately.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => updateFormData('freeShipping', true)}
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      formData.freeShipping
+                        ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
+                        : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Truck className="w-5 h-5 text-[var(--color-green)]" />
+                        <div>
+                          <span className="font-semibold text-sm text-[var(--color-text)]">Free UK Delivery</span>
+                          <span className="ml-2 text-xs bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">Covered by Seller</span>
+                        </div>
+                      </div>
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                        formData.freeShipping ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-gray-300'
+                      }`}>
+                        {formData.freeShipping && <div className="w-2 h-2 rounded-full bg-white" />}
+                      </div>
+                    </div>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                      You cover delivery (assumed included in your asking price). Buyer pays <strong className="text-emerald-700">£0.00</strong> for shipping.
+                    </p>
+                    <p className="text-xs text-amber-700 font-medium mt-1">
+                      Note: VeriBuy Buyer Protection fee remains applicable to ensure secure escrow.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
           {/* Step 4: Verification & Evidence */}
           {currentStep === 4 && (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-[var(--color-text)] mb-2">Trust Lens Verification</h2>
+              <h2 className="text-xl font-semibold text-[var(--color-text)] mb-2">
+                {formData.isBulkListing ? 'Batch Verification & Photo Evidence' : 'Trust Lens Verification'}
+              </h2>
               <p className="text-sm text-[var(--color-text-muted)] mb-6">
-                Provide device identifiers and evidence images for verification. This helps build buyer trust and reduces disputes.
+                {formData.isBulkListing
+                  ? 'Upload representative photos of your inventory batch. Bulk listings operate under your verified business credentials.'
+                  : 'Provide device identifiers and evidence images for verification. This helps build buyer trust and reduces disputes.'}
               </p>
 
-              <div className="bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 rounded-lg p-4 mb-6">
-                <h3 className="font-semibold text-[var(--color-text)] mb-2">
-                  <AlertTriangle className="w-4 h-4 inline mr-1" aria-hidden="true" /> Verification Requirements
-                </h3>
-                <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
-                  <li>• IMEI required for phones; serial optional. Tablets/smartwatches need IMEI or serial (laptops & AirPods may use serial only)</li>
-                  <li>• At least 3 high-quality device images (various angles)</li>
-                  <li>• At least 1 screen/display image (powered on)</li>
-                  <li>• Optional: Screenshots of Settings showing device info</li>
-                  <li>• All images will be timestamped and stored for dispute resolution</li>
-                </ul>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label htmlFor="device-imei" className="block text-sm font-medium text-[var(--color-text)]">
-                      IMEI <span className="text-red-500" aria-hidden="true">*</span>
-                      <span className="sr-only">(required)</span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowImeiGuide(!showImeiGuide)}
-                      className="text-xs text-[var(--color-green)] hover:underline inline-flex items-center gap-1 font-medium"
-                    >
-                      <HelpCircle className="w-3.5 h-3.5" aria-hidden="true" />
-                      Where do I find my IMEI?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      id="device-imei"
-                      type="text"
-                      value={formData.imei}
-                      onChange={(e) => updateFormData('imei', e.target.value.replace(/[^\d]/g, '').slice(0, 15))}
-                      placeholder="15-digit IMEI (numbers only)"
-                      maxLength={15}
-                      aria-describedby="device-imei-hint"
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
-                        (() => {
-                          const check = validateImeiChecksum(formData.imei);
-                          if (check.status === 'valid') return 'border-[var(--color-green)] focus:ring-[var(--color-green)] pr-10';
-                          if (check.status === 'invalid') return 'border-amber-500 focus:ring-amber-500 pr-10';
-                          return 'border-[var(--color-border)] focus:ring-[var(--color-green)]';
-                        })()
-                      }`}
-                    />
-                    {(() => {
-                      const check = validateImeiChecksum(formData.imei);
-                      if (check.status === 'valid') {
-                        return (
-                          <div className="absolute right-3 top-2.5 text-[var(--color-green)]" title="Valid IMEI checksum">
-                            <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
-                          </div>
-                        );
-                      }
-                      if (check.status === 'invalid') {
-                        return (
-                          <div className="absolute right-3 top-2.5 text-amber-500" title="Check-digit mismatch">
-                            <AlertTriangle className="w-5 h-5" aria-hidden="true" />
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-
-                  {/* Real-time validation feedback */}
-                  <div id="device-imei-hint" className="mt-1.5 flex items-center justify-between text-xs">
-                    {(() => {
-                      const check = validateImeiChecksum(formData.imei);
-                      if (check.status === 'valid') {
-                        return <span className="text-[var(--color-green)] font-medium flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 inline" /> {check.message}</span>;
-                      }
-                      if (check.status === 'invalid') {
-                        return <span className="text-amber-600 font-medium">{check.message}</span>;
-                      }
-                      if (check.status === 'incomplete') {
-                        return <span className="text-[var(--color-text-muted)]">{check.message}</span>;
-                      }
-                      return <span className="text-[var(--color-text-muted)]">Dial *#06# on phone to find IMEI</span>;
-                    })()}
-                    <span className="text-[var(--color-text-muted)] ml-auto">{formData.imei.length}/15</span>
-                  </div>
-
-                  {/* IMEI Retrieval Help Popover/Drawer */}
-                  {showImeiGuide && (
-                    <div className="mt-3 p-4 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl relative text-xs text-[var(--color-text)]">
-                      <button
-                        type="button"
-                        onClick={() => setShowImeiGuide(false)}
-                        className="absolute top-2.5 right-2.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                        aria-label="Close IMEI guide"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                      <h4 className="font-bold text-sm mb-2 text-[var(--color-text)] flex items-center gap-1.5">
-                        <Smartphone className="w-4 h-4 text-[var(--color-green)]" />
-                        How to find your 15-digit IMEI:
-                      </h4>
-                      <div className="space-y-2 text-[var(--color-text-muted)]">
-                        <div>
-                          <strong className="text-[var(--color-text)]">Universal Dial Code:</strong> Open phone keypad and dial <code className="bg-white px-1.5 py-0.5 rounded border border-[var(--color-border)] font-mono text-[var(--color-green)] font-bold">*#06#</code>. The IMEI displays immediately.
-                        </div>
-                        <div>
-                          <strong className="text-[var(--color-text)]">Apple iPhone:</strong> Go to <span className="font-medium text-[var(--color-text)]">Settings → General → About</span> and scroll down to IMEI.
-                        </div>
-                        <div>
-                          <strong className="text-[var(--color-text)]">Android:</strong> Go to <span className="font-medium text-[var(--color-text)]">Settings → About phone → Status / IMEI</span>.
-                        </div>
-                        <div>
-                          <strong className="text-[var(--color-text)]">Physical Device:</strong> Check the SIM tray or original retail box barcode label.
-                        </div>
+              {formData.isBulkListing ? (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 mb-6">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2.5 bg-emerald-100 rounded-lg text-emerald-700">
+                      <PackageCheck className="w-6 h-6" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-emerald-950 text-base flex items-center gap-2">
+                        Business Bulk Inventory Authorization
+                        <span className="text-xs bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-full font-semibold">
+                          IMEI Check Waived
+                        </span>
+                      </h3>
+                      <p className="text-xs text-emerald-800 mt-1">
+                        Individual 15-digit IMEI verification is not required upfront for bulk business inventory. Each unit dispatched will be fulfilled under your Verified Business credentials.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <span className="bg-white border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-md font-medium">
+                          Stock: <strong>{formData.quantity} units</strong>
+                        </span>
+                        {formData.storageCapacity && (
+                          <span className="bg-white border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-md font-medium">
+                            Storage: <strong>{formData.storageCapacity}</strong>
+                          </span>
+                        )}
+                        {formData.color && (
+                          <span className="bg-white border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-md font-medium">
+                            Color: <strong>{formData.color}</strong>
+                          </span>
+                        )}
+                        <span className="bg-white border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-md font-medium">
+                          Condition: <strong>Grade {formData.conditionGrade}</strong>
+                        </span>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div className="bg-[var(--color-warning)]/10 border border-[var(--color-warning)]/30 rounded-lg p-4 mb-6">
+                    <h3 className="font-semibold text-[var(--color-text)] mb-2">
+                      <AlertTriangle className="w-4 h-4 inline mr-1" aria-hidden="true" /> Verification Requirements
+                    </h3>
+                    <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
+                      <li>• IMEI required for phones; serial optional. Tablets/smartwatches need IMEI or serial (laptops & AirPods may use serial only)</li>
+                      <li>• At least 3 high-quality device images (various angles)</li>
+                      <li>• At least 1 screen/display image (powered on)</li>
+                      <li>• Optional: Screenshots of Settings showing device info</li>
+                      <li>• All images will be timestamped and stored for dispute resolution</li>
+                    </ul>
+                  </div>
 
-                <div>
-                  <label htmlFor="device-serial" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                    Serial Number
-                  </label>
-                  <input
-                    id="device-serial"
-                    type="text"
-                    value={formData.serialNumber}
-                    onChange={(e) => updateFormData('serialNumber', e.target.value)}
-                    placeholder="Device serial number (optional for phones)"
-                    aria-describedby="device-serial-hint"
-                    className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-                  />
-                  <p id="device-serial-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">Found in Settings → About or on original box</p>
-                </div>
-              </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label htmlFor="device-imei" className="block text-sm font-medium text-[var(--color-text)]">
+                          IMEI <span className="text-red-500" aria-hidden="true">*</span>
+                          <span className="sr-only">(required)</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowImeiGuide(!showImeiGuide)}
+                          className="text-xs text-[var(--color-green)] hover:underline inline-flex items-center gap-1 font-medium"
+                        >
+                          <HelpCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                          Where do I find my IMEI?
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          id="device-imei"
+                          type="text"
+                          value={formData.imei}
+                          onChange={(e) => updateFormData('imei', e.target.value.replace(/[^\d]/g, '').slice(0, 15))}
+                          placeholder="15-digit IMEI (numbers only)"
+                          maxLength={15}
+                          aria-describedby="device-imei-hint"
+                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
+                            (() => {
+                              const check = validateImeiChecksum(formData.imei);
+                              if (check.status === 'valid') return 'border-[var(--color-green)] focus:ring-[var(--color-green)] pr-10';
+                              if (check.status === 'invalid') return 'border-amber-500 focus:ring-amber-500 pr-10';
+                              return 'border-[var(--color-border)] focus:ring-[var(--color-green)]';
+                            })()
+                          }`}
+                        />
+                        {(() => {
+                          const check = validateImeiChecksum(formData.imei);
+                          if (check.status === 'valid') {
+                            return (
+                              <div className="absolute right-3 top-2.5 text-[var(--color-green)]" title="Valid IMEI checksum">
+                                <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
+                              </div>
+                            );
+                          }
+                          if (check.status === 'invalid') {
+                            return (
+                              <div className="absolute right-3 top-2.5 text-amber-500" title="Check-digit mismatch">
+                                <AlertTriangle className="w-5 h-5" aria-hidden="true" />
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+
+                      {/* Real-time validation feedback */}
+                      <div id="device-imei-hint" className="mt-1.5 flex items-center justify-between text-xs">
+                        {(() => {
+                          const check = validateImeiChecksum(formData.imei);
+                          if (check.status === 'valid') {
+                            return <span className="text-[var(--color-green)] font-medium flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 inline" /> {check.message}</span>;
+                          }
+                          if (check.status === 'invalid') {
+                            return <span className="text-amber-600 font-medium">{check.message}</span>;
+                          }
+                          if (check.status === 'incomplete') {
+                            return <span className="text-[var(--color-text-muted)]">{check.message}</span>;
+                          }
+                          return <span className="text-[var(--color-text-muted)]">Dial *#06# on phone to find IMEI</span>;
+                        })()}
+                        <span className="text-[var(--color-text-muted)] ml-auto">{formData.imei.length}/15</span>
+                      </div>
+
+                      {/* IMEI Retrieval Help Popover/Drawer */}
+                      {showImeiGuide && (
+                        <div className="mt-3 p-4 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl relative text-xs text-[var(--color-text)]">
+                          <button
+                            type="button"
+                            onClick={() => setShowImeiGuide(false)}
+                            className="absolute top-2.5 right-2.5 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                            aria-label="Close IMEI guide"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <h4 className="font-bold text-sm mb-2 text-[var(--color-text)] flex items-center gap-1.5">
+                            <Smartphone className="w-4 h-4 text-[var(--color-green)]" />
+                            How to find your 15-digit IMEI:
+                          </h4>
+                          <div className="space-y-2 text-[var(--color-text-muted)]">
+                            <div>
+                              <strong className="text-[var(--color-text)]">Universal Dial Code:</strong> Open phone keypad and dial <code className="bg-white px-1.5 py-0.5 rounded border border-[var(--color-border)] font-mono text-[var(--color-green)] font-bold">*#06#</code>. The IMEI displays immediately.
+                            </div>
+                            <div>
+                              <strong className="text-[var(--color-text)]">Apple iPhone:</strong> Go to <span className="font-medium text-[var(--color-text)]">Settings → General → About</span> and scroll down to IMEI.
+                            </div>
+                            <div>
+                              <strong className="text-[var(--color-text)]">Android:</strong> Go to <span className="font-medium text-[var(--color-text)]">Settings → About phone → Status / IMEI</span>.
+                            </div>
+                            <div>
+                              <strong className="text-[var(--color-text)]">Physical Device:</strong> Check the SIM tray or original retail box barcode label.
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="device-serial" className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                        Serial Number
+                      </label>
+                      <input
+                        id="device-serial"
+                        type="text"
+                        value={formData.serialNumber}
+                        onChange={(e) => updateFormData('serialNumber', e.target.value)}
+                        placeholder="Device serial number (optional for phones)"
+                        aria-describedby="device-serial-hint"
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                      />
+                      <p id="device-serial-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">Found in Settings → About or on original box</p>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div>
                 <label htmlFor="device-images" className="block text-sm font-medium text-[var(--color-text)] mb-2">
@@ -1204,17 +1515,19 @@ export default function CreateListingPage() {
               type="button"
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="px-6 py-3 bg-[var(--color-accent)] text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-[var(--color-accent)] text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               {isSubmitting 
                 ? (uploadingFiles ? 'Uploading Images...' : 'Creating Listing...') 
-                : 'Submit for Verification'}
+                : (formData.isBulkListing ? 'Publish Business Listing' : 'Submit for Verification')}
             </button>
           )}
         </div>
 
         <p className="text-center text-sm text-[var(--color-text-muted)] mt-4">
-          Your IMEI will be checked automatically. Flagged listings are reviewed by an admin
+          {formData.isBulkListing
+            ? 'Bulk inventory will be published immediately under your verified business credentials.'
+            : 'Your IMEI will be checked automatically. Flagged listings are reviewed by an admin.'}
         </p>
       </div>
     </div>

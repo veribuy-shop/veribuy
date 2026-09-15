@@ -1,5 +1,6 @@
-import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional, IsEnum } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { AccountType } from '.prisma/veribuy-client';
 
 export class RegisterDto {
   @IsString()
@@ -63,5 +64,27 @@ export class RegisterDto {
   @MaxLength(100)
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   country?: string;
+
+  @IsOptional()
+  @IsEnum(AccountType)
+  accountType?: AccountType;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  companyName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  companyNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  vatNumber?: string;
 }
 

@@ -85,8 +85,12 @@ export class AuthService {
       await this.prisma.profile.create({
         data: {
           userId: user.id,
-          displayName: dto.name,
+          displayName: dto.companyName && dto.accountType === 'BUSINESS' ? dto.companyName : dto.name,
           phone: dto.phone || null,
+          accountType: dto.accountType || 'INDIVIDUAL',
+          companyName: dto.companyName || null,
+          companyNumber: dto.companyNumber || null,
+          vatNumber: dto.vatNumber || null,
           ...(dto.line1 && dto.city
             ? {
                 address: {
@@ -134,6 +138,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        accountType: dto.accountType || 'INDIVIDUAL',
+        companyName: dto.companyName || null,
       },
       autoVerified: autoVerify,
       ...tokens,
@@ -240,10 +246,16 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
+    const [profile] = await Promise.all([
+      this.prisma.profile.findUnique({
+        where: { userId: user.id },
+        select: { accountType: true, companyName: true },
+      }),
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      }),
+    ]);
 
     const tokens = await this.generateTokens(user.id, user.role);
 
@@ -253,6 +265,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        accountType: profile?.accountType || 'INDIVIDUAL',
+        companyName: profile?.companyName || null,
       },
       ...tokens,
     };
@@ -357,16 +371,29 @@ export class AuthService {
   }
 
   async verifyAndHydrate(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        isActive: true,
-      },
-    });
+    const [user, profile] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isActive: true,
+        },
+      }),
+      this.prisma.profile.findUnique({
+        where: { userId },
+        select: {
+          accountType: true,
+          companyName: true,
+          companyNumber: true,
+          vatNumber: true,
+          phone: true,
+          isPhoneVerified: true,
+        },
+      }),
+    ]);
 
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Account not found or disabled');
@@ -377,6 +404,12 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
+      accountType: profile?.accountType || 'INDIVIDUAL',
+      companyName: profile?.companyName || null,
+      companyNumber: profile?.companyNumber || null,
+      vatNumber: profile?.vatNumber || null,
+      phone: profile?.phone || null,
+      isPhoneVerified: profile?.isPhoneVerified || false,
     };
   }
 
