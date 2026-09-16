@@ -13,8 +13,9 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
 import Stripe from 'stripe';
-import { PaginationDto, PaginatedResponse, getInternalApiUrl } from '@veribuy/common';
+import { PaginationDto, PaginatedResponse, getInternalApiUrl, RoyalMailServiceTier } from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
+import { RoyalMailService } from '../shipping/royal-mail.service';
 
 /**
  * Allowed status transitions for each actor.
@@ -52,6 +53,7 @@ export class TransactionsService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     private invoicesService: InvoicesService,
+    private royalMailService: RoyalMailService,
   ) {}
 
   /**
@@ -99,6 +101,9 @@ export class TransactionsService implements OnModuleInit {
     let listingTitle: string | null = null;
     let listingDescription: string | null = null;
     let listingCategory: string | null = null;
+    let parcelWeightGrams: number = 320;
+    let parcelFormat: string = 'SMALL_PARCEL';
+
     try {
       const listing = await this.fetchListing(listingId);
       if (listing && (listing.status === 'SOLD' || listing.status === 'DELISTED')) {
@@ -108,6 +113,16 @@ export class TransactionsService implements OnModuleInit {
       listingTitle = listing?.title ?? null;
       listingDescription = listing?.description ?? null;
       listingCategory = listing?.deviceType ?? listing?.brand ?? null;
+
+      // Automated weight mapping & packaging sizing
+      const profile = this.royalMailService.resolvePackageProfile(
+        listing?.deviceType || listingCategory || 'SMARTPHONE',
+        listing?.brand,
+        listing?.model,
+        listing?.quantity || 1,
+      );
+      parcelWeightGrams = profile.totalWeightGrams;
+      parcelFormat = profile.parcelFormat;
     } catch (err: any) {
       if (err instanceof BadRequestException) throw err;
       this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
@@ -150,6 +165,8 @@ export class TransactionsService implements OnModuleInit {
               listingTitle: listingTitle ?? existingPendingOrder.listingTitle,
               listingDescription: listingDescription ?? existingPendingOrder.listingDescription,
               listingCategory: listingCategory ?? existingPendingOrder.listingCategory,
+              parcelWeightGrams,
+              parcelFormat,
               amount: numericAmount,
               protectionFee,
               shippingFee: numericShipping > 0 ? numericShipping : null,
@@ -189,6 +206,8 @@ export class TransactionsService implements OnModuleInit {
         listingTitle,
         listingDescription,
         listingCategory,
+        parcelWeightGrams,
+        parcelFormat,
         amount: numericAmount,
         protectionFee,
         shippingFee: numericShipping > 0 ? numericShipping : null,
@@ -314,12 +333,24 @@ export class TransactionsService implements OnModuleInit {
         },
       });
 
+      // Generate tracking number and drop-off metadata if missing
+      const trackingNumber =
+        order.trackingNumber ||
+        this.royalMailService.generateTrackingNumber(order.shippingService || 'TRACKED_48');
+      const dropoffQrCodeUrl =
+        order.dropoffQrCodeUrl ||
+        this.royalMailService.generateDropoffQrCode(order.id, trackingNumber);
+      const shippingLabelUrl = `/api/orders/${order.id}/shipping-label`;
+
       // Advance to ESCROW_HELD and link escrow
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
         data: {
           escrowId: escrow.id,
           status: 'ESCROW_HELD',
+          trackingNumber,
+          dropoffQrCodeUrl,
+          shippingLabelUrl,
         },
       });
 
@@ -1287,5 +1318,128 @@ export class TransactionsService implements OnModuleInit {
     this.logger.log(
       `Synced seller rating for ${sellerId}: avg=${averageRating}, count=${totalRatings}`,
     );
+  }
+
+  /**
+   * Generates a 4x6" PDF shipping label for an order.
+   */
+  async getOrderShippingLabel(orderId: string, userId: string, userRole: string): Promise<Buffer> {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (userRole !== 'ADMIN' && order.sellerId !== userId && order.buyerId !== userId) {
+      throw new ForbiddenException('You are not authorized to access this shipping label');
+    }
+
+    const seller = await this.prisma.user.findUnique({
+      where: { id: order.sellerId },
+      select: { name: true },
+    });
+    const sellerProfile = await this.prisma.profile.findUnique({
+      where: { userId: order.sellerId },
+      include: { address: true },
+    });
+
+    const buyer = await this.prisma.user.findUnique({
+      where: { id: order.buyerId },
+      select: { name: true },
+    });
+    const buyerProfile = await this.prisma.profile.findUnique({
+      where: { userId: order.buyerId },
+      include: { address: true },
+    });
+
+    const shippingAddr = (order.shippingAddress as Record<string, any>) || {};
+    const trackingNumber =
+      order.trackingNumber ||
+      this.royalMailService.generateTrackingNumber(order.shippingService || 'TRACKED_48');
+    const parcelWeightGrams = order.parcelWeightGrams || 320;
+    const parcelFormat = order.parcelFormat || 'SMALL_PARCEL';
+
+    return this.royalMailService.generateShippingLabelPdf({
+      orderId: order.id,
+      trackingNumber,
+      service: order.shippingService || 'TRACKED_48',
+      parcelWeightGrams,
+      parcelFormat,
+      itemTitle: order.listingTitle || 'Verified Device',
+      senderName: seller?.name || sellerProfile?.displayName || 'VeriBuy Verified Seller',
+      senderAddressLine1: sellerProfile?.address?.line1 || '10 VeriBuy Logistics Hub',
+      senderTown: sellerProfile?.address?.city || 'London',
+      senderPostcode: sellerProfile?.address?.postalCode || 'EC1A 1BB',
+      recipientName: shippingAddr.name || buyer?.name || buyerProfile?.displayName || 'Customer',
+      recipientAddressLine1: shippingAddr.line1 || buyerProfile?.address?.line1 || '123 High Street',
+      recipientAddressLine2: shippingAddr.line2 || buyerProfile?.address?.line2 || undefined,
+      recipientTown: shippingAddr.city || buyerProfile?.address?.city || 'London',
+      recipientPostcode: shippingAddr.postalCode || buyerProfile?.address?.postalCode || 'SW1A 1AA',
+      recipientPhone: shippingAddr.phone || buyerProfile?.phone || undefined,
+      createdAt: order.createdAt,
+    });
+  }
+
+  /**
+   * Retrieves drop-off details and nearby Post Office / Delivery Office locations for an order.
+   */
+  async getOrderDropoffLocations(orderId: string, userId: string, userRole: string, postcode?: string) {
+    const order = await this.prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+    if (userRole !== 'ADMIN' && order.sellerId !== userId && order.buyerId !== userId) {
+      throw new ForbiddenException('You are not authorized to view drop-off locations for this order');
+    }
+
+    let resolvedPostcode = postcode;
+    if (!resolvedPostcode) {
+      const sellerProfile = await this.prisma.profile.findUnique({
+        where: { userId: order.sellerId },
+        include: { address: true },
+      });
+      resolvedPostcode = sellerProfile?.address?.postalCode || 'SW1A 1AA';
+    }
+
+    const locations = this.royalMailService.findDropoffLocations(resolvedPostcode || 'SW1A 1AA');
+    const trackingNumber =
+      order.trackingNumber ||
+      this.royalMailService.generateTrackingNumber(order.shippingService || 'TRACKED_48');
+    const qrCodeUrl =
+      order.dropoffQrCodeUrl ||
+      this.royalMailService.generateDropoffQrCode(order.id, trackingNumber);
+
+    return {
+      orderId: order.id,
+      trackingNumber,
+      dropoffQrCodeUrl: qrCodeUrl,
+      shippingLabelUrl: order.shippingLabelUrl || `/api/orders/${order.id}/shipping-label`,
+      parcelWeightGrams: order.parcelWeightGrams || 320,
+      parcelFormat: order.parcelFormat || 'SMALL_PARCEL',
+      shippingService: order.shippingService || 'TRACKED_48',
+      locations,
+    };
+  }
+
+  /**
+   * Resolves device weight profile from catalog.
+   */
+  getDeviceWeightProfile(deviceType: string, brand?: string, model?: string, quantity?: number) {
+    return this.royalMailService.resolvePackageProfile(deviceType, brand, model, quantity);
+  }
+
+  /**
+   * Calculates shipping rate quote using Royal Mail weight tiers.
+   */
+  calculateShippingRate(
+    deviceType: string,
+    serviceTier: RoyalMailServiceTier = 'TRACKED_48',
+    options?: {
+      brand?: string;
+      model?: string;
+      quantity?: number;
+      destinationPostcode?: string;
+      itemValue?: number;
+    },
+  ) {
+    return this.royalMailService.calculateShippingRate(deviceType, serviceTier, options);
   }
 }

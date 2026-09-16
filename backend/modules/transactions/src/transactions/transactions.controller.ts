@@ -12,14 +12,16 @@ import {
   Headers,
   UnauthorizedException,
   ParseUUIDPipe,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import * as crypto from 'crypto';
 import { TransactionsService } from './transactions.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
-import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, PaginationDto, Public } from '@veribuy/common';
+import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, PaginationDto, Public, RoyalMailServiceTier } from '@veribuy/common';
 
 interface AuthenticatedUser {
   userId: string;
@@ -46,6 +48,40 @@ function validateInternalToken(provided: string | undefined): void {
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
+
+  @Get('shipping/weight-profile')
+  @Public()
+  getWeightProfile(
+    @Query('deviceType') deviceType: string = 'SMARTPHONE',
+    @Query('brand') brand?: string,
+    @Query('model') model?: string,
+    @Query('quantity') quantity?: string,
+  ) {
+    const qty = quantity ? parseInt(quantity, 10) : 1;
+    return this.transactionsService.getDeviceWeightProfile(deviceType, brand, model, isNaN(qty) ? 1 : qty);
+  }
+
+  @Get('shipping/quote')
+  @Public()
+  getShippingQuote(
+    @Query('deviceType') deviceType: string = 'SMARTPHONE',
+    @Query('brand') brand?: string,
+    @Query('model') model?: string,
+    @Query('quantity') quantity?: string,
+    @Query('serviceTier') serviceTier: RoyalMailServiceTier = 'TRACKED_48',
+    @Query('postcode') postcode?: string,
+    @Query('itemValue') itemValue?: string,
+  ) {
+    const qty = quantity ? parseInt(quantity, 10) : 1;
+    const val = itemValue ? parseFloat(itemValue) : undefined;
+    return this.transactionsService.calculateShippingRate(deviceType, serviceTier, {
+      brand,
+      model,
+      quantity: isNaN(qty) ? 1 : qty,
+      destinationPostcode: postcode,
+      itemValue: val && !isNaN(val) ? val : undefined,
+    });
+  }
 
   @Post('orders')
   @Roles('BUYER', 'SELLER', 'ADMIN')
@@ -177,6 +213,40 @@ export class TransactionsController {
       throw new ForbiddenException('You can only view your own orders');
     }
     return this.transactionsService.getOrdersBySeller(sellerId, pagination);
+  }
+
+  @Get('orders/:orderId/shipping-label')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  async getShippingLabel(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    const pdfBuffer = await this.transactionsService.getOrderShippingLabel(
+      orderId,
+      user.userId,
+      user.role,
+    );
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="royal-mail-label-${orderId.substring(0, 8)}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.end(pdfBuffer);
+  }
+
+  @Get('orders/:orderId/dropoff-locations')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  async getDropoffLocations(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Query('postcode') postcode: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.transactionsService.getOrderDropoffLocations(
+      orderId,
+      user.userId,
+      user.role,
+      postcode,
+    );
   }
 
   @Get('orders/:orderId')

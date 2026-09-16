@@ -206,6 +206,12 @@ export interface SafeOrder {
   shippingFee: number | null;
   shippingService: string | null;
   freeShipping?: boolean;
+  parcelWeightGrams?: number | null;
+  parcelFormat?: string | null;
+  shippingLabelUrl?: string | null;
+  dropoffQrCodeUrl?: string | null;
+  dropoffPointId?: string | null;
+  dropoffPointName?: string | null;
   totalAmount: number | null;
   currency: string;
   status: string;
@@ -304,6 +310,8 @@ export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
 export function sanitizePublicProfile(raw: Record<string, any> | null): SafePublicProfile | null {
   if (!raw) return null;
   return {
+    accountType: raw.accountType ?? 'INDIVIDUAL',
+    companyName: raw.companyName ?? null,
     displayName: raw.displayName ?? raw.name ?? 'Verified Seller',
     avatarUrl: raw.avatarUrl ?? null,
     joinedYear: raw.joinedYear ?? (raw.createdAt ? new Date(raw.createdAt).getFullYear() : null),
@@ -336,6 +344,9 @@ export function sanitizePublicListing(raw: Record<string, any>): SafePublicListi
     model: raw.model ?? '',
     storageCapacity: raw.storageCapacity ?? null,
     color: raw.color ?? null,
+    quantity: raw.quantity != null ? Number(raw.quantity) : 1,
+    isBulkListing: !!raw.isBulkListing,
+    freeShipping: !!raw.freeShipping,
     price: Number(raw.price ?? 0),
     currency: raw.currency ?? '',
     status: raw.status ?? '',
@@ -454,6 +465,12 @@ export function sanitizeOrder(raw: Record<string, any>): SafeOrder {
     shippingFee: raw.shippingFee != null ? Number(raw.shippingFee) : null,
     shippingService: raw.shippingService ?? null,
     freeShipping: Boolean(raw.freeShipping),
+    parcelWeightGrams: raw.parcelWeightGrams != null ? Number(raw.parcelWeightGrams) : null,
+    parcelFormat: raw.parcelFormat ?? null,
+    shippingLabelUrl: raw.shippingLabelUrl ?? null,
+    dropoffQrCodeUrl: raw.dropoffQrCodeUrl ?? null,
+    dropoffPointId: raw.dropoffPointId ?? null,
+    dropoffPointName: raw.dropoffPointName ?? null,
     totalAmount: raw.totalAmount != null ? Number(raw.totalAmount) : null,
     currency: raw.currency ?? '',
     status: raw.status ?? '',
