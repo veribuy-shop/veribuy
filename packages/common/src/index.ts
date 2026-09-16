@@ -15,3 +15,8 @@ export * from './config';
 
 // Development API documentation
 export * from './swagger';
+
+// Shipping & Weight Profiling
+export * from './shipping/weight-mapping';
+export * from './shipping/royal-mail-rates';
+
