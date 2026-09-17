@@ -11,7 +11,7 @@ import {
   Matches,
   IsBoolean,
 } from 'class-validator';
-import { DeviceType, ConditionGrade } from '.prisma/veribuy-client';
+import { DeviceType, ConditionGrade, ListingFormat } from '.prisma/veribuy-client';
 
 export class CreateListingDto {
   // sellerId is NOT accepted from the request body — it is injected from the JWT in the controller.
@@ -59,6 +59,30 @@ export class CreateListingDto {
   @IsEnum(ConditionGrade)
   @IsOptional()
   conditionGrade?: ConditionGrade;
+
+  @IsOptional()
+  @IsEnum(ListingFormat)
+  format?: ListingFormat;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  startingBid?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  reservePrice?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  durationDays?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0.01)
+  buyItNowPrice?: number;
 
   @IsOptional()
   @IsString()

@@ -118,6 +118,15 @@ model Listing {
   quantity        Int             @default(1)
   isBulkListing   Boolean         @default(false) @map("is_bulk_listing")
   freeShipping    Boolean         @default(false) @map("free_shipping")
+  format          ListingFormat   @default(FIXED_PRICE)
+  startingBid     Decimal?        @db.Decimal(10, 2) @map("starting_bid")
+  reservePrice    Decimal?        @db.Decimal(10, 2) @map("reserve_price")
+  currentBid      Decimal?        @db.Decimal(10, 2) @map("current_bid")
+  bidCount        Int             @default(0) @map("bid_count")
+  highestBidderId String?         @map("highest_bidder_id")
+  highestMaxBid   Decimal?        @db.Decimal(10, 2) @map("highest_max_bid")
+  auctionEndsAt   DateTime?       @map("auction_ends_at")
+  buyItNowPrice   Decimal?        @db.Decimal(10, 2) @map("buy_it_now_price")
   status          ListingStatus   @default(DRAFT)
   imei            String?
   serialNumber    String?         @map("serial_number")
@@ -125,6 +134,7 @@ model Listing {
   trustLensStatus TrustLensStatus @default(PENDING) @map("trust_lens_status")
   viewCount       Int             @default(0) @map("view_count")
   publishedAt     DateTime?       @map("published_at")
+  bids            Bid[]
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
@@ -132,6 +142,8 @@ model Listing {
   @@index([status])
   @@index([deviceType])
   @@index([trustLensStatus])
+  @@index([format, status])
+  @@index([auctionEndsAt])
   @@index([publishedAt])
   @@index([createdAt])
   @@index([sellerId, status])
@@ -140,6 +152,22 @@ model Listing {
   @@index([sellerId, createdAt(sort: Desc)])
   @@map("listings")
   @@schema("listings")
+}
+
+model Bid {
+  id         String   @id @default(uuid())
+  listingId  String   @map("listing_id")
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidderId   String   @map("bidder_id")
+  amount     Decimal  @db.Decimal(10, 2)
+  maxBid     Decimal? @db.Decimal(10, 2) @map("max_bid")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([listingId])
+  @@index([bidderId])
+  @@index([listingId, amount(sort: Desc)])
+  @@schema("listings")
+  @@map("bids")
 }
 
 model VerificationRequest {
@@ -492,6 +520,12 @@ enum IntegrityFlag {
   @@schema("listings")
 }
 
+enum ListingFormat {
+  FIXED_PRICE
+  AUCTION
+  @@schema("listings")
+}
+
 enum ListingStatus {
   DRAFT
   SUBMITTED
@@ -500,6 +534,7 @@ enum ListingStatus {
   REJECTED
   ACTIVE
   INACTIVE
+  AUCTION_ENDED
   SOLD
   DELISTED
   @@schema("listings")

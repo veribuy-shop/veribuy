@@ -9,8 +9,14 @@ import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { ALLOWED_TRANSITIONS } from './dto/update-status.dto';
-import { Listing, ListingStatus, TrustLensStatus, IntegrityFlag } from '.prisma/veribuy-client';
-import { PaginationDto, PaginatedResponse } from '@veribuy/common';
+import { Listing, ListingStatus, TrustLensStatus, IntegrityFlag, ListingFormat } from '.prisma/veribuy-client';
+import {
+  PaginationDto,
+  PaginatedResponse,
+  calculateMinimumNextBid,
+  calculateProxyBidOutcome,
+  anonymizeBidderHandle,
+} from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
 import { NotificationClient } from './notification.client';
 
@@ -31,6 +37,14 @@ const PUBLIC_SELECT = {
   quantity: true,
   isBulkListing: true,
   freeShipping: true,
+  format: true,
+  startingBid: true,
+  reservePrice: true,
+  currentBid: true,
+  bidCount: true,
+  highestBidderId: true,
+  auctionEndsAt: true,
+  buyItNowPrice: true,
   status: true,
   trustLensStatus: true,
   integrityFlags: true,
@@ -74,6 +88,16 @@ export class UlistingsService {
       }
     }
 
+    const isAuction = dto.format === ListingFormat.AUCTION || (dto.format as string) === 'AUCTION';
+    const startingBid = isAuction ? (dto.startingBid ?? dto.price ?? 0.99) : null;
+    const currentBid = isAuction ? startingBid : null;
+    const auctionEndsAt = isAuction
+      ? new Date(Date.now() + (dto.durationDays || 7) * 24 * 60 * 60 * 1000)
+      : null;
+    const reservePrice = isAuction ? (dto.reservePrice ?? null) : null;
+    const buyItNowPrice = isAuction ? (dto.buyItNowPrice ?? null) : null;
+    const listingFormat = isAuction ? ListingFormat.AUCTION : ListingFormat.FIXED_PRICE;
+
     const listing = await this.prisma.listing.create({
       data: {
         sellerId: dto.sellerId!,
@@ -82,14 +106,21 @@ export class UlistingsService {
         deviceType: dto.deviceType,
         brand: dto.brand,
         model: dto.model,
-        price: dto.price,
+        price: isAuction ? (buyItNowPrice ?? startingBid ?? dto.price) : dto.price,
         currency: dto.currency || 'GBP',
         conditionGrade: dto.conditionGrade,
         color: dto.color || null,
         storageCapacity: dto.storageCapacity || null,
-        quantity: dto.quantity || 1,
-        isBulkListing: !!dto.isBulkListing,
+        quantity: isAuction ? 1 : (dto.quantity || 1),
+        isBulkListing: isAuction ? false : !!dto.isBulkListing,
         freeShipping: !!dto.freeShipping,
+        format: listingFormat,
+        startingBid,
+        reservePrice,
+        currentBid,
+        auctionEndsAt,
+        buyItNowPrice,
+        bidCount: 0,
         imei: dto.imei,
         serialNumber: dto.serialNumber,
         status: ListingStatus.DRAFT,
@@ -264,6 +295,10 @@ export class UlistingsService {
       ];
     }
 
+    if (query.format) {
+      where.format = query.format;
+    }
+
     // conditionGrade: DTO normalises to string[] via @Transform
     if (query.conditionGrade && query.conditionGrade.length > 0) {
       where.conditionGrade = { in: query.conditionGrade };
@@ -280,10 +315,18 @@ export class UlistingsService {
       }
     }
 
-    // Dynamic sort: default to createdAt desc
-    const sortField = query.sortBy ?? 'createdAt';
-    const sortDir = query.sortOrder ?? 'desc';
-    const orderBy = { [sortField]: sortDir };
+    // Dynamic sort
+    let orderBy: any;
+    if (query.sortBy === 'endingSoonest') {
+      where.auctionEndsAt = { not: null, gt: new Date() };
+      orderBy = { auctionEndsAt: 'asc' };
+    } else if (query.sortBy === 'mostBids') {
+      orderBy = { bidCount: 'desc' };
+    } else {
+      const sortField = query.sortBy ?? 'createdAt';
+      const sortDir = query.sortOrder ?? 'desc';
+      orderBy = { [sortField]: sortDir };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.listing.findMany({
@@ -764,6 +807,241 @@ export class UlistingsService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Places a proxy bid on an active auction.
+   * Includes anti-sniping soft close (extends auction by 2 mins if bid placed within last 2 mins).
+   */
+  async placeBid(listingId: string, bidderId: string, maxBid: number) {
+    if (typeof maxBid !== 'number' || maxBid <= 0 || isNaN(maxBid)) {
+      throw new BadRequestException('Invalid bid amount');
+    }
+
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+    });
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
+    if (listing.format !== ListingFormat.AUCTION) {
+      throw new BadRequestException('Bids can only be placed on auction listings');
+    }
+
+    if (listing.status !== ListingStatus.ACTIVE) {
+      throw new BadRequestException('Auction is not active');
+    }
+
+    if (listing.sellerId === bidderId) {
+      throw new BadRequestException('Sellers cannot bid on their own listings');
+    }
+
+    if (!listing.auctionEndsAt || new Date() >= listing.auctionEndsAt) {
+      throw new BadRequestException('Auction has ended');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Re-fetch listing within transaction
+      const current = await tx.listing.findUnique({
+        where: { id: listingId },
+      });
+
+      if (!current || current.status !== ListingStatus.ACTIVE) {
+        throw new BadRequestException('Auction is no longer active');
+      }
+
+      if (!current.auctionEndsAt || new Date() >= current.auctionEndsAt) {
+        throw new BadRequestException('Auction has ended');
+      }
+
+      const startingBid = current.startingBid ? Number(current.startingBid) : 0.99;
+      const currentBidNum = current.currentBid ? Number(current.currentBid) : null;
+      const highestMaxBidNum = current.highestMaxBid ? Number(current.highestMaxBid) : null;
+      const reservePriceNum = current.reservePrice ? Number(current.reservePrice) : null;
+
+      const minNextBid = calculateMinimumNextBid(
+        currentBidNum,
+        startingBid,
+        current.bidCount,
+      );
+
+      if (maxBid < minNextBid) {
+        throw new BadRequestException(
+          `Bid amount £${maxBid.toFixed(2)} must be at least the minimum bid of £${minNextBid.toFixed(2)}`,
+        );
+      }
+
+      const outcome = calculateProxyBidOutcome({
+        newBidderId: bidderId,
+        newMaxBid: maxBid,
+        currentBid: currentBidNum,
+        startingBid,
+        reservePrice: reservePriceNum,
+        highestBidderId: current.highestBidderId,
+        highestMaxBid: highestMaxBidNum,
+        bidCount: current.bidCount,
+      });
+
+      // Anti-sniping soft close: If bid placed within last 2 minutes, extend by 2 minutes
+      const now = Date.now();
+      const endTime = current.auctionEndsAt.getTime();
+      const twoMinutesMs = 2 * 60 * 1000;
+      let newEndsAt = current.auctionEndsAt;
+      let extended = false;
+
+      if (endTime - now < twoMinutesMs) {
+        newEndsAt = new Date(endTime + twoMinutesMs);
+        extended = true;
+      }
+
+      // Record bid in audit history
+      await tx.bid.create({
+        data: {
+          listingId,
+          bidderId,
+          amount: outcome.bidPlacedAmount,
+          maxBid,
+        },
+      });
+
+      // Update listing state
+      const updatedListing = await tx.listing.update({
+        where: { id: listingId },
+        data: {
+          currentBid: outcome.currentBid,
+          highestBidderId: outcome.leadingBidderId,
+          highestMaxBid: outcome.highestMaxBid,
+          bidCount: { increment: 1 },
+          auctionEndsAt: newEndsAt,
+        },
+        select: PUBLIC_SELECT,
+      });
+
+      return {
+        listing: updatedListing,
+        outcome,
+        extended,
+        newEndsAt,
+      };
+    });
+
+    await this.redis.del(`listing:${listingId}`).catch(() => {});
+
+    // Notify outbid user if someone was outbid
+    if (
+      result.outcome.outbidBidderId &&
+      result.outcome.outbidBidderId !== bidderId
+    ) {
+      this.getBidderInfo(result.outcome.outbidBidderId).then((bidder) => {
+        if (bidder) {
+          this.notifications.notifyOutbid({
+            bidderEmail: bidder.email,
+            bidderName: bidder.name,
+            listingTitle: listing.title,
+            listingId: listing.id,
+            newCurrentBid: result.outcome.currentBid,
+          });
+        }
+      }).catch((err: Error) => this.logger.warn(`Failed to notify outbid bidder: ${err.message}`));
+    }
+
+    return {
+      success: true,
+      currentBid: result.outcome.currentBid,
+      highestBidderId: result.outcome.leadingBidderId,
+      isLeading: result.outcome.leadingBidderId === bidderId,
+      bidCount: result.listing.bidCount,
+      auctionEndsAt: result.newEndsAt,
+      extended: result.extended,
+      reserveMet: result.outcome.reserveMet,
+    };
+  }
+
+  /**
+   * Returns anonymized bid history for a listing (e.g. j***n)
+   */
+  async getBidHistory(listingId: string) {
+    const bids = await this.prisma.bid.findMany({
+      where: { listingId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        bidderId: true,
+        amount: true,
+        createdAt: true,
+      },
+    });
+
+    return bids.map((b) => ({
+      id: b.id,
+      bidder: anonymizeBidderHandle(b.bidderId),
+      amount: Number(b.amount),
+      createdAt: b.createdAt,
+    }));
+  }
+
+  /**
+   * Settles auctions that have passed their endsAt timestamp.
+   * Can be invoked via scheduled cron or on-demand.
+   */
+  async settleExpiredAuctions(): Promise<number> {
+    const expired = await this.prisma.listing.findMany({
+      where: {
+        format: ListingFormat.AUCTION,
+        status: ListingStatus.ACTIVE,
+        auctionEndsAt: { lte: new Date() },
+      },
+    });
+
+    let settledCount = 0;
+    for (const listing of expired) {
+      try {
+        const curBid = listing.currentBid ? Number(listing.currentBid) : 0;
+        const resPrice = listing.reservePrice ? Number(listing.reservePrice) : 0;
+        const reserveMet = !listing.reservePrice || curBid >= resPrice;
+        const hasWinner = listing.highestBidderId && reserveMet;
+
+        await this.prisma.listing.update({
+          where: { id: listing.id },
+          data: {
+            status: ListingStatus.AUCTION_ENDED,
+          },
+        });
+
+        await this.redis.del(`listing:${listing.id}`).catch(() => {});
+        settledCount++;
+
+        if (hasWinner && listing.highestBidderId) {
+          const winnerInfo = await this.getBidderInfo(listing.highestBidderId);
+          if (winnerInfo) {
+            const checkoutDeadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+            this.notifications.notifyAuctionWon({
+              winnerEmail: winnerInfo.email,
+              winnerName: winnerInfo.name,
+              listingTitle: listing.title,
+              listingId: listing.id,
+              winningBid: curBid,
+              checkoutDeadline,
+            });
+          }
+        }
+      } catch (err) {
+        this.logger.error(`Failed to settle expired auction ${listing.id}: ${(err as Error).message}`);
+      }
+    }
+
+    return settledCount;
+  }
+
+  /**
+   * Fetch user info for bidder notifications.
+   */
+  private async getBidderInfo(
+    bidderId: string,
+  ): Promise<{ name: string; email: string } | null> {
+    return this.getSellerInfo(bidderId);
   }
 
   /**

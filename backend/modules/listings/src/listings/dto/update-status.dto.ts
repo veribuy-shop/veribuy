@@ -8,7 +8,8 @@ export const ALLOWED_TRANSITIONS: Record<ListingStatus, ListingStatus[]> = {
   [ListingStatus.UNDER_REVIEW]: [ListingStatus.APPROVED, ListingStatus.REJECTED],
   [ListingStatus.APPROVED]: [ListingStatus.ACTIVE, ListingStatus.REJECTED],
   [ListingStatus.REJECTED]: [ListingStatus.SUBMITTED, ListingStatus.DELISTED],
-  [ListingStatus.ACTIVE]: [ListingStatus.SOLD, ListingStatus.DELISTED, ListingStatus.UNDER_REVIEW, ListingStatus.INACTIVE],
+  [ListingStatus.ACTIVE]: [ListingStatus.SOLD, ListingStatus.AUCTION_ENDED, ListingStatus.DELISTED, ListingStatus.UNDER_REVIEW, ListingStatus.INACTIVE],
+  [ListingStatus.AUCTION_ENDED]: [ListingStatus.SOLD, ListingStatus.DELISTED],
   [ListingStatus.INACTIVE]: [ListingStatus.ACTIVE, ListingStatus.DELISTED],
   [ListingStatus.SOLD]: [],  // Terminal — no transitions
   [ListingStatus.DELISTED]: [],  // Terminal — no transitions

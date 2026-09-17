@@ -19,7 +19,13 @@ import {
   Tag,
   ArrowRight,
   Filter,
+  Gavel,
+  Clock,
+  Timer,
+  Flame,
+  ShoppingBag,
 } from 'lucide-react';
+import { formatAuctionCountdown } from '@/lib/auction';
 
 type DeviceType = 'SMARTPHONE' | 'TABLET' | 'SMARTWATCH';
 type ConditionGrade = 'A' | 'B' | 'C';
@@ -32,6 +38,14 @@ interface Listing {
   deviceType: DeviceType;
   brand: string;
   model: string;
+  format?: 'FIXED_PRICE' | 'AUCTION';
+  startingBid?: number | null;
+  reservePrice?: number | null;
+  currentBid?: number | null;
+  bidCount?: number;
+  highestBidderId?: string | null;
+  auctionEndsAt?: string | null;
+  buyItNowPrice?: number | null;
   price: number | string;
   currency: string;
   conditionGrade?: ConditionGrade;
@@ -75,6 +89,7 @@ export default function BrowseContent() {
   const [error, setError] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState({
+    format: '' as '' | 'AUCTION' | 'FIXED_PRICE',
     deviceType: '' as DeviceType | '',
     conditionGrades: [] as ConditionGrade[],
     verifiedOnly: true,
@@ -110,12 +125,12 @@ export default function BrowseContent() {
   useEffect(() => {
     fetchListings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.deviceType, filters.conditionGrades, filters.verifiedOnly, filters.minPrice, filters.maxPrice, debouncedSearch, sortBy, page]);
+  }, [filters.format, filters.deviceType, filters.conditionGrades, filters.verifiedOnly, filters.minPrice, filters.maxPrice, debouncedSearch, sortBy, page]);
 
   useEffect(() => {
     setPage(1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.deviceType, filters.conditionGrades, filters.verifiedOnly, filters.minPrice, filters.maxPrice, debouncedSearch, sortBy]);
+  }, [filters.format, filters.deviceType, filters.conditionGrades, filters.verifiedOnly, filters.minPrice, filters.maxPrice, debouncedSearch, sortBy]);
 
   const fetchListings = async () => {
     setLoading(true);
@@ -123,6 +138,10 @@ export default function BrowseContent() {
 
     try {
       const params = new URLSearchParams();
+
+      if (filters.format) {
+        params.append('format', filters.format);
+      }
 
       if (filters.deviceType) {
         params.append('deviceType', filters.deviceType);
@@ -148,7 +167,11 @@ export default function BrowseContent() {
         params.append('maxPrice', filters.maxPrice);
       }
 
-      if (sortBy === 'price-asc') {
+      if (sortBy === 'endingSoonest') {
+        params.append('sortBy', 'endingSoonest');
+      } else if (sortBy === 'mostBids') {
+        params.append('sortBy', 'mostBids');
+      } else if (sortBy === 'price-asc') {
         params.append('sortBy', 'price');
         params.append('sortOrder', 'asc');
       } else if (sortBy === 'price-desc') {
@@ -206,6 +229,7 @@ export default function BrowseContent() {
 
   const clearAllFilters = () => {
     setFilters({
+      format: '',
       deviceType: '',
       conditionGrades: [],
       verifiedOnly: false,
@@ -280,56 +304,71 @@ export default function BrowseContent() {
             </div>
           </div>
 
-          {/* Quick Category Tabs Strip */}
-          <div className="flex items-center gap-2 overflow-x-auto pt-6 pb-1 scrollbar-none">
-            {DEVICE_CATEGORIES.map((cat) => {
-              const Icon = cat.icon;
-              const isSelected = filters.deviceType === cat.value;
-              return (
-                <button
-                  key={cat.label}
-                  type="button"
-                  onClick={() => setFilters(prev => ({ ...prev, deviceType: isSelected && cat.value !== '' ? '' : cat.value }))}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
-                    isSelected
-                      ? 'bg-[var(--color-green)] text-white shadow-sm ring-2 ring-[var(--color-green)]/20'
-                      : 'bg-[var(--color-surface-alt)] text-[var(--color-text)] hover:bg-[var(--color-border)]/60 border border-[var(--color-border)]'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {cat.label}
-                </button>
-              );
-            })}
+          {/* Quick Format & Category Tabs Strip */}
+          <div className="flex flex-wrap items-center gap-2 pt-6 pb-1">
+            {/* Format filter pills */}
+            <div className="flex items-center gap-1.5 p-1 bg-gray-100 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setFilters(prev => ({ ...prev, format: '' }))}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filters.format === ''
+                    ? 'bg-white text-gray-950 shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                All Listings
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilters(prev => ({ ...prev, format: 'AUCTION' }))}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filters.format === 'AUCTION'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <Gavel className="w-3.5 h-3.5" />
+                <span>Auctions</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilters(prev => ({ ...prev, format: 'FIXED_PRICE' }))}
+                className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  filters.format === 'FIXED_PRICE'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Buy It Now</span>
+              </button>
+            </div>
 
-            <div className="h-6 w-px bg-[var(--color-border)] mx-1 shrink-0" />
+            <div className="h-6 w-px bg-[var(--color-border)] mx-1 hidden sm:block shrink-0" />
 
-            {/* Quick Condition Chips */}
-            <button
-              type="button"
-              onClick={() => toggleConditionGrade('A')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
-                filters.conditionGrades.includes('A')
-                  ? 'bg-[var(--color-green)]/15 text-[var(--color-green)] border-[var(--color-green)] ring-1 ring-[var(--color-green)]'
-                  : 'bg-white text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Grade A (Pristine)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setFilters(prev => ({ ...prev, maxPrice: prev.maxPrice === '300' ? '' : '300' }))}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
-                filters.maxPrice === '300'
-                  ? 'bg-[var(--color-green)]/15 text-[var(--color-green)] border-[var(--color-green)] ring-1 ring-[var(--color-green)]'
-                  : 'bg-white text-[var(--color-text-muted)] border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40'
-              }`}
-            >
-              <Tag className="w-3.5 h-3.5" />
-              Under £300
-            </button>
+            {/* Category tabs */}
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none">
+              {DEVICE_CATEGORIES.map((cat) => {
+                const Icon = cat.icon;
+                const isSelected = filters.deviceType === cat.value;
+                return (
+                  <button
+                    key={cat.label}
+                    type="button"
+                    onClick={() => setFilters(prev => ({ ...prev, deviceType: isSelected && cat.value !== '' ? '' : cat.value }))}
+                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                      isSelected
+                        ? 'bg-[var(--color-green)] text-white shadow-sm ring-2 ring-[var(--color-green)]/20'
+                        : 'bg-[var(--color-surface-alt)] text-[var(--color-text)] hover:bg-[var(--color-border)]/60 border border-[var(--color-border)]'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -551,6 +590,8 @@ export default function BrowseContent() {
                   className="px-3 py-1.5 border border-[var(--color-border)] rounded-xl text-xs font-semibold text-[var(--color-text)] bg-white focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 >
                   <option value="newest">Newest First</option>
+                  <option value="endingSoonest">Ending Soonest (Auctions)</option>
+                  <option value="mostBids">Most Bids</option>
                   <option value="price-asc">Price: Low to High</option>
                   <option value="price-desc">Price: High to Low</option>
                 </select>
@@ -616,7 +657,13 @@ export default function BrowseContent() {
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5" aria-label="Device listings">
                 {listings.map((item) => {
                   const grade = item.conditionGrade ? GRADE_CONFIG[item.conditionGrade] : null;
-                  const itemPrice = typeof item.price === 'string' ? parseFloat(item.price) : item.price;
+                  const isAuction = item.format === 'AUCTION';
+                  const displayPrice = isAuction
+                    ? (item.currentBid ?? item.startingBid ?? item.price)
+                    : item.price;
+                  const numericDisplayPrice = typeof displayPrice === 'string' ? parseFloat(displayPrice) : displayPrice;
+                  const countdown = isAuction ? formatAuctionCountdown(item.auctionEndsAt) : null;
+
                   return (
                     <Link
                       key={item.id}
@@ -640,7 +687,13 @@ export default function BrowseContent() {
                         )}
 
                         {/* Top Badges */}
-                        <div className="absolute top-2 left-2 flex items-center gap-1">
+                        <div className="absolute top-2 left-2 flex items-center gap-1 flex-wrap">
+                          {isAuction ? (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.5 rounded shadow-2xs bg-amber-500 text-white">
+                              <Gavel className="w-3 h-3" />
+                              Auction
+                            </span>
+                          ) : null}
                           {grade && (
                             <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded shadow-2xs ${grade.badgeClass}`}>
                               {grade.label}
@@ -653,6 +706,21 @@ export default function BrowseContent() {
                             </span>
                           )}
                         </div>
+
+                        {/* Auction Live Countdown Pill */}
+                        {isAuction && countdown && !countdown.isExpired && (
+                          <div className={`absolute bottom-2 left-2 right-2 px-2 py-1 rounded-lg backdrop-blur-md text-[10px] font-bold flex items-center justify-between shadow-xs ${
+                            countdown.isUrgent ? 'bg-red-600/90 text-white' : 'bg-gray-900/80 text-white'
+                          }`}>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {countdown.formatted}
+                            </span>
+                            <span className="text-[9px] uppercase font-extrabold tracking-wider">
+                              {item.bidCount ?? 0} {item.bidCount === 1 ? 'bid' : 'bids'}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Content */}
@@ -668,12 +736,24 @@ export default function BrowseContent() {
 
                         <div className="pt-2 border-t border-gray-100 mt-auto">
                           <div className="flex items-baseline justify-between">
-                            <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
-                              {formatPrice(itemPrice, item.currency)}
-                            </span>
+                            <div>
+                              {isAuction && (
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 block -mb-0.5">
+                                  {item.bidCount ? 'Current Bid' : 'Starting Bid'}
+                                </span>
+                              )}
+                              <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
+                                {formatPrice(numericDisplayPrice, item.currency)}
+                              </span>
+                            </div>
+                            {isAuction ? (
+                              <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                Bid Now
+                              </span>
+                            ) : null}
                           </div>
                           <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
-                            Tracked delivery · 0% fee
+                            {isAuction ? 'Proxy bidding · 48h escrow' : 'Tracked delivery · 0% fee'}
                           </p>
                         </div>
                       </div>

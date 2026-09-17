@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsArray, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
-import { DeviceType, ListingStatus, TrustLensStatus } from '.prisma/veribuy-client';
+import { DeviceType, ListingStatus, TrustLensStatus, ListingFormat } from '.prisma/veribuy-client';
 import { PaginationDto } from '@veribuy/common';
 
 export class GetListingsQueryDto extends PaginationDto {
@@ -12,6 +12,10 @@ export class GetListingsQueryDto extends PaginationDto {
   @IsOptional()
   @MaxLength(100)
   brand?: string;
+
+  @IsOptional()
+  @IsEnum(ListingFormat)
+  format?: ListingFormat;
 
   @IsOptional()
   @IsString()
@@ -31,9 +35,9 @@ export class GetListingsQueryDto extends PaginationDto {
   @MaxLength(36)
   sellerId?: string;
 
-  @IsEnum(['price', 'createdAt'])
+  @IsEnum(['price', 'createdAt', 'endingSoonest', 'mostBids'])
   @IsOptional()
-  sortBy?: 'price' | 'createdAt';
+  sortBy?: 'price' | 'createdAt' | 'endingSoonest' | 'mostBids';
 
   @IsEnum(['asc', 'desc'])
   @IsOptional()

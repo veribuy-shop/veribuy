@@ -56,6 +56,50 @@ export class NotificationClient {
     );
   }
 
+  /**
+   * Notify a bidder that they have been outbid.
+   * Fire-and-forget — never throws.
+   */
+  notifyOutbid(data: {
+    bidderEmail: string;
+    bidderName: string;
+    listingTitle: string;
+    listingId: string;
+    newCurrentBid: number;
+  }): void {
+    this.sendEmail('outbid', data.bidderEmail, {
+      bidderName: data.bidderName,
+      listingTitle: data.listingTitle,
+      listingId: data.listingId,
+      newCurrentBid: data.newCurrentBid,
+    }).catch((err) =>
+      this.logger.error(`outbid notification failed: ${err?.message}`),
+    );
+  }
+
+  /**
+   * Notify auction winner to complete escrow checkout.
+   * Fire-and-forget — never throws.
+   */
+  notifyAuctionWon(data: {
+    winnerEmail: string;
+    winnerName: string;
+    listingTitle: string;
+    listingId: string;
+    winningBid: number;
+    checkoutDeadline: string;
+  }): void {
+    this.sendEmail('auction_won', data.winnerEmail, {
+      winnerName: data.winnerName,
+      listingTitle: data.listingTitle,
+      listingId: data.listingId,
+      winningBid: data.winningBid,
+      checkoutDeadline: data.checkoutDeadline,
+    }).catch((err) =>
+      this.logger.error(`auction_won notification failed: ${err?.message}`),
+    );
+  }
+
   private async sendEmail(
     type: string,
     to: string,
