@@ -105,6 +105,14 @@ export interface SafePublicListing {
   quantity?: number;
   isBulkListing?: boolean;
   freeShipping?: boolean;
+  format?: 'FIXED_PRICE' | 'AUCTION';
+  startingBid?: number | null;
+  reservePrice?: number | null;
+  currentBid?: number | null;
+  bidCount?: number;
+  highestBidderId?: string | null;
+  auctionEndsAt?: string | null;
+  buyItNowPrice?: number | null;
   price: number;
   currency: string;
   status: string;
@@ -178,6 +186,14 @@ export interface SafeListing {
   quantity?: number;
   isBulkListing?: boolean;
   freeShipping?: boolean;
+  format?: 'FIXED_PRICE' | 'AUCTION';
+  startingBid?: number | null;
+  reservePrice?: number | null;
+  currentBid?: number | null;
+  bidCount?: number;
+  highestBidderId?: string | null;
+  auctionEndsAt?: string | null;
+  buyItNowPrice?: number | null;
   price: number;
   currency: string;
   status: string;
@@ -347,6 +363,14 @@ export function sanitizePublicListing(raw: Record<string, any>): SafePublicListi
     quantity: raw.quantity != null ? Number(raw.quantity) : 1,
     isBulkListing: !!raw.isBulkListing,
     freeShipping: !!raw.freeShipping,
+    format: raw.format ?? 'FIXED_PRICE',
+    startingBid: raw.startingBid != null ? Number(raw.startingBid) : null,
+    reservePrice: raw.reservePrice != null ? Number(raw.reservePrice) : null,
+    currentBid: raw.currentBid != null ? Number(raw.currentBid) : null,
+    bidCount: Number(raw.bidCount ?? 0),
+    highestBidderId: raw.highestBidderId ?? null,
+    auctionEndsAt: raw.auctionEndsAt ? new Date(raw.auctionEndsAt).toISOString() : null,
+    buyItNowPrice: raw.buyItNowPrice != null ? Number(raw.buyItNowPrice) : null,
     price: Number(raw.price ?? 0),
     currency: raw.currency ?? '',
     status: raw.status ?? '',
@@ -434,6 +458,14 @@ export function sanitizeListing(raw: Record<string, any>): SafeListing {
     quantity: raw.quantity != null ? Number(raw.quantity) : 1,
     isBulkListing: Boolean(raw.isBulkListing),
     freeShipping: Boolean(raw.freeShipping),
+    format: raw.format ?? 'FIXED_PRICE',
+    startingBid: raw.startingBid != null ? Number(raw.startingBid) : null,
+    reservePrice: raw.reservePrice != null ? Number(raw.reservePrice) : null,
+    currentBid: raw.currentBid != null ? Number(raw.currentBid) : null,
+    bidCount: Number(raw.bidCount ?? 0),
+    highestBidderId: raw.highestBidderId ?? null,
+    auctionEndsAt: raw.auctionEndsAt ? new Date(raw.auctionEndsAt).toISOString() : null,
+    buyItNowPrice: raw.buyItNowPrice != null ? Number(raw.buyItNowPrice) : null,
     price: Number(raw.price ?? 0),
     currency: raw.currency ?? '',
     status: raw.status ?? '',

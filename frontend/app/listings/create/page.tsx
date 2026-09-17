@@ -20,6 +20,10 @@ import {
   Truck,
   Building2,
   PackageCheck,
+  Gavel,
+  Flame,
+  Timer,
+  Clock,
 } from 'lucide-react';
 
 function validateImeiChecksum(imei: string): { valid: boolean; status: 'empty' | 'incomplete' | 'invalid' | 'valid'; message: string } {
@@ -85,9 +89,14 @@ interface ListingFormData {
   functionalIssues: string;
   accessories: string[];
   
-  // Step 3: Pricing & Delivery
+  // Step 3: Format & Pricing & Delivery
+  format: 'FIXED_PRICE' | 'AUCTION';
   price: string;
   currency: string;
+  startingBid: string;
+  reservePrice: string;
+  durationDays: number;
+  buyItNowPrice: string;
   freeShipping: boolean;
   
   // Step 4: Device Identifiers & Evidence
@@ -245,8 +254,13 @@ export default function CreateListingPage() {
     cosmeticCondition: '',
     functionalIssues: '',
     accessories: [],
+    format: 'FIXED_PRICE',
     price: '',
     currency: 'GBP',
+    startingBid: '0.99',
+    reservePrice: '',
+    durationDays: 7,
+    buyItNowPrice: '',
     freeShipping: false,
     imei: '',
     serialNumber: '',
@@ -359,10 +373,32 @@ export default function CreateListingPage() {
     }
     
     if (step === 3) {
-      const price = parseFloat(formData.price);
-      if (!formData.price || isNaN(price) || price <= 0) {
-        setError('Please enter a valid price');
-        return false;
+      if (formData.format === 'AUCTION') {
+        const startingBid = parseFloat(formData.startingBid);
+        if (!formData.startingBid || isNaN(startingBid) || startingBid <= 0) {
+          setError('Please enter a valid starting bid amount (minimum £0.01)');
+          return false;
+        }
+        if (formData.reservePrice) {
+          const reserve = parseFloat(formData.reservePrice);
+          if (isNaN(reserve) || reserve < startingBid) {
+            setError('Reserve price must be greater than or equal to the starting bid');
+            return false;
+          }
+        }
+        if (formData.buyItNowPrice) {
+          const bin = parseFloat(formData.buyItNowPrice);
+          if (isNaN(bin) || bin <= startingBid) {
+            setError('Buy It Now price must be higher than the starting bid');
+            return false;
+          }
+        }
+      } else {
+        const price = parseFloat(formData.price);
+        if (!formData.price || isNaN(price) || price <= 0) {
+          setError('Please enter a valid price');
+          return false;
+        }
       }
     }
     
@@ -428,13 +464,16 @@ export default function CreateListingPage() {
       // Step 1: Create the listing first
       // SEC-06: sellerId is intentionally omitted — the BFF API route derives it
       // from the verified JWT token. Never trust client-supplied identity fields.
+      const isAuction = formData.format === 'AUCTION';
       const listingData = {
         deviceType: formData.deviceType,
         brand: formData.brand,
         model: formData.model,
         title: formData.title,
         description: `${formData.description}\n\nCosmetic Condition: ${formData.cosmeticCondition}\nFunctional Issues: ${formData.functionalIssues || 'None reported'}\nIncluded Accessories: ${formData.accessories.join(', ') || 'None'}`,
-        price: parseFloat(formData.price),
+        price: isAuction
+          ? (formData.buyItNowPrice ? parseFloat(formData.buyItNowPrice) : parseFloat(formData.startingBid || '0.99'))
+          : parseFloat(formData.price),
         currency: formData.currency,
         conditionGrade: formData.conditionGrade,
         quantity: formData.isBulkListing ? (Number(formData.quantity) || 1) : 1,
@@ -442,6 +481,11 @@ export default function CreateListingPage() {
         storageCapacity: formData.storageCapacity || undefined,
         freeShipping: formData.freeShipping,
         isBulkListing: formData.isBulkListing,
+        format: formData.format,
+        startingBid: isAuction ? parseFloat(formData.startingBid || '0.99') : undefined,
+        reservePrice: isAuction && formData.reservePrice ? parseFloat(formData.reservePrice) : undefined,
+        durationDays: isAuction ? Number(formData.durationDays) || 7 : undefined,
+        buyItNowPrice: isAuction && formData.buyItNowPrice ? parseFloat(formData.buyItNowPrice) : undefined,
         imei: formData.isBulkListing ? undefined : (formData.imei || undefined),
         serialNumber: formData.isBulkListing ? undefined : (formData.serialNumber || undefined),
         city: formData.city || undefined,
@@ -1070,57 +1114,209 @@ export default function CreateListingPage() {
             </div>
           )}
 
-          {/* Step 3: Pricing */}
+          {/* Step 3: Format & Pricing */}
           {currentStep === 3 && (
             <div className="space-y-6">
-              <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Pricing</h2>
-              
-              <div>
-                <label htmlFor="listing-price" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                  Price <span className="text-red-500" aria-hidden="true">*</span>
-                  <span className="sr-only">(required)</span>
-                </label>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <input
-                      id="listing-price"
-                      type="number"
-                      value={formData.price}
-                      onChange={(e) => updateFormData('price', e.target.value)}
-                      placeholder="0.00"
-                      step="0.01"
-                      min="0"
-                      className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-                    />
+              <h2 className="text-xl font-semibold text-[var(--color-text)] mb-2">Selling Format & Pricing</h2>
+              <p className="text-sm text-[var(--color-text-muted)]">
+                Choose how you want to sell your device. List at a fixed price or start an exciting auction.
+              </p>
+
+              {/* Format Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => updateFormData('format', 'FIXED_PRICE')}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    formData.format === 'FIXED_PRICE'
+                      ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
+                      : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-semibold text-base text-[var(--color-text)]">Buy It Now</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Fixed Price</span>
                   </div>
-                  <label htmlFor="listing-currency" className="sr-only">Currency</label>
-                  <select
-                    id="listing-currency"
-                    value={formData.currency}
-                    onChange={(e) => updateFormData('currency', e.target.value)}
-                    className="px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-                  >
-                    <option value="USD">USD</option>
-                    <option value="EUR">EUR</option>
-                    <option value="GBP">GBP</option>
-                  </select>
-                </div>
-                <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-                  Set a competitive price. Trust Lens verification helps you command higher prices.
-                </p>
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    Set a fixed asking price for immediate purchase with escrow checkout.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => updateFormData('format', 'AUCTION')}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    formData.format === 'AUCTION'
+                      ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
+                      : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Gavel className="w-4 h-4 text-amber-600" />
+                      <span className="font-semibold text-base text-[var(--color-text)]">Online Auction</span>
+                    </div>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">eBay Style</span>
+                  </div>
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    Let buyers compete with proxy bidding, soft-close extensions, and optional reserve price.
+                  </p>
+                </button>
               </div>
 
-              <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg p-4">
-                <h3 className="font-semibold text-[var(--color-text)] mb-2">
-                  <Lightbulb className="w-4 h-4 inline mr-1" aria-hidden="true" /> Pricing Tips
-                </h3>
-                <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
-                  <li>• Trust Lens verified listings give buyers confidence and attract more interest</li>
-                  <li>• Grade A devices typically sell for 15-20% more than Grade B</li>
-                  <li>• Include accessories to justify premium pricing</li>
-                  <li>• Research similar devices on VeriBuy to set competitive prices</li>
-                </ul>
-              </div>
+              {/* Fixed Price Form */}
+              {formData.format === 'FIXED_PRICE' && (
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <label htmlFor="listing-price" className="block text-sm font-medium text-[var(--color-text)] mb-2">
+                      Price <span className="text-red-500" aria-hidden="true">*</span>
+                      <span className="sr-only">(required)</span>
+                    </label>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <input
+                          id="listing-price"
+                          type="number"
+                          value={formData.price}
+                          onChange={(e) => updateFormData('price', e.target.value)}
+                          placeholder="0.00"
+                          step="0.01"
+                          min="0"
+                          className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                        />
+                      </div>
+                      <label htmlFor="listing-currency" className="sr-only">Currency</label>
+                      <select
+                        id="listing-currency"
+                        value={formData.currency}
+                        onChange={(e) => updateFormData('currency', e.target.value)}
+                        className="px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                      >
+                        <option value="GBP">GBP (£)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="USD">USD ($)</option>
+                      </select>
+                    </div>
+                    <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                      Set a competitive price. Trust Lens verification helps you command higher prices.
+                    </p>
+                  </div>
+
+                  <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg p-4">
+                    <h3 className="font-semibold text-[var(--color-text)] mb-2">
+                      <Lightbulb className="w-4 h-4 inline mr-1" aria-hidden="true" /> Pricing Tips
+                    </h3>
+                    <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
+                      <li>• Trust Lens verified listings give buyers confidence and attract more interest</li>
+                      <li>• Grade A devices typically sell for 15-20% more than Grade B</li>
+                      <li>• Include accessories to justify premium pricing</li>
+                      <li>• Research similar devices on VeriBuy to set competitive prices</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {/* Auction Configuration Form */}
+              {formData.format === 'AUCTION' && (
+                <div className="space-y-5 pt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Starting Bid */}
+                    <div>
+                      <label htmlFor="listing-starting-bid" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                        Starting Bid (£) <span className="text-red-500" aria-hidden="true">*</span>
+                      </label>
+                      <input
+                        id="listing-starting-bid"
+                        type="number"
+                        value={formData.startingBid}
+                        onChange={(e) => updateFormData('startingBid', e.target.value)}
+                        placeholder="0.99"
+                        step="0.01"
+                        min="0.01"
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                      />
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                        Starting at £0.99 attracts up to 3x more initial bidders.
+                      </p>
+                    </div>
+
+                    {/* Auction Duration */}
+                    <div>
+                      <label htmlFor="listing-duration" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                        Auction Duration <span className="text-red-500" aria-hidden="true">*</span>
+                      </label>
+                      <select
+                        id="listing-duration"
+                        value={formData.durationDays}
+                        onChange={(e) => updateFormData('durationDays', Number(e.target.value))}
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white"
+                      >
+                        <option value={1}>1 Day (Flash Auction)</option>
+                        <option value={3}>3 Days</option>
+                        <option value={5}>5 Days</option>
+                        <option value={7}>7 Days (Recommended)</option>
+                        <option value={10}>10 Days</option>
+                      </select>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                        7-day auctions allow peak visibility across weekend browsing.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Reserve Price (Optional) */}
+                    <div>
+                      <label htmlFor="listing-reserve-price" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                        Reserve Price (£) <span className="text-xs font-normal text-[var(--color-text-muted)]">(Optional)</span>
+                      </label>
+                      <input
+                        id="listing-reserve-price"
+                        type="number"
+                        value={formData.reservePrice}
+                        onChange={(e) => updateFormData('reservePrice', e.target.value)}
+                        placeholder="e.g. 250.00"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                      />
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                        Hidden minimum price. Item won't sell unless bids reach this threshold.
+                      </p>
+                    </div>
+
+                    {/* Buy It Now Price (Optional) */}
+                    <div>
+                      <label htmlFor="listing-bin-price" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                        Buy It Now Price (£) <span className="text-xs font-normal text-[var(--color-text-muted)]">(Optional)</span>
+                      </label>
+                      <input
+                        id="listing-bin-price"
+                        type="number"
+                        value={formData.buyItNowPrice}
+                        onChange={(e) => updateFormData('buyItNowPrice', e.target.value)}
+                        placeholder="e.g. 350.00"
+                        step="0.01"
+                        min="0"
+                        className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                      />
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                        Allows buyers to bypass the auction and purchase instantly.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Anti-sniping protection callout */}
+                  <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 space-y-1.5">
+                    <div className="flex items-center gap-2 font-semibold text-amber-950">
+                      <Timer className="w-4 h-4 text-amber-700" />
+                      <span>VeriBuy Anti-Sniping Protection Included</span>
+                    </div>
+                    <p>
+                      If a bid is placed within the final 2 minutes of the auction, the clock automatically extends by +2 minutes to ensure fair competition and protect against automated sniping bots.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Delivery & Shipping Option */}
               <div className="border-t border-[var(--color-border)] pt-6">

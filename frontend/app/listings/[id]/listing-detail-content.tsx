@@ -8,6 +8,7 @@ import ContactSellerModal from '@/components/ContactSellerModal';
 import MakeOfferModal from '@/components/MakeOfferModal';
 import ImageLightboxModal from '@/components/ImageLightboxModal';
 import ConfirmModal from '@/components/confirm-modal';
+import AuctionBiddingCard from '@/components/AuctionBiddingCard';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { getBuyerProtectionFeePercent, calculateProtectionFee } from '@/lib/fees';
@@ -56,6 +57,7 @@ import {
   UserCheck,
   Star,
   Building2,
+  Gavel,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -94,6 +96,14 @@ interface Listing {
   quantity?: number;
   isBulkListing?: boolean;
   freeShipping?: boolean;
+  format?: 'FIXED_PRICE' | 'AUCTION';
+  startingBid?: number | null;
+  reservePrice?: number | null;
+  currentBid?: number | null;
+  bidCount?: number;
+  highestBidderId?: string | null;
+  auctionEndsAt?: string | null;
+  buyItNowPrice?: number | null;
   price: number | string;
   currency: string;
   conditionGrade?: ConditionGrade;
@@ -739,46 +749,70 @@ export default function ListingDetailContent({ id }: { id: string }) {
                 )}
               </div>
 
-              {/* Price Display */}
-              <div className="pb-4 border-b border-gray-100">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
-                    {formatPrice(listing.price, listing.currency)}
-                  </span>
-                </div>
-
-                {estimatedRetail && savingsPercent && savingsPercent > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <span className="text-xs text-gray-400 line-through">
-                      MSRP {formatPrice(estimatedRetail, listing.currency)}
-                    </span>
-                    <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
-                      Save {formatPrice(estimatedRetail - numericPrice, listing.currency)} ({savingsPercent}%)
+              {/* Price / Auction Display */}
+              {listing.format === 'AUCTION' ? (
+                <AuctionBiddingCard
+                  listingId={listing.id}
+                  sellerId={listing.sellerId}
+                  startingBid={listing.startingBid}
+                  currentBid={listing.currentBid}
+                  reservePrice={listing.reservePrice}
+                  buyItNowPrice={listing.buyItNowPrice}
+                  bidCount={listing.bidCount}
+                  highestBidderId={listing.highestBidderId}
+                  auctionEndsAt={listing.auctionEndsAt}
+                  currency={listing.currency}
+                  trustLensPassed={listing.trustLensStatus === 'PASSED'}
+                  onBidPlaced={() => {
+                    fetch(`/api/listings/${listing.id}`)
+                      .then((res) => res.json())
+                      .then((data) => {
+                        if (data && data.id) setListing(data);
+                      })
+                      .catch(() => {});
+                  }}
+                />
+              ) : (
+                <div className="pb-4 border-b border-gray-100">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
+                      {formatPrice(listing.price, listing.currency)}
                     </span>
                   </div>
-                )}
 
-                {/* Delivery & Stock indicators */}
-                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-                  {listing.freeShipping ? (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
-                      <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                      Free UK Delivery (Covered by Seller)
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium">
-                      <Truck className="w-3.5 h-3.5 text-slate-500" />
-                      Standard UK Tracked Delivery
-                    </span>
+                  {estimatedRetail && savingsPercent && savingsPercent > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span className="text-xs text-gray-400 line-through">
+                        MSRP {formatPrice(estimatedRetail, listing.currency)}
+                      </span>
+                      <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+                        Save {formatPrice(estimatedRetail - numericPrice, listing.currency)} ({savingsPercent}%)
+                      </span>
+                    </div>
                   )}
-                  {listing.isBulkListing && listing.quantity && listing.quantity > 0 && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
-                      <BadgeCheck className="w-3.5 h-3.5 text-blue-600" />
-                      {listing.quantity} in stock
-                    </span>
-                  )}
+
+                  {/* Delivery & Stock indicators */}
+                  <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+                    {listing.freeShipping ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                        <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                        Free UK Delivery (Covered by Seller)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium">
+                        <Truck className="w-3.5 h-3.5 text-slate-500" />
+                        Standard UK Tracked Delivery
+                      </span>
+                    )}
+                    {listing.isBulkListing && listing.quantity && listing.quantity > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                        <BadgeCheck className="w-3.5 h-3.5 text-blue-600" />
+                        {listing.quantity} in stock
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Seller Trust & Origin Details */}
               <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70 flex items-center justify-between">
@@ -846,6 +880,23 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   >
                     <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                     Delete Listing
+                  </button>
+                </div>
+              ) : listing.format === 'AUCTION' ? (
+                /* In auction mode, contact seller button is available */
+                <div>
+                  <button
+                    onClick={() => {
+                      if (!user) {
+                        router.push(`/login?redirect=/listings/${listing.id}`);
+                        return;
+                      }
+                      setShowContactModal(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 border border-gray-200 text-gray-800 rounded-xl font-bold text-xs hover:border-[var(--color-green)] hover:text-[var(--color-green)] transition-colors"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>Contact Seller about Auction</span>
                   </button>
                 </div>
               ) : listing.trustLensStatus === 'PASSED' ? (

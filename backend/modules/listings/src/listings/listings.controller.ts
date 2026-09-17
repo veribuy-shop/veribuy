@@ -24,6 +24,7 @@ import { UpdateListingDto } from './dto/update-listing.dto';
 import { UpdateStatusDto, ALLOWED_TRANSITIONS } from './dto/update-status.dto';
 import { UpdateTrustLensDto } from './dto/update-trust-lens.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
+import { PlaceBidDto } from './dto/place-bid.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto } from '@veribuy/common';
 import { DeviceType, ConditionGrade } from '.prisma/veribuy-client';
 import * as crypto from 'crypto';
@@ -79,6 +80,53 @@ export class UlistingsController {
   @Public()
   async findOne(@Param('id', ParseUUIDPipe) id: string, @Query('viewer') viewer?: string) {
     return this.listingsService.findOne(id, viewer);
+  }
+
+  /**
+   * POST :id/bids — authenticated buyer places a proxy bid
+   */
+  @Post(':id/bids')
+  @Roles('BUYER', 'SELLER', 'ADMIN')
+  async placeBid(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: PlaceBidDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.listingsService.placeBid(id, user.userId, dto.maxBid);
+  }
+
+  /**
+   * GET :id/bids — public endpoint to view anonymized bid history
+   */
+  @Get(':id/bids')
+  @Public()
+  async getBidHistory(@Param('id', ParseUUIDPipe) id: string) {
+    return this.listingsService.getBidHistory(id);
+  }
+
+  /**
+   * POST internal/settle-auctions — settle expired auctions
+   */
+  @Post('internal/settle-auctions')
+  @Public()
+  async settleAuctions(@Headers('x-internal-service') token: string) {
+    const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!internalToken) {
+      throw new UnauthorizedException('Internal token not configured');
+    }
+
+    const tokenBuf = Buffer.from(token ?? '');
+    const expectedBuf = Buffer.from(internalToken);
+    const same =
+      tokenBuf.length === expectedBuf.length &&
+      crypto.timingSafeEqual(tokenBuf, expectedBuf);
+
+    if (!same) {
+      throw new UnauthorizedException('Invalid internal service token');
+    }
+
+    const settled = await this.listingsService.settleExpiredAuctions();
+    return { success: true, settled };
   }
 
   /**
