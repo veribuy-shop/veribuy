@@ -14,6 +14,9 @@ import {
   Truck,
   Cpu,
   BadgeCheck,
+  Gavel,
+  Tag,
+  Clock,
 } from 'lucide-react';
 
 export default function SellContent() {
@@ -137,6 +140,87 @@ export default function SellContent() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* Selling Formats Section */}
+      <section className="max-w-5xl mx-auto px-4 pb-16">
+        <div className="text-center max-w-xl mx-auto mb-10">
+          <span className="text-xs font-bold text-[var(--color-green)] uppercase tracking-wider block mb-1">
+            Flexible Selling Formats
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
+            Choose How You Want to Sell
+          </h2>
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+            Both formats feature 0% seller fees, Trust Lens™ authentication, and 100% escrow protection.
+          </p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Buy It Now Card */}
+          <div className="bg-white rounded-3xl p-7 border-2 border-emerald-500/80 shadow-md flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-[var(--color-green)] flex items-center justify-center">
+                  <Tag className="w-6 h-6" />
+                </div>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full">
+                  Instant Sale
+                </span>
+              </div>
+              <h3 className="text-xl font-black text-gray-900 mb-2">Fixed Price (Buy It Now)</h3>
+              <p className="text-xs text-gray-600 leading-relaxed mb-5">
+                Set your exact target price. Buyers can purchase immediately at your asking price or submit verified offers.
+              </p>
+              <ul className="space-y-2.5 text-xs text-gray-700">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Immediate checkout without waiting for timers</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Optional Make-an-Offer negotiation</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Supports bulk inventory & multi-quantity (Business)</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Online Auction Card */}
+          <div className="bg-white rounded-3xl p-7 border-2 border-amber-500/80 shadow-md flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                  <Gavel className="w-6 h-6" />
+                </div>
+                <span className="bg-amber-100 text-amber-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full">
+                  Proxy Bidding
+                </span>
+              </div>
+              <h3 className="text-xl font-black text-gray-900 mb-2">Online Timed Auction</h3>
+              <p className="text-xs text-gray-600 leading-relaxed mb-5">
+                Let competitive bidding maximize your final device sale value. Choose 1, 3, 5, 7, or 10-day durations.
+              </p>
+              <ul className="space-y-2.5 text-xs text-gray-700">
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Automated proxy bidding with UK eBay increment tiers</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Anti-sniping soft-close (+2 min extensions on last-minute bids)</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Optional hidden Reserve Price & optional Buy It Now price</span>
+                </li>
+              </ul>
+            </div>
+          </div>
         </div>
       </section>
 

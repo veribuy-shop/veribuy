@@ -85,7 +85,7 @@ export default function PricingPage() {
                   <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
                     <Check className="w-3.5 h-3.5" />
                   </div>
-                  <span><strong>No listing fees:</strong> List as many phones, tablets, or laptops as you want.</span>
+                  <span><strong>No listing fees:</strong> List via Fixed Price (Buy It Now) or Timed Online Auction with £0 insertion fees.</span>
                 </li>
                 <li className="flex items-start gap-3">
                   <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
