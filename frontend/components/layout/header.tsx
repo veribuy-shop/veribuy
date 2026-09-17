@@ -95,12 +95,6 @@ export function Header() {
               <Link href="/browse" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors">
                 Browse
               </Link>
-              <Link href="/browse?format=AUCTION" className="flex items-center gap-1.5 text-amber-700 hover:text-amber-800 font-semibold transition-colors">
-                <span>Auctions</span>
-                <span className="bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black px-1.5 py-0.2 rounded uppercase tracking-wider animate-pulse">
-                  Live
-                </span>
-              </Link>
               <Link href="/sell" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors">
                 Sell
               </Link>
@@ -207,12 +201,6 @@ export function Header() {
               <>
                 <Link href="/browse" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors py-2 text-base font-medium" onClick={() => setMobileMenuOpen(false)}>
                   Browse Devices
-                </Link>
-                <Link href="/browse?format=AUCTION" className="flex items-center justify-between text-amber-800 hover:text-amber-900 transition-colors py-2 text-base font-semibold" onClick={() => setMobileMenuOpen(false)}>
-                  <span>🔨 Live Auctions</span>
-                  <span className="bg-amber-100 text-amber-800 border border-amber-300 text-xs font-bold px-2 py-0.5 rounded-full">
-                    Active
-                  </span>
                 </Link>
                 <Link href="/sell" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors py-2 text-base font-medium" onClick={() => setMobileMenuOpen(false)}>
                   Sell Device
