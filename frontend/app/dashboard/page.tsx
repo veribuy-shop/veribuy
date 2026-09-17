@@ -70,6 +70,12 @@ interface Listing {
   conditionGrade: string | null;
   viewCount: number;
   createdAt: string;
+  format?: 'FIXED_PRICE' | 'AUCTION';
+  currentBid?: number | null;
+  startingBid?: number | null;
+  bidsCount?: number;
+  auctionEndTime?: string | null;
+  winningBidderId?: string | null;
 }
 
 interface Order {
@@ -114,6 +120,7 @@ const STATUS_BADGE: Record<string, { label: string; lightClass: string; darkClas
   CANCELLED:        { label: 'Cancelled',        lightClass: 'bg-gray-100 text-gray-700 border-gray-200', darkClass: 'bg-neutral-800 text-neutral-400 border-neutral-700' },
   REFUNDED:         { label: 'Refunded',         lightClass: 'bg-gray-100 text-gray-700 border-gray-200', darkClass: 'bg-neutral-800 text-neutral-400 border-neutral-700' },
   DISPUTED:         { label: 'In Dispute',       lightClass: 'bg-red-50 text-red-700 border-red-200',     darkClass: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  AUCTION_ENDED:    { label: 'Auction Ended',    lightClass: 'bg-amber-50 text-amber-700 border-amber-200', darkClass: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
 };
 
 const TRUST_BADGE: Record<string, { label: string; lightClass: string; darkClass: string }> = {
@@ -1007,6 +1014,8 @@ function DashboardContent() {
                     lightClass: 'bg-slate-100 text-slate-700 border-slate-200',
                     darkClass: 'bg-neutral-800 text-neutral-400',
                   };
+                  const isAuction = l.format === 'AUCTION';
+                  const displayPrice = isAuction && l.currentBid ? l.currentBid : l.price;
                   return (
                     <div
                       key={l.id}
@@ -1019,10 +1028,24 @@ function DashboardContent() {
                     >
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-3">
-                          <span className={cn('px-2 py-0.5 rounded-full text-xs font-semibold border', isDarkMode ? trust.darkClass : trust.lightClass)}>
-                            {trust.label}
-                          </span>
-                          <span className="text-sm font-bold text-emerald-600">{formatPrice(l.price, l.currency)}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={cn('px-2 py-0.5 rounded-full text-xs font-semibold border', isDarkMode ? trust.darkClass : trust.lightClass)}>
+                              {trust.label}
+                            </span>
+                            {isAuction ? (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center gap-1">
+                                <span>🔨 Auction</span>
+                                {l.bidsCount !== undefined && (
+                                  <span className="font-normal text-[11px]">({l.bidsCount})</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+                                ⚡ Buy Now
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-sm font-bold text-emerald-600">{formatPrice(displayPrice, l.currency)}</span>
                         </div>
                         <h3 className={cn('font-bold text-sm line-clamp-1 mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
                           {l.title}

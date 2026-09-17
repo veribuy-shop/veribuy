@@ -41,9 +41,24 @@ const rawFaqs = [
     answer: 'If the device received differs cosmetically, mechanically, or functionally from the listing grade and timestamped evidence photos, you can open a return within 48 hours (2 days) of delivery for a full refund.',
   },
   {
+    category: 'Auctions & Bidding',
+    question: 'How does automated proxy bidding work on VeriBuy?',
+    answer: 'Enter the maximum amount you are willing to pay. Our proxy bidding engine automatically places bids on your behalf in standard UK eBay increments (£0.20 to £25.00 depending on price tier), advancing the price only as much as necessary to maintain your high bidder status up to your secret maximum.',
+  },
+  {
+    category: 'Auctions & Bidding',
+    question: 'What is anti-sniping soft-close protection?',
+    answer: 'To prevent bots and last-second bid sniping from depriving honest buyers, any valid bid placed within the final 2 minutes of an auction automatically extends the countdown clock by an additional 2 minutes. This ensures every bidder has fair time to respond.',
+  },
+  {
+    category: 'Auctions & Bidding',
+    question: 'What happens when I win an auction?',
+    answer: 'When an auction ends and reserve is met, the winning bidder receives an instant notification with a 48-hour payment window to complete checkout. Once paid, the payment is locked in 100% Escrow and the seller is dispatched a prepaid Royal Mail shipping label.',
+  },
+  {
     category: 'Selling on VeriBuy',
     question: 'Are there really 0% seller commission fees?',
-    answer: 'Yes! VeriBuy charges £0 seller commission, £0 listing fees, and £0 monthly subscriptions. When your device sells for £500, you receive £500 directly to your UK bank account.',
+    answer: 'Yes! VeriBuy charges £0 seller commission, £0 listing fees, and £0 monthly subscriptions on both Buy It Now listings and Online Auctions. When your device sells for £500, you receive £500 directly to your UK bank account.',
   },
   {
     category: 'Selling on VeriBuy',
@@ -62,7 +77,7 @@ export default function HelpPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [openIndex, setOpenIndex] = useState<number | null>(0);
 
-  const categories = ['All', 'Verification & Trust Lens™', 'Buyer Protection & Escrow', 'Selling on VeriBuy', 'Orders & Delivery'];
+  const categories = ['All', 'Auctions & Bidding', 'Verification & Trust Lens™', 'Buyer Protection & Escrow', 'Selling on VeriBuy', 'Orders & Delivery'];
 
   const filteredFaqs = rawFaqs.filter((faq) => {
     const matchesCategory = activeCategory === 'All' || faq.category === activeCategory;

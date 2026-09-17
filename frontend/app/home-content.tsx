@@ -24,6 +24,8 @@ import {
   Cpu,
   FileCheck2,
   Percent,
+  Gavel,
+  Flame,
 } from 'lucide-react';
 
 /* ------------------------------------------------------------------ */
@@ -106,6 +108,7 @@ const featuredListings = [
     originalPrice: 1199,
     brand: 'Apple',
     model: 'iPhone 14 Pro Max',
+    format: 'FIXED_PRICE' as const,
   },
   {
     id: '2',
@@ -118,6 +121,7 @@ const featuredListings = [
     originalPrice: 1249,
     brand: 'Samsung',
     model: 'Galaxy S23 Ultra',
+    format: 'FIXED_PRICE' as const,
   },
   {
     id: '3',
@@ -130,6 +134,7 @@ const featuredListings = [
     originalPrice: 1999,
     brand: 'Apple',
     model: 'MacBook Pro 14"',
+    format: 'FIXED_PRICE' as const,
   },
   {
     id: '4',
@@ -142,6 +147,78 @@ const featuredListings = [
     originalPrice: 699,
     brand: 'Apple',
     model: 'iPad Air',
+    format: 'FIXED_PRICE' as const,
+  },
+];
+
+const featuredAuctions = [
+  {
+    id: 'auc-1',
+    href: '/browse?format=AUCTION',
+    title: 'Apple iPhone 15 Pro 128GB - Natural Titanium',
+    imageUrl: '/images/products/iphone-14-pro.jpg',
+    conditionGrade: 'A' as const,
+    conditionLabel: 'Grade A / Pristine / 98% Battery',
+    price: 520,
+    currentBid: 520,
+    startingBid: 350,
+    bidsCount: 14,
+    auctionEndTime: new Date(Date.now() + 4 * 3600 * 1000 + 22 * 60 * 1000).toISOString(),
+    buyItNowPrice: 720,
+    brand: 'Apple',
+    model: 'iPhone 15 Pro',
+    format: 'AUCTION' as const,
+  },
+  {
+    id: 'auc-2',
+    href: '/browse?format=AUCTION',
+    title: 'Sony PlayStation 5 Digital Edition + Extra Controller',
+    imageUrl: '/images/products/samsung-galaxy-s23.jpg',
+    conditionGrade: 'A' as const,
+    conditionLabel: 'Boxed / Mint Condition',
+    price: 280,
+    currentBid: 280,
+    startingBid: 200,
+    bidsCount: 9,
+    auctionEndTime: new Date(Date.now() + 1 * 3600 * 1000 + 45 * 60 * 1000).toISOString(),
+    buyItNowPrice: 360,
+    brand: 'Sony',
+    model: 'PlayStation 5',
+    format: 'AUCTION' as const,
+  },
+  {
+    id: 'auc-3',
+    href: '/browse?format=AUCTION',
+    title: 'Apple Watch Ultra 2 49mm Titanium GPS + Cellular',
+    imageUrl: '/images/products/macbook-pro.jpg',
+    conditionGrade: 'A' as const,
+    conditionLabel: 'Pristine / Ocean Band',
+    price: 440,
+    currentBid: 440,
+    startingBid: 300,
+    bidsCount: 18,
+    auctionEndTime: new Date(Date.now() + 8 * 3600 * 1000 + 10 * 60 * 1000).toISOString(),
+    buyItNowPrice: 580,
+    brand: 'Apple',
+    model: 'Watch Ultra 2',
+    format: 'AUCTION' as const,
+  },
+  {
+    id: 'auc-4',
+    href: '/browse?format=AUCTION',
+    title: 'Dell XPS 15 9530 OLED i7-13700H / 32GB RAM / 1TB SSD',
+    imageUrl: '/images/products/ipad-air.jpg',
+    conditionGrade: 'B' as const,
+    conditionLabel: 'Good Condition / Charger Included',
+    price: 850,
+    currentBid: 850,
+    startingBid: 600,
+    bidsCount: 11,
+    auctionEndTime: new Date(Date.now() + 14 * 3600 * 1000 + 50 * 60 * 1000).toISOString(),
+    buyItNowPrice: 1150,
+    brand: 'Dell',
+    model: 'XPS 15',
+    format: 'AUCTION' as const,
   },
 ];
 
@@ -326,6 +403,47 @@ export default function HomeContent() {
           {featuredListings.map((listing) => (
             <ListingCard key={listing.id} {...listing} />
           ))}
+        </div>
+      </section>
+
+      {/* ============================================================ */}
+      {/* LIVE VERIFIED AUCTIONS                                        */}
+      {/* ============================================================ */}
+      <section
+        aria-labelledby="auctions-heading"
+        className="max-w-6xl mx-auto px-4 pb-16"
+      >
+        <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/60 rounded-3xl p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-white shadow-xs mb-2 uppercase tracking-wide">
+                <Flame className="w-3.5 h-3.5 shrink-0" />
+                <span>Live Online Auctions</span>
+              </div>
+              <h2
+                id="auctions-heading"
+                className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight"
+              >
+                Hot Deals Ending Soon
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                Proxy bidding with anti-sniping soft-close protection. 100% Escrow secured.
+              </p>
+            </div>
+            <Link
+              href="/browse?format=AUCTION"
+              className="inline-flex items-center justify-center gap-1.5 text-sm font-bold bg-amber-600 hover:bg-amber-700 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm shrink-0"
+            >
+              <span>Explore All Auctions</span>
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {featuredAuctions.map((auction) => (
+              <ListingCard key={auction.id} {...auction} />
+            ))}
+          </div>
         </div>
       </section>
 

@@ -27,15 +27,15 @@ export default function HowItWorksPage() {
   const steps = [
     {
       number: '01',
-      title: 'Seller Lists Device & IMEI',
+      title: 'Seller Lists Device & Chooses Format',
       icon: UserCheck,
-      badge: 'Step 1: Listing',
-      description: 'The seller enters brand, model, storage, cosmetic condition grade (A/B/C), and verified 15-digit IMEI number with timestamped evidence photos.',
+      badge: 'Step 1: Listing & Formats',
+      description: 'The seller enters brand, model, storage, cosmetic grade (A/B/C), and verified 15-digit IMEI. Sellers choose between Fixed Price (Buy It Now) or Timed Online Auction with automated proxy bidding.',
       details: [
-        'Enter device brand, model, storage, and colour',
+        'Select Fixed Price or 1/3/5/7/10-Day Auction with reserve',
         'Upload multi-angle evidence photos (screen, casing, settings)',
         'Select verified condition grade: A (Excellent), B (Good), or C (Fair)',
-        'Provide IMEI by dialling *#06# on the device',
+        'Provide verified IMEI by dialling *#06# on the device',
       ],
     },
     {
@@ -56,12 +56,12 @@ export default function HowItWorksPage() {
       title: '100% Escrow Holding Checkout',
       icon: Lock,
       badge: 'Step 3: Secure Checkout',
-      description: 'When a buyer purchases, the payment is securely locked in Stripe escrow. The seller never receives funds upfront, guaranteeing complete buyer protection.',
+      description: 'When purchased directly or won at auction, buyer payment is securely locked in Stripe escrow. The seller never receives funds upfront, guaranteeing complete buyer protection.',
       details: [
-        'Payment locked safely in platform escrow',
-        'Seller receives immediate dispatch notification',
-        'Tracked courier delivery with signature required upon arrival',
+        'Instant Buy It Now checkout or 48-hour post-auction winner settlement',
         'Transparent variable Buyer Protection fee at checkout',
+        'Prepaid Royal Mail 2D tracked barcode shipping labels generated',
+        'Tracked courier delivery with signature required upon arrival',
       ],
     },
     {
