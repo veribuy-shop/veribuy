@@ -3,6 +3,7 @@
 import { useState, useEffect, useId, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useSearchParams } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
 import {
   Smartphone,
@@ -84,23 +85,55 @@ const GRADE_CONFIG: Record<ConditionGrade, { label: string; title: string; badge
 };
 
 export default function BrowseContent() {
+  const searchParams = useSearchParams();
   const [listings, setListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filters, setFilters] = useState({
-    format: '' as '' | 'AUCTION' | 'FIXED_PRICE',
+    format: (searchParams.get('format') === 'AUCTION' || searchParams.get('format') === 'FIXED_PRICE'
+      ? searchParams.get('format') as 'AUCTION' | 'FIXED_PRICE'
+      : '') as '' | 'AUCTION' | 'FIXED_PRICE',
     deviceType: '' as DeviceType | '',
     conditionGrades: [] as ConditionGrade[],
     verifiedOnly: true,
-    search: '',
+    search: searchParams.get('search') || '',
     minPrice: '',
     maxPrice: '',
   });
-  const [sortBy, setSortBy] = useState('newest');
+  const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'newest');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+
+  // Sync URL searchParams if navigation happens on the client
+  useEffect(() => {
+    const formatParam = searchParams.get('format');
+    const categoryParam = searchParams.get('category') || searchParams.get('deviceType');
+    const searchParam = searchParams.get('search');
+    const sortByParam = searchParams.get('sortBy');
+
+    const mappedFormat = (formatParam === 'AUCTION' || formatParam === 'FIXED_PRICE') ? formatParam : '';
+
+    let mappedCategory: DeviceType | '' = '';
+    if (categoryParam) {
+      const lower = categoryParam.toLowerCase();
+      if (lower.includes('smartphones') || lower === 'smartphone') mappedCategory = 'SMARTPHONE';
+      else if (lower.includes('tablets') || lower === 'tablet') mappedCategory = 'TABLET';
+      else if (lower.includes('smartwatches') || lower === 'smartwatch') mappedCategory = 'SMARTWATCH';
+    }
+
+    setFilters(prev => ({
+      ...prev,
+      format: mappedFormat,
+      deviceType: mappedCategory || prev.deviceType,
+      search: searchParam !== null ? searchParam : prev.search,
+    }));
+
+    if (sortByParam) {
+      setSortBy(sortByParam);
+    }
+  }, [searchParams]);
 
   // Debounced search
   const [debouncedSearch, setDebouncedSearch] = useState(filters.search);
