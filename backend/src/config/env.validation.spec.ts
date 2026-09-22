@@ -72,6 +72,16 @@ describe('validateEnv', () => {
     ).not.toThrow();
   });
 
+  it('warns (but does not block) a missing webhook secret', () => {
+    const { STRIPE_WEBHOOK_SECRET, ...noWebhook } = baseProd;
+    expect(() => validateEnv(noWebhook)).not.toThrow();
+  });
+
+  it('rejects a missing Stripe secret key in production', () => {
+    const { STRIPE_SECRET_KEY, ...noSecret } = baseProd;
+    expect(() => validateEnv(noSecret)).toThrow(/STRIPE_SECRET_KEY is required/);
+  });
+
   it('rejects a malformed DATABASE_URL', () => {
     expect(() =>
       validateEnv({ ...baseDev, DATABASE_URL: 'mysql://localhost/db' }),
