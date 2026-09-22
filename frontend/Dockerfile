@@ -17,6 +17,11 @@ FROM base AS build
 COPY --from=deps /app ./
 # Copy pnpm from deps stage to avoid re-downloading
 COPY --from=deps /root/.local/share/pnpm /root/.local/share/pnpm
+WORKDIR /app
+# The frontend imports @veribuy/common/shipping, which resolves via the
+# package's exports map into packages/common/dist — so the shared package
+# must be compiled before the Next.js build runs.
+RUN pnpm --filter @veribuy/common build
 WORKDIR /app/frontend
 ARG BACKEND_URL=https://api.veribuy.shop
 ARG NEXT_PUBLIC_API_URL=https://api.veribuy.shop
