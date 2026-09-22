@@ -498,10 +498,10 @@ export default function OrderConfirmationPage() {
                   <div>
                     <div className="flex items-center gap-2 text-slate-900 font-bold text-sm mb-1">
                       <Printer className="w-4 h-4 text-slate-700" />
-                      Print 4x6" Shipping Label
+                      Print 4x6&quot; Shipping Label
                     </div>
                     <p className="text-xs text-slate-600 mb-3">
-                      Standard Royal Mail 4x6" PDF label with barcode and return address. Print at home, affix to your parcel, and drop in any Post Office or 24/7 Parcel Postbox.
+                      Standard Royal Mail 4x6&quot; PDF label with barcode and return address. Print at home, affix to your parcel, and drop in any Post Office or 24/7 Parcel Postbox.
                     </p>
                   </div>
                   <a

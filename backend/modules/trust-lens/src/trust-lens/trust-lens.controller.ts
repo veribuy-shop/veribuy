@@ -123,7 +123,7 @@ export class TrustLensController {
       throw new UnauthorizedException('Internal service token not configured');
     }
 
-    let valid = false;
+    let valid: boolean;
     try {
       const a = Buffer.from(internalToken ?? '');
       const b = Buffer.from(expected);

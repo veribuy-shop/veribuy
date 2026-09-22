@@ -444,7 +444,11 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
         {shippingQuote ? (
           <div className="space-y-3">
             {(['TRACKED_48', 'TRACKED_24'] as ShippingService[]).map((svc) => {
-              const quote = calculateShippingFee(listing.deviceType, shippingAddress.postal_code, svc);
+              const quote = calculateShippingFee(listing.deviceType, shippingAddress.postal_code, svc, {
+                brand: listing.brand,
+                model: listing.model,
+                quantity: listing.quantity,
+              });
               const isSelected = selectedService === svc;
               return (
                 <label
@@ -632,6 +636,11 @@ function CheckoutPageContent() {
         listingData.deviceType || 'OTHER',
         'SW1A 1AA', // default mainland postcode for initial PaymentIntent
         'TRACKED_48',
+        {
+          brand: listingData.brand,
+          model: listingData.model,
+          quantity: listingData.quantity,
+        },
       );
       const initialShippingFee = listingData.freeShipping ? 0 : defaultQuote.totalFee;
 
@@ -688,7 +697,11 @@ function CheckoutPageContent() {
   const handlePostcodeChange = (newPostcode: string) => {
     setPostcode(newPostcode);
     if (newPostcode.trim().length >= 2 && listing) {
-      const quote = calculateShippingFee(listing.deviceType, newPostcode, selectedService);
+      const quote = calculateShippingFee(listing.deviceType, newPostcode, selectedService, {
+        brand: listing.brand,
+        model: listing.model,
+        quantity: listing.quantity,
+      });
       setShippingQuote(quote);
     } else {
       setShippingQuote(null);
@@ -698,7 +711,11 @@ function CheckoutPageContent() {
   const handleServiceChange = (service: ShippingService) => {
     setSelectedService(service);
     if (postcode.trim().length >= 2 && listing) {
-      const quote = calculateShippingFee(listing.deviceType, postcode, service);
+      const quote = calculateShippingFee(listing.deviceType, postcode, service, {
+        brand: listing.brand,
+        model: listing.model,
+        quantity: listing.quantity,
+      });
       setShippingQuote(quote);
     }
   };

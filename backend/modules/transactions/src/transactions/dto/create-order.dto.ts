@@ -60,11 +60,20 @@ export class CreateOrderDto {
   @IsNotEmpty()
   listingId: string;
 
+  /**
+   * Display hint only. The authoritative item price is always read from the
+   * listing server-side; if this value disagrees the order is rejected so the
+   * buyer can refresh a stale price. Never used to charge the buyer.
+   */
   @IsNumber()
-  @IsNotEmpty()
+  @IsOptional()
   @Min(0.01)
-  amount: number;
+  amount?: number;
 
+  /**
+   * Display hint only — the authoritative shipping fee is always recomputed
+   * server-side via the Royal Mail rate engine. Never used to charge.
+   */
   @IsNumber()
   @IsOptional()
   @Min(0)
@@ -72,7 +81,7 @@ export class CreateOrderDto {
 
   @IsString()
   @IsOptional()
-  @IsIn(['TRACKED_24', 'TRACKED_48'])
+  @IsIn(['TRACKED_24', 'TRACKED_48', 'SPECIAL_DELIVERY_1PM'])
   shippingService?: string;
 
   @IsString()

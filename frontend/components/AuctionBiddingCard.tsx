@@ -342,7 +342,7 @@ export default function AuctionBiddingCard({
           {buyItNowPrice && buyItNowPrice > 0 && (
             <div className="pt-2 border-t border-gray-100">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-gray-700">Don't want to wait?</span>
+                <span className="text-xs font-bold text-gray-700">Don&apos;t want to wait?</span>
                 <span className="text-sm font-black text-gray-900">
                   {formatPrice(buyItNowPrice, currency)}
                 </span>

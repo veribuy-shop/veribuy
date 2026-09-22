@@ -346,7 +346,7 @@ export class UlistingsService {
     const listingIds = data.map((l) => l.id);
     const sellerIds = Array.from(new Set(data.map((l) => l.sellerId)));
     let coverImages: Map<string, string> = new Map();
-    let sellersMap: Map<string, any> = new Map();
+    const sellersMap: Map<string, any> = new Map();
 
     if (listingIds.length > 0) {
       try {
@@ -680,7 +680,7 @@ export class UlistingsService {
         return updated;
       }
 
-      let updateData: any = { status };
+      const updateData: any = { status };
 
       if (status === ListingStatus.ACTIVE) {
         updateData.publishedAt = new Date();

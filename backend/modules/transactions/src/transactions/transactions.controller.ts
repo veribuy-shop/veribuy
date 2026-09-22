@@ -148,7 +148,14 @@ export class TransactionsController {
         throw new ForbiddenException('You can only update orders you are involved in');
       }
     }
-    return this.transactionsService.updateOrderStatus(orderId, updateOrderStatusDto, user.role);
+    // The acting party (buyer vs seller) is resolved from the order itself —
+    // the global role alone is not sufficient to authorise a transition.
+    return this.transactionsService.updateOrderStatus(
+      orderId,
+      updateOrderStatusDto,
+      user.role,
+      user.userId,
+    );
   }
 
   /**

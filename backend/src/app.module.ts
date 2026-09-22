@@ -19,10 +19,15 @@ import { CloudinaryModule as TransactionCloudinaryModule } from '../modules/tran
 import { NotificationsModule } from '../modules/notifications/src/notifications/notifications.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './database/prisma.module';
+import { validateEnv } from './config/env.validation';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../.env'] }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: ['.env', '../.env'],
+      validate: validateEnv,
+    }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     PrometheusModule.register({ path: '/metrics', defaultMetrics: { enabled: true } }),
     TerminusModule,
