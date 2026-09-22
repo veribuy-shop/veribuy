@@ -15,6 +15,46 @@
 const DEFAULT_FEE_PERCENT = 5;
 
 /**
+ * In-memory cache of the server-fetched rate (display-only). The backend
+ * remains the sole authority — it recomputes the fee during order creation.
+ */
+let serverFeePercentCache: number | null = null;
+let serverFeeFetchPromise: Promise<number> | null = null;
+
+/**
+ * Fetches the authoritative Buyer Protection Fee percentage from the server
+ * (via the BFF). Cached in memory for the session; falls back to the
+ * build-time env value on any failure. Display-only.
+ */
+export async function fetchBuyerProtectionFeePercent(): Promise<number> {
+  if (serverFeePercentCache !== null) return serverFeePercentCache;
+  if (serverFeeFetchPromise) return serverFeeFetchPromise;
+
+  serverFeeFetchPromise = (async () => {
+    try {
+      const res = await fetch('/api/config/fees', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        const value = Number(data?.buyerProtectionFeePercent);
+        if (isFinite(value) && value >= 0) {
+          serverFeePercentCache = value;
+          return value;
+        }
+      }
+    } catch {
+      // Fall through to the build-time default.
+    }
+    return getBuyerProtectionFeePercent();
+  })();
+
+  try {
+    return await serverFeeFetchPromise;
+  } finally {
+    serverFeeFetchPromise = null;
+  }
+}
+
+/**
  * Returns the Buyer Protection Fee percentage as an integer (e.g. 5 for 5%).
  * Display-only — the server recomputes this during checkout.
  */

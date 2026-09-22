@@ -7,7 +7,7 @@ import { BrandLogo } from '@/components/brand-logo';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
-import { getBuyerProtectionFeePercent } from '@/lib/fees';
+import { getBuyerProtectionFeePercent, fetchBuyerProtectionFeePercent } from '@/lib/fees';
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -218,8 +218,14 @@ function AdminDashboardContent() {
   // Health state
   const [healthData, setHealthData] = useState<any>(null);
 
-  // Platform settings — the fee rate is server-owned and displayed read-only
-  const feeRatePercent = getBuyerProtectionFeePercent();
+  // Platform settings — the fee rate is server-owned; fetched at runtime
+  const [feeRatePercent, setFeeRatePercent] = useState<number>(getBuyerProtectionFeePercent());
+
+  useEffect(() => {
+    fetchBuyerProtectionFeePercent()
+      .then(setFeeRatePercent)
+      .catch(() => {});
+  }, []);
 
   // Action states
   const [actionLoading, setActionLoading] = useState(false);
