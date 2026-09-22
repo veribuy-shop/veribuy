@@ -97,7 +97,9 @@ projects:
               # Public publishable key — safe as NEXT_PUBLIC_ (not the secret).
               - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
                 sync: false
-              # Keep the browser-visible fee rate in lockstep with the backend.
+              # Fallback display rate only — the admin portal and checkout
+              # fetch the authoritative rate from the backend at runtime
+              # (GET /transactions/config/fees). Baked at build time.
               - key: NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT
                 value: '5'
               # Shared Redis access for the BFF (server-side only — reads

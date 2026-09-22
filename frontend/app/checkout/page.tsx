@@ -14,7 +14,7 @@ import {
   type ShippingService,
   type ShippingQuote,
 } from '@/lib/shipping';
-import { calculateProtectionFee, getBuyerProtectionFeePercent } from '@/lib/fees';
+import { calculateProtectionFee, getBuyerProtectionFeePercent, fetchBuyerProtectionFeePercent } from '@/lib/fees';
 
 // SEC-15: Fail loudly if the Stripe publishable key is absent rather than
 // silently passing an empty string, which would produce confusing Stripe errors.
@@ -58,11 +58,12 @@ interface CheckoutFormProps {
   pendingOrder: PendingOrder;
   selectedService: ShippingService;
   shippingQuote: ShippingQuote | null;
+  feePercentFallback: number;
   onServiceChange: (service: ShippingService) => void;
   onPostcodeChange: (postcode: string) => void;
 }
 
-function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, onServiceChange, onPostcodeChange }: CheckoutFormProps) {
+function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, feePercentFallback, onServiceChange, onPostcodeChange }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
@@ -153,7 +154,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, o
   const feePercent =
     itemPrice > 0 && protectionFee > 0
       ? Math.round((protectionFee / itemPrice) * 100)
-      : getBuyerProtectionFeePercent();
+      : feePercentFallback;
   const effectiveShippingFee = listing.freeShipping
     ? 0
     : (shippingQuote ? shippingQuote.totalFee : 0);
@@ -587,6 +588,15 @@ function CheckoutPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Server-owned fee rate for display fallback (fetched at runtime)
+  const [serverFeePercent, setServerFeePercent] = useState<number>(getBuyerProtectionFeePercent());
+
+  useEffect(() => {
+    fetchBuyerProtectionFeePercent()
+      .then(setServerFeePercent)
+      .catch(() => {});
+  }, []);
+
   // Shipping state
   const [selectedService, setSelectedService] = useState<ShippingService>('TRACKED_48');
   const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
@@ -730,7 +740,7 @@ function CheckoutPageContent() {
   const feePercent =
     itemPrice > 0 && protectionFee > 0
       ? Math.round((protectionFee / itemPrice) * 100)
-      : getBuyerProtectionFeePercent();
+      : serverFeePercent;
   const effectiveShippingFee = listing?.freeShipping
     ? 0
     : (shippingQuote ? shippingQuote.totalFee : 0);
@@ -797,6 +807,7 @@ function CheckoutPageContent() {
                 pendingOrder={pendingOrder}
                 selectedService={selectedService}
                 shippingQuote={shippingQuote}
+                feePercentFallback={serverFeePercent}
                 onServiceChange={handleServiceChange}
                 onPostcodeChange={handlePostcodeChange}
               />
