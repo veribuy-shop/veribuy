@@ -42,6 +42,7 @@ export interface ValidatedEnv extends Record<string, unknown> {}
 
 export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
   const errors: string[] = [];
+  const warnings: string[] = [];
   const nodeEnv = String(config.NODE_ENV ?? 'development');
   const isProduction = nodeEnv === 'production';
 
@@ -130,7 +131,18 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
 
   const stripeKey = get('STRIPE_SECRET_KEY');
   if (stripeKey && isProduction && stripeKey.startsWith('sk_test_')) {
-    errors.push('STRIPE_SECRET_KEY is a test key but NODE_ENV=production.');
+    // Legitimate on staging/beta deployments — loud warning, not a boot gate.
+    // Payments will be processed in Stripe test mode with zero monetary value.
+    warnings.push(
+      'STRIPE_SECRET_KEY is a Stripe TEST key while NODE_ENV=production ' +
+        '(payments run in Stripe test mode — no real charges).',
+    );
+  }
+
+  if (warnings.length > 0) {
+    process.stderr.write(
+      `[env.validation] WARNING:\n  - ${warnings.join('\n  - ')}\n`,
+    );
   }
 
   if (errors.length > 0) {

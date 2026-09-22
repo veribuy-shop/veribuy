@@ -66,10 +66,10 @@ describe('validateEnv', () => {
     ).toThrow(/must use https/);
   });
 
-  it('rejects a Stripe test key in production', () => {
+  it('warns (but does not block) a Stripe test key in production', () => {
     expect(() =>
       validateEnv({ ...baseProd, STRIPE_SECRET_KEY: 'sk_test_abc' }),
-    ).toThrow(/test key but NODE_ENV=production/);
+    ).not.toThrow();
   });
 
   it('rejects a malformed DATABASE_URL', () => {
