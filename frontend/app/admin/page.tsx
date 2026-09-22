@@ -7,7 +7,7 @@ import { BrandLogo } from '@/components/brand-logo';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
-import { getBuyerProtectionFeePercent, setBuyerProtectionFeePercent } from '@/lib/fees';
+import { getBuyerProtectionFeePercent } from '@/lib/fees';
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -218,9 +218,8 @@ function AdminDashboardContent() {
   // Health state
   const [healthData, setHealthData] = useState<any>(null);
 
-  // Platform settings state
-  const [feeRateInput, setFeeRateInput] = useState<number>(getBuyerProtectionFeePercent());
-  const [feeSaveSuccess, setFeeSaveSuccess] = useState(false);
+  // Platform settings — the fee rate is server-owned and displayed read-only
+  const feeRatePercent = getBuyerProtectionFeePercent();
 
   // Action states
   const [actionLoading, setActionLoading] = useState(false);
@@ -239,7 +238,9 @@ function AdminDashboardContent() {
       } else {
         setIsDarkMode(false);
       }
-    } catch {}
+    } catch {
+      // Theme preference is non-critical — ignore storage access errors.
+    }
   }, [user?.id]);
 
   const setThemeMode = (mode: 'light' | 'dark') => {
@@ -248,7 +249,9 @@ function AdminDashboardContent() {
     if (!user?.id) return;
     try {
       localStorage.setItem(`veribuy_admin_theme_${user.id}`, mode);
-    } catch {}
+    } catch {
+      // Theme preference is non-critical — ignore storage access errors.
+    }
   };
 
   const fetchAll = useCallback(async () => {
@@ -323,13 +326,6 @@ function AdminDashboardContent() {
     const params = new URLSearchParams(window.location.search);
     params.set('tab', tab);
     router.replace(`/admin?${params.toString()}`, { scroll: false });
-  };
-
-  const handleSaveFeeSettings = (e: React.FormEvent) => {
-    e.preventDefault();
-    setBuyerProtectionFeePercent(Number(feeRateInput));
-    setFeeSaveSuccess(true);
-    setTimeout(() => setFeeSaveSuccess(false), 3000);
   };
 
   const handleVerificationReview = async (id: string, action: 'PASSED' | 'FAILED') => {
@@ -586,7 +582,7 @@ function AdminDashboardContent() {
   });
 
   const filteredListings = listings.filter((l) => {
-    let matchesFilter = true;
+    let matchesFilter: boolean;
     if (listingStatusFilter === 'ALL') {
       matchesFilter = true;
     } else if (listingStatusFilter === 'UNDER_REVIEW') {
@@ -2626,57 +2622,36 @@ function AdminDashboardContent() {
               </div>
             </div>
 
-            {feeSaveSuccess && (
-              <div role="status" className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-700 text-xs font-semibold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
-                <span>Buyer Protection Fee rate updated successfully! All checkout calculations updated.</span>
-              </div>
-            )}
-
-            {/* Fee Setting Form */}
-            <form onSubmit={handleSaveFeeSettings} className="space-y-4">
-              <div
-                className={cn(
-                  'p-5 rounded-2xl border space-y-3',
-                  isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200'
-                )}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className={cn('text-sm font-bold block', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                      Buyer Protection Fee Percentage
-                    </label>
-                    <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                      Configured dynamic rate applied to checkouts in real-time.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={feeRateInput}
-                      onChange={(e) => setFeeRateInput(parseFloat(e.target.value) || 0)}
-                      className={cn(
-                        'w-24 border rounded-xl px-3 py-2 text-center font-bold text-sm focus:outline-none focus:border-emerald-500',
-                        isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-slate-200 text-slate-900 shadow-sm'
-                      )}
-                    />
-                    <span className="font-bold text-sm text-emerald-600">%</span>
-                  </div>
+            {/* Fee Setting (read-only — server-owned) */}
+            <div
+              className={cn(
+                'p-5 rounded-2xl border space-y-3',
+                isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200'
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className={cn('text-sm font-bold block', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Buyer Protection Fee Percentage
+                  </label>
+                  <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Server-owned rate applied to every checkout.
+                  </p>
                 </div>
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
-                  >
-                    <Save className="w-4 h-4" /> Save Fee Rate
-                  </button>
+                <div className="flex items-center gap-2">
+                  <span className={cn('text-xl font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    {feeRatePercent}
+                  </span>
+                  <span className="font-bold text-sm text-emerald-600">%</span>
                 </div>
               </div>
-            </form>
+
+              <p className={cn('text-xs pt-2', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
+                This rate is configured via the <code className="font-mono">BUYER_PROTECTION_FEE_PERCENT</code>{' '}
+                environment variable and enforced server-side during order creation. It cannot be changed
+                from the browser, which prevents tampering with checkout totals.
+              </p>
+            </div>
 
             <div
               className={cn(

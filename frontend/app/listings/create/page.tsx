@@ -289,7 +289,9 @@ export default function CreateListingPage() {
             setFormData(prev => ({ ...prev, city: prev.city || userCity }));
           }
         }
-      } catch {}
+      } catch {
+        // Best-effort prefill — ignore lookup failures.
+      }
     })();
   }, [user?.id]);
 
@@ -1280,7 +1282,7 @@ export default function CreateListingPage() {
                         className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                       />
                       <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                        Hidden minimum price. Item won't sell unless bids reach this threshold.
+                        Hidden minimum price. Item won&apos;t sell unless bids reach this threshold.
                       </p>
                     </div>
 

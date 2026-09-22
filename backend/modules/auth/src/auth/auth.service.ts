@@ -224,8 +224,19 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    // Explicit select: passwordHash is required for comparison here, but
+    // verification/reset tokens are never loaded.
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        isEmailVerified: true,
+        passwordHash: true,
+      },
     });
 
     if (!user) {
@@ -277,6 +288,12 @@ export class AuthService {
 
     const user = await this.prisma.user.findFirst({
       where: { emailVerificationToken: tokenHash },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        emailVerificationExpiry: true,
+      },
     });
 
     if (!user) {
@@ -309,6 +326,7 @@ export class AuthService {
   async resendVerificationEmail(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true, name: true, email: true, isEmailVerified: true },
     });
 
     if (!user) {
@@ -344,7 +362,14 @@ export class AuthService {
   async refreshToken(refreshToken: string) {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token: refreshToken },
-      include: { user: true },
+      select: {
+        id: true,
+        revokedAt: true,
+        expiresAt: true,
+        user: {
+          select: { id: true, role: true, isActive: true },
+        },
+      },
     });
 
     if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
@@ -454,6 +479,7 @@ export class AuthService {
   async updateUser(userId: string, dto: UpdateUserDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true },
     });
 
     if (!user) {
@@ -488,6 +514,7 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      select: { id: true },
     });
 
     if (!user) {
@@ -793,7 +820,9 @@ export class AuthService {
       });
       try {
         await this.redis.del(`profile:${effectiveUserId}`);
-      } catch (err: any) {}
+      } catch {
+        // Cache eviction is best-effort — never fail phone verification on it.
+      }
     }
 
     return {

@@ -18,24 +18,101 @@ import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service'
 import { RoyalMailService } from '../shipping/royal-mail.service';
 
 /**
- * Allowed status transitions for each actor.
+ * The party performing a status transition, resolved per-order.
  *
- * Key: current status → Value: statuses any actor may move to.
- * Buyer:  DELIVERED → COMPLETED, any → DISPUTED
- * Seller: ESCROW_HELD → SHIPPED
- * Admin:  any → any (enforced in controller, not here)
+ * NOTE: this is deliberately NOT the user's global role. A user may be the
+ * buyer on one order and the seller on another, so the acting party must be
+ * derived from their relationship to the specific order.
  */
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  PENDING:          ['CANCELLED'],
-  PAYMENT_RECEIVED: ['ESCROW_HELD', 'CANCELLED'],
-  ESCROW_HELD:      ['SHIPPED', 'DISPUTED', 'CANCELLED'],
-  SHIPPED:          ['DELIVERED', 'DISPUTED'],
-  DELIVERED:        ['COMPLETED', 'DISPUTED'],
-  COMPLETED:        [],
-  DISPUTED:         ['REFUNDED', 'COMPLETED'],
-  REFUNDED:         [],
-  CANCELLED:        [],
+export type OrderActor = 'BUYER' | 'SELLER' | 'ADMIN' | 'INTERNAL';
+
+/**
+ * Allowed status transitions, keyed by current status → target status →
+ * the set of actors permitted to perform it.
+ *
+ * Security rationale for the sensitive entries:
+ *  - ESCROW_HELD → SHIPPED is SELLER-only: a buyer must never be able to mark
+ *    an order dispatched, which would start the delivery/auto-release clock.
+ *  - SHIPPED → DELIVERED excludes the SELLER: a seller must never be able to
+ *    self-certify delivery and trigger release of escrowed funds.
+ *  - DELIVERED → COMPLETED is BUYER-driven (plus ADMIN/INTERNAL for the
+ *    auto-release timer), since it releases funds to the seller.
+ *  - Anything touching money after escrow (CANCELLED post-payment, REFUNDED,
+ *    dispute resolution) is restricted to ADMIN/INTERNAL.
+ */
+const ALLOWED_TRANSITIONS: Record<string, Record<string, OrderActor[]>> = {
+  PENDING: {
+    CANCELLED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
+  },
+  PAYMENT_RECEIVED: {
+    // Driven by the Stripe webhook, never by an end user.
+    ESCROW_HELD: ['ADMIN', 'INTERNAL'],
+    CANCELLED: ['ADMIN', 'INTERNAL'],
+  },
+  ESCROW_HELD: {
+    SHIPPED: ['SELLER', 'ADMIN', 'INTERNAL'],
+    DISPUTED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
+    CANCELLED: ['ADMIN', 'INTERNAL'],
+  },
+  SHIPPED: {
+    DELIVERED: ['BUYER', 'ADMIN', 'INTERNAL'],
+    DISPUTED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
+  },
+  DELIVERED: {
+    COMPLETED: ['BUYER', 'ADMIN', 'INTERNAL'],
+    DISPUTED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
+  },
+  COMPLETED: {},
+  DISPUTED: {
+    // Dispute outcomes are decided by the platform, not the counterparties.
+    REFUNDED: ['ADMIN', 'INTERNAL'],
+    COMPLETED: ['ADMIN', 'INTERNAL'],
+  },
+  REFUNDED: {},
+  CANCELLED: {},
 };
+
+
+/**
+ * Client-safe Order projection.
+ *
+ * Deliberately omits internal payment/escrow identifiers (`paymentIntentId`,
+ * `escrowId`) so they can never be returned on a read endpoint. Flows that
+ * genuinely need those values query for them explicitly.
+ */
+const ORDER_CLIENT_SELECT = {
+  id: true,
+  buyerId: true,
+  sellerId: true,
+  listingId: true,
+  listingTitle: true,
+  listingDescription: true,
+  listingCategory: true,
+  amount: true,
+  protectionFee: true,
+  shippingFee: true,
+  shippingService: true,
+  freeShipping: true,
+  totalAmount: true,
+  currency: true,
+  status: true,
+  trackingNumber: true,
+  parcelWeightGrams: true,
+  parcelFormat: true,
+  shippingLabelUrl: true,
+  dropoffQrCodeUrl: true,
+  dropoffPointId: true,
+  dropoffPointName: true,
+  shippingAddress: true,
+  paidAt: true,
+  shippedAt: true,
+  deliveredAt: true,
+  completedAt: true,
+  disputedAt: true,
+  refundedAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export function getBuyerProtectionFeeRate(): number {
   const raw = process.env.BUYER_PROTECTION_FEE_PERCENT || process.env.BUYER_PROTECTION_FEE_RATE;
@@ -85,7 +162,6 @@ export class TransactionsService implements OnModuleInit {
       sellerId,
       listingId,
       amount,
-      shippingFee = 0,
       shippingService = null,
       currency = 'GBP',
       shippingAddress,
@@ -96,42 +172,70 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Buyer and seller cannot be the same user');
     }
 
-    // Snapshot listing details for invoice generation & delivery terms
-    let isFreeShipping = false;
-    let listingTitle: string | null = null;
-    let listingDescription: string | null = null;
-    let listingCategory: string | null = null;
-    let parcelWeightGrams: number = 320;
-    let parcelFormat: string = 'SMALL_PARCEL';
-
+    // SECURITY: The listing is the single source of truth for price, shipping
+    // eligibility and parcel sizing. The client-supplied `amount` / `shippingFee`
+    // are treated as untrusted display hints only and are never used to charge.
+    // A failure to resolve the listing MUST abort the order — falling back to
+    // client-supplied values would allow payment amount tampering.
+    let listing: Record<string, any> | null;
     try {
-      const listing = await this.fetchListing(listingId);
-      if (listing && (listing.status === 'SOLD' || listing.status === 'DELISTED')) {
-        throw new BadRequestException('This listing is no longer available for purchase');
-      }
-      isFreeShipping = !!listing?.freeShipping;
-      listingTitle = listing?.title ?? null;
-      listingDescription = listing?.description ?? null;
-      listingCategory = listing?.deviceType ?? listing?.brand ?? null;
-
-      // Automated weight mapping & packaging sizing
-      const profile = this.royalMailService.resolvePackageProfile(
-        listing?.deviceType || listingCategory || 'SMARTPHONE',
-        listing?.brand,
-        listing?.model,
-        listing?.quantity || 1,
-      );
-      parcelWeightGrams = profile.totalWeightGrams;
-      parcelFormat = profile.parcelFormat;
+      listing = await this.fetchListing(listingId);
     } catch (err: any) {
-      if (err instanceof BadRequestException) throw err;
-      this.logger.warn(`Could not snapshot listing ${listingId}: ${(err as Error).message}`);
+      this.logger.error(`Could not resolve listing ${listingId}: ${(err as Error).message}`);
+      throw new BadRequestException('Unable to verify listing details. Please try again.');
     }
+
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+    if (listing.status === 'SOLD' || listing.status === 'DELISTED') {
+      throw new BadRequestException('This listing is no longer available for purchase');
+    }
+    // Ensure the client cannot redirect funds by supplying a mismatched sellerId
+    if (listing.sellerId && listing.sellerId !== sellerId) {
+      throw new BadRequestException('Seller does not match the listing owner');
+    }
+
+    const isFreeShipping = !!listing.freeShipping;
+    const listingTitle: string | null = listing.title ?? null;
+    const listingDescription: string | null = listing.description ?? null;
+    const listingCategory: string | null = listing.deviceType ?? listing.brand ?? null;
+
+    // Automated weight mapping & packaging sizing
+    const profile = this.royalMailService.resolvePackageProfile(
+      listing.deviceType || listingCategory || 'SMARTPHONE',
+      listing.brand,
+      listing.model,
+      listing.quantity || 1,
+    );
+    const parcelWeightGrams: number = profile.totalWeightGrams;
+    const parcelFormat: string = profile.parcelFormat;
+
+    // Authoritative item price — derived from the listing, never from the client.
+    const numericAmount = this.resolveListingPrice(listing);
+    if (numericAmount <= 0) {
+      throw new BadRequestException('This listing does not have a valid price');
+    }
+    if (amount !== undefined && !this.amountsMatch(Number(amount), numericAmount)) {
+      this.logger.warn(
+        `Rejected order: client amount ${amount} does not match listing ${listingId} price ${numericAmount}`,
+      );
+      throw new BadRequestException(
+        'The listing price has changed. Please refresh and try again.',
+      );
+    }
+
+    // Authoritative shipping fee — recomputed server-side from the resolved
+    // device weight profile and the buyer's destination postcode.
+    const numericShipping = this.resolveShippingFee(listing, {
+      serviceTier: shippingService,
+      destinationPostcode: shippingAddress?.postal_code,
+      itemValue: numericAmount,
+      isFreeShipping,
+    });
 
     // Buyer Protection Fee (configurable via env variable, default 5%)
     const rate = getBuyerProtectionFeeRate();
-    const numericAmount = Number(amount) || 0;
-    const numericShipping = isFreeShipping ? 0 : (Number(shippingFee) || 0);
     const protectionFee = Math.round(numericAmount * rate * 100) / 100;
 
     // Compute total: item price + buyer protection fee + shipping (waived/0 if covered by seller)
@@ -258,7 +362,22 @@ export class TransactionsService implements OnModuleInit {
     const protectionFee = Number(
       order.protectionFee ?? Math.round(Number(order.amount) * rate * 100) / 100,
     );
-    const effectiveShippingFee = order.freeShipping ? 0 : dto.shippingFee;
+
+    // SECURITY: Recompute the shipping fee server-side. The client may only
+    // choose a service tier and supply a destination postcode — never a price.
+    const listing = await this.fetchListing(order.listingId).catch(() => null);
+    if (!listing) {
+      throw new BadRequestException('Unable to verify listing details. Please try again.');
+    }
+
+    const shippingAddress = order.shippingAddress as Record<string, any> | null;
+    const effectiveShippingFee = this.resolveShippingFee(listing, {
+      serviceTier: dto.shippingService,
+      destinationPostcode: shippingAddress?.postal_code,
+      itemValue: Number(order.amount),
+      isFreeShipping: !!order.freeShipping,
+    });
+
     const newTotal = Math.round((Number(order.amount) + protectionFee + effectiveShippingFee) * 100) / 100;
 
     // Update Stripe PaymentIntent amount
@@ -270,7 +389,7 @@ export class TransactionsService implements OnModuleInit {
     const updated = await this.prisma.order.update({
       where: { id: orderId },
       data: {
-        shippingFee: dto.shippingFee,
+        shippingFee: effectiveShippingFee > 0 ? effectiveShippingFee : null,
         shippingService: dto.shippingService,
         totalAmount: newTotal,
       },
@@ -398,10 +517,33 @@ export class TransactionsService implements OnModuleInit {
     return { order: updatedOrder, escrow };
   }
 
+  /**
+   * Resolves the acting party for an order from the caller's identity.
+   *
+   * SECURITY: ADMIN/INTERNAL are privileged and taken from the authenticated
+   * context. For everyone else the actor is derived from their relationship to
+   * this specific order — a user's global role is never trusted here, since a
+   * SELLER-role account is merely the buyer on orders it did not list.
+   */
+  private resolveOrderActor(
+    order: { buyerId: string; sellerId: string },
+    callerRole: string,
+    callerUserId?: string,
+  ): OrderActor {
+    if (callerRole === 'INTERNAL') return 'INTERNAL';
+    if (callerRole === 'ADMIN') return 'ADMIN';
+
+    if (callerUserId && order.sellerId === callerUserId) return 'SELLER';
+    if (callerUserId && order.buyerId === callerUserId) return 'BUYER';
+
+    throw new ForbiddenException('You are not a party to this order');
+  }
+
   async updateOrderStatus(
     orderId: string,
     updateOrderStatusDto: UpdateOrderStatusDto,
     actorRole: string = 'BUYER',
+    actorUserId?: string,
   ) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
@@ -411,12 +553,27 @@ export class TransactionsService implements OnModuleInit {
       throw new NotFoundException('Order not found');
     }
 
-    // Enforce state machine for all callers — even internal/admin are restricted
-    // to the defined transitions to prevent accidental invalid state jumps.
-    const allowed = ALLOWED_TRANSITIONS[order.status] ?? [];
-    if (!allowed.includes(updateOrderStatusDto.status)) {
+    const actor = this.resolveOrderActor(order, actorRole, actorUserId);
+
+    // Enforce the state machine for all callers — even internal/admin are
+    // restricted to defined transitions to prevent invalid state jumps.
+    const transitions = ALLOWED_TRANSITIONS[order.status] ?? {};
+    const permittedActors = transitions[updateOrderStatusDto.status];
+
+    if (!permittedActors) {
       throw new BadRequestException(
         `Cannot transition order from ${order.status} to ${updateOrderStatusDto.status}`,
+      );
+    }
+
+    // Enforce per-actor authorisation (e.g. only the seller may mark SHIPPED,
+    // and the seller may never self-certify DELIVERED).
+    if (!permittedActors.includes(actor)) {
+      this.logger.warn(
+        `Blocked ${actor} from transitioning order ${orderId} ${order.status} → ${updateOrderStatusDto.status}`,
+      );
+      throw new ForbiddenException(
+        `You are not permitted to change this order from ${order.status} to ${updateOrderStatusDto.status}`,
       );
     }
 
@@ -490,6 +647,7 @@ export class TransactionsService implements OnModuleInit {
   async getOrder(orderId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
+      select: ORDER_CLIENT_SELECT,
     });
 
     if (!order) {
@@ -586,7 +744,7 @@ export class TransactionsService implements OnModuleInit {
     const skip = (page - 1) * limit;
 
     const [orders, total] = await Promise.all([
-      this.prisma.order.findMany({ skip, take: limit, orderBy: { createdAt: 'desc' } }),
+      this.prisma.order.findMany({ skip, take: limit, orderBy: { createdAt: 'desc' }, select: ORDER_CLIENT_SELECT }),
       this.prisma.order.count(),
     ]);
 
@@ -688,6 +846,7 @@ export class TransactionsService implements OnModuleInit {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        select: ORDER_CLIENT_SELECT,
       }),
       this.prisma.order.count({ where }),
     ]);
@@ -716,6 +875,7 @@ export class TransactionsService implements OnModuleInit {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        select: ORDER_CLIENT_SELECT,
       }),
       this.prisma.order.count({ where }),
     ]);
@@ -1065,7 +1225,7 @@ export class TransactionsService implements OnModuleInit {
           .catch((err) => this.logger.error('Failed to send delivered email to buyer', err?.stack ?? err));
         break;
 
-      case 'COMPLETED':
+      case 'COMPLETED': {
         const sellerPayout = Math.round((Number(order.amount) + (Number(order.shippingFee) || 0)) * 100) / 100;
         await this.sendOrderNotification({
           orderId: order.id,
@@ -1103,6 +1263,7 @@ export class TransactionsService implements OnModuleInit {
           })
           .catch((err) => this.logger.error('Failed to send completed email to seller', err?.stack ?? err));
         break;
+      }
 
       case 'REFUNDED':
         // Notification handled separately in refundOrder()
@@ -1417,6 +1578,76 @@ export class TransactionsService implements OnModuleInit {
       shippingService: order.shippingService || 'TRACKED_48',
       locations,
     };
+  }
+
+  /**
+   * Resolves the authoritative item price for a listing.
+   *
+   * SECURITY: This is the only accepted source of an order's item price.
+   * For auctions that have been settled, the winning bid supersedes the
+   * listing price; otherwise the fixed listing price applies.
+   */
+  private resolveListingPrice(listing: Record<string, any>): number {
+    const candidate =
+      listing.format === 'AUCTION' && listing.currentBid != null
+        ? listing.currentBid
+        : listing.price;
+
+    const parsed = Number(candidate);
+    if (!isFinite(parsed) || parsed <= 0) return 0;
+    return Math.round(parsed * 100) / 100;
+  }
+
+  /**
+   * Tolerant equality check for money values, guarding against float drift
+   * while still rejecting any meaningful tampering (tolerance: 1 penny).
+   */
+  private amountsMatch(a: number, b: number): boolean {
+    if (!isFinite(a) || !isFinite(b)) return false;
+    return Math.abs(a - b) < 0.01;
+  }
+
+  /**
+   * Recomputes the shipping fee server-side using the Royal Mail rate engine.
+   *
+   * SECURITY: Client-supplied shipping fees are never trusted. Only the
+   * service tier (a constrained enum) and destination postcode influence the
+   * result, and both are re-priced here against the resolved weight profile.
+   */
+  private resolveShippingFee(
+    listing: Record<string, any>,
+    options: {
+      serviceTier?: string | null;
+      destinationPostcode?: string;
+      itemValue: number;
+      isFreeShipping: boolean;
+    },
+  ): number {
+    if (options.isFreeShipping) return 0;
+
+    const tier: RoyalMailServiceTier =
+      options.serviceTier === 'TRACKED_24' ||
+      options.serviceTier === 'SPECIAL_DELIVERY_1PM'
+        ? options.serviceTier
+        : 'TRACKED_48';
+
+    try {
+      const quote = this.royalMailService.calculateShippingRate(
+        listing.deviceType || listing.brand || 'SMARTPHONE',
+        tier,
+        {
+          brand: listing.brand,
+          model: listing.model,
+          quantity: listing.quantity || 1,
+          destinationPostcode: options.destinationPostcode,
+          itemValue: options.itemValue,
+        },
+      );
+      return Math.round(Number(quote.totalFee) * 100) / 100;
+    } catch (err: any) {
+      this.logger.error(`Shipping rate calculation failed: ${(err as Error).message}`);
+      throw new BadRequestException('Unable to calculate shipping. Please try again.');
+    }
   }
 
   /**

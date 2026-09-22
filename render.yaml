@@ -1,106 +1,149 @@
 # VeriBuy Render Blueprint
 # Deploy: https://render.com/docs/blueprint-spec
 #
-# All resources deploy to Frankfurt for lower latency to UK users.
-# Private networking: services communicate via http://<name>:10000.
+# Security posture (DevSecOps review):
+#   * Zero-trust datastores — Postgres & Redis expose no public address
+#     (ipAllowList: []), reachable only over the Render private network.
+#   * Fail-closed secrets — any `sync: false` variable must be entered in the
+#     dashboard before first deploy; boot-time env validation rejects startup
+#     otherwise (see backend/src/config/env.validation.ts).
+#   * Non-root containers — multi-stage Dockerfiles run as uid 1001 and bake
+#     NODE_ENV=production, which keeps Swagger disabled and cookies `secure`.
+#   * All resources deploy to Frankfurt for lower latency to UK users.
+#
+# NOTE on the single `veribuy-secrets` group: the frontend BFF verifies JWT
+# signatures itself (jose), so it MUST receive the exact same JWT_SECRET the
+# backend signs with. `generateValue` produces a different random value per
+# group, so sharing ONE group here is intentional and required — do not split
+# it; doing so would break frontend authentication.
 
-services:
-  # ─── Backend API ─────────────────────────────────────────
-  - type: web
-    name: veribuy-backend
-    runtime: docker
-    plan: starter
-    region: frankfurt
-    dockerfilePath: backend/Dockerfile
-    dockerContext: .
-    healthCheckPath: /health
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: veribuy-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: veribuy-redis
-          property: connectionString
-      # NOTE: the keyvalue `connectionString` is the INTERNAL host (red-…, plain
-      # redis://, private network). Enable TLS ONLY against the public endpoint
-      # (different host, port 6380). With the internal URL, keep TLS off.
-      - key: REDIS_TLS
-        value: 'false'
-      - fromGroup: veribuy-secrets
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_WEBHOOK_SECRET
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: CLOUDINARY_CLOUD_NAME
-        sync: false
-      - key: CLOUDINARY_API_KEY
-        sync: false
-      - key: CLOUDINARY_API_SECRET
-        sync: false
-      - key: IMEI_CHECK_API_KEY
-        sync: false
-      - key: IFREE_ICLOUD_API_KEY
-        sync: false
+projects:
+  - name: veribuy
+    environments:
+      - name: production
+        # No destructive actions without admin rights — protects prod data.
+        permissions:
+          protection: enabled
+        # Hard zero-trust boundary — private traffic blocked across environments.
+        networking:
+          isolation: enabled
+        services:
+          # ─── Backend API ─────────────────────────────────────────
+          - type: web
+            name: veribuy-backend
+            runtime: docker
+            plan: 0.5c-512mb
+            region: frankfurt
+            dockerfilePath: backend/Dockerfile
+            dockerContext: .
+            healthCheckPath: /health
+            envVars:
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: veribuy-postgres
+                  property: connectionString
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: veribuy-redis
+                  property: connectionString
+              # NOTE: the keyvalue `connectionString` is the INTERNAL host
+              # (red-…, plain redis://, private network). Enable TLS ONLY
+              # against the public endpoint (different host, port 6380).
+              - key: REDIS_TLS
+                value: 'false'
+              # Boot-time env validation requires this in production — the real
+              # public frontend origin, never a wildcard (credentials: true).
+              - key: ALLOWED_ORIGINS
+                value: 'https://www.veribuy.shop'
+              # Defense-in-depth: explicitly off. env.validator rejects true.
+              - key: AUTO_VERIFY_EMAIL
+                value: 'false'
+              # Server-owned fee rate (default 5%). frontend counterpart below.
+              - key: BUYER_PROTECTION_FEE_PERCENT
+                value: '5'
+              - key: JWT_EXPIRATION
+                value: '15m'
+              - key: JWT_REFRESH_EXPIRATION
+                value: '7d'
+              - fromGroup: veribuy-secrets
+              - key: STRIPE_SECRET_KEY
+                sync: false
+              - key: STRIPE_WEBHOOK_SECRET
+                sync: false
+              - key: RESEND_API_KEY
+                sync: false
+              - key: CLOUDINARY_CLOUD_NAME
+                sync: false
+              - key: CLOUDINARY_API_KEY
+                sync: false
+              - key: CLOUDINARY_API_SECRET
+                sync: false
+              - key: IMEI_CHECK_API_KEY
+                sync: false
+              - key: IFREE_ICLOUD_API_KEY
+                sync: false
 
-  # ─── Frontend ────────────────────────────────────────────
-  - type: web
-    name: veribuy-frontend
-    runtime: docker
-    plan: starter
-    region: frankfurt
-    dockerfilePath: frontend/Dockerfile
-    dockerContext: .
-    healthCheckPath: /
-    envVars:
-      - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-        sync: false
-      # Shared Redis access for the BFF (server-side only — reads cached IMEI
-      # check status). NOT a NEXT_PUBLIC_ var, so it never reaches the browser.
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: veribuy-redis
-          property: connectionString
-      - key: REDIS_TLS
-        value: 'false'
-      - fromGroup: veribuy-secrets
+          # ─── Frontend ────────────────────────────────────────────
+          - type: web
+            name: veribuy-frontend
+            runtime: docker
+            plan: 0.5c-512mb
+            region: frankfurt
+            dockerfilePath: frontend/Dockerfile
+            dockerContext: .
+            healthCheckPath: /
+            envVars:
+              # Public publishable key — safe as NEXT_PUBLIC_ (not the secret).
+              - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+                sync: false
+              # Keep the browser-visible fee rate in lockstep with the backend.
+              - key: NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT
+                value: '5'
+              # Shared Redis access for the BFF (server-side only — reads
+              # cached IMEI status). NOT a NEXT_PUBLIC_ var, never reaches the browser.
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: veribuy-redis
+                  property: connectionString
+              - key: REDIS_TLS
+                value: 'false'
+              # Shared group is required — see note at top of file.
+              - fromGroup: veribuy-secrets
 
-  # ─── Redis (Cache + IMEI job queue) ────────────────────────
-  # Doubles as the durable IMEI-check job queue (see ImeiCheckWorker) so it must
-  # NOT evict queued jobs under memory pressure — hence noeviction, not LRU.
-  # Note: the free plan has no disk persistence (data lost on restart). For the
-  # IMEI queue to survive a Redis restart, upgrade to a paid plan (persistence
-  # becomes journal-snapshot automatically).
-  - type: keyvalue
-    name: veribuy-redis
-    plan: free
-    region: frankfurt
-    ipAllowList: []
-    maxmemoryPolicy: noeviction
-    persistenceMode: off
+          # ─── Redis (Cache + IMEI job queue) ────────────────────────
+          # Doubles as the durable IMEI-check job queue (see ImeiCheckWorker),
+          # so it must NOT evict queued jobs under pressure — hence noeviction.
+          # Paid plan + journal-snapshot persistence: losing in-flight IMEI
+          # verification would break seller onboarding and the audit trail.
+          - type: keyvalue
+            name: veribuy-redis
+            plan: 256mb # journal-snapshot persistence — do not downgrade to free
+            region: frankfurt
+            ipAllowList: []
+            maxmemoryPolicy: noeviction
+            persistenceMode: journal-snapshot
 
-databases:
-  # basic-256mb (~$6/mo). Free tier exists but expires in 30 days and deletes data.
-  - name: veribuy-postgres
-    postgresMajorVersion: '17'
-    plan: basic-256mb
-    region: frankfurt
-    databaseName: veribuy
-    ipAllowList: []
+        databases:
+          # 0.1c-256mb — paid tier with daily backups. The free tier expires in
+          # 30 days and deletes data, which is unacceptable for orders.
+          - name: veribuy-postgres
+            postgresMajorVersion: '17'
+            plan: 0.1c-256mb
+            region: frankfurt
+            databaseName: veribuy
+            ipAllowList: []
 
-envVarGroups:
-  - name: veribuy-secrets
-    envVars:
-      - key: JWT_SECRET
-        generateValue: true
-      - key: JWT_REFRESH_SECRET
-        generateValue: true
-      - key: INTERNAL_SERVICE_SECRET
-        generateValue: true
-      - key: INTERNAL_SERVICE_TOKEN
-        generateValue: true
+        envVarGroups:
+          - name: veribuy-secrets
+            envVars:
+              - key: JWT_SECRET
+                generateValue: true
+              - key: JWT_REFRESH_SECRET
+                generateValue: true
+              - key: INTERNAL_SERVICE_TOKEN
+                generateValue: true
+              # Only values actually read by the codebase are provisioned —
+              # the old INTERNAL_SERVICE_SECRET alias was intentionally removed.
+

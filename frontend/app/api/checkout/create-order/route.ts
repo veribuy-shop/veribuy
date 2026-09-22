@@ -33,18 +33,22 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
-    // Validate required fields (buyerId now comes from JWT, not body)
+    // NOTE: `amount` and `shippingFee` are display hints only. The backend
+    // derives the authoritative price from the listing and recomputes shipping
+    // via the Royal Mail rate engine, rejecting the order if the client's
+    // figure is stale. They are forwarded solely so the backend can detect and
+    // surface a stale-price mismatch to the buyer.
     const { sellerId, listingId, amount, currency, shippingAddress, shippingFee, shippingService } = body;
 
-    if (!sellerId || !listingId || !amount || !currency) {
+    if (!sellerId || !listingId || !currency) {
       return NextResponse.json(
-        { error: 'Missing required fields: sellerId, listingId, amount, and currency are required' },
+        { error: 'Missing required fields: sellerId, listingId, and currency are required' },
         { status: 400 }
       );
     }
 
-    // Validate amount is a positive number
-    if (typeof amount !== 'number' || amount <= 0) {
+    // Validate amount shape if supplied (value is authoritative server-side)
+    if (amount !== undefined && amount !== null && (typeof amount !== 'number' || amount <= 0)) {
       return NextResponse.json(
         { error: 'Amount must be a positive number' },
         { status: 400 }
@@ -62,9 +66,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate shippingService if provided
-    if (shippingService && !['TRACKED_24', 'TRACKED_48'].includes(shippingService)) {
+    if (shippingService && !['TRACKED_24', 'TRACKED_48', 'SPECIAL_DELIVERY_1PM'].includes(shippingService)) {
       return NextResponse.json(
-        { error: 'Shipping service must be TRACKED_24 or TRACKED_48' },
+        { error: 'Shipping service must be TRACKED_24, TRACKED_48 or SPECIAL_DELIVERY_1PM' },
         { status: 400 },
       );
     }
@@ -98,7 +102,7 @@ export async function POST(req: NextRequest) {
         buyerId,
         sellerId,
         listingId,
-        amount,
+        amount: amount ?? undefined,
         currency,
         shippingAddress,
         shippingFee: shippingFee ?? undefined,

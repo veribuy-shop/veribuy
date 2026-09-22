@@ -266,7 +266,9 @@ function DashboardContent() {
       } else {
         setIsDarkMode(false);
       }
-    } catch {}
+    } catch {
+      // Theme preference is non-critical — ignore storage access errors.
+    }
   }, [user?.id]);
 
   const setThemeMode = (mode: 'light' | 'dark') => {
@@ -274,7 +276,9 @@ function DashboardContent() {
     if (!user?.id) return;
     try {
       localStorage.setItem(`veribuy_dashboard_theme_${user.id}`, mode);
-    } catch {}
+    } catch {
+      // Theme preference is non-critical — ignore storage access errors.
+    }
   };
 
   const fetchAll = useCallback(async () => {

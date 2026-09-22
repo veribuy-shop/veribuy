@@ -209,7 +209,7 @@ export default function MakeOfferModal({
                 Offer Sent to Seller!
               </h3>
               <p className="text-sm text-gray-600 max-w-sm mx-auto mb-4">
-                Your offer of <strong className="text-emerald-700 font-bold">{formatPrice(numericOffer, currency)}</strong> has been delivered to the seller's inbox. You will receive an alert as soon as they respond.
+                Your offer of <strong className="text-emerald-700 font-bold">{formatPrice(numericOffer, currency)}</strong> has been delivered to the seller&apos;s inbox. You will receive an alert as soon as they respond.
               </p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-xs text-gray-600">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
@@ -316,7 +316,7 @@ export default function MakeOfferModal({
               <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 flex items-start gap-2.5 text-xs text-emerald-900">
                 <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <p className="leading-relaxed">
-                  <strong>Zero-Risk Negotiation:</strong> Offers are non-binding. If the seller accepts, you pay through VeriBuy's 48-hour Escrow Protection.
+                  <strong>Zero-Risk Negotiation:</strong> Offers are non-binding. If the seller accepts, you pay through VeriBuy&apos;s 48-hour Escrow Protection.
                 </p>
               </div>
 

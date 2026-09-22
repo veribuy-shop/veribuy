@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   CircleCheck,
   Mail,
@@ -304,7 +305,7 @@ export default function ContactPage() {
                 <span>Security &amp; Disputes</span>
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Need to escalate a device condition mismatch? Open an order dispute directly from your <a href="/orders" className="text-[var(--color-green)] font-bold hover:underline">Orders Dashboard</a> to preserve your 48-hour (2 days) inspection return window.
+                Need to escalate a device condition mismatch? Open an order dispute directly from your <Link href="/orders" className="text-[var(--color-green)] font-bold hover:underline">Orders Dashboard</Link> to preserve your 48-hour (2 days) inspection return window.
               </p>
             </div>
           </div>

@@ -96,7 +96,7 @@ export function formatAuctionCountdown(endsAt: string | Date | null | undefined)
   const hours = Math.floor((totalMs / (1000 * 60 * 60)) % 24);
   const days = Math.floor(totalMs / (1000 * 60 * 60 * 24));
 
-  let formatted = '';
+  let formatted: string;
   if (days > 0) {
     formatted = `${days}d ${hours}h ${minutes}m`;
   } else if (hours > 0) {

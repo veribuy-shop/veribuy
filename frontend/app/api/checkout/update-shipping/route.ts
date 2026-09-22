@@ -26,6 +26,8 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
+    // NOTE: `shippingFee` is a display hint only — the backend always recomputes
+    // the authoritative fee from the listing weight profile and destination.
     const { orderId, shippingFee, shippingService } = body;
 
     if (!orderId) {
@@ -35,16 +37,16 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    if (typeof shippingFee !== 'number' || shippingFee < 0) {
+    if (shippingFee !== undefined && shippingFee !== null && (typeof shippingFee !== 'number' || shippingFee < 0)) {
       return NextResponse.json(
         { error: 'shippingFee must be a non-negative number' },
         { status: 400 },
       );
     }
 
-    if (!shippingService || !['TRACKED_24', 'TRACKED_48'].includes(shippingService)) {
+    if (!shippingService || !['TRACKED_24', 'TRACKED_48', 'SPECIAL_DELIVERY_1PM'].includes(shippingService)) {
       return NextResponse.json(
-        { error: 'shippingService must be TRACKED_24 or TRACKED_48' },
+        { error: 'shippingService must be TRACKED_24, TRACKED_48 or SPECIAL_DELIVERY_1PM' },
         { status: 400 },
       );
     }
@@ -54,7 +56,7 @@ export async function PATCH(req: NextRequest) {
       {
         method: 'PATCH',
         headers: createAuthHeaders(authResult.token),
-        body: JSON.stringify({ shippingFee, shippingService }),
+        body: JSON.stringify({ shippingFee: shippingFee ?? undefined, shippingService }),
       },
     );
 

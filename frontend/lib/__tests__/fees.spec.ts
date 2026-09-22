@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   getBuyerProtectionFeePercent,
   getBuyerProtectionFeeRate,
@@ -36,5 +36,29 @@ describe('Fee calculation utilities', () => {
     expect(getBuyerProtectionFeePercent()).toBe(8);
     expect(getBuyerProtectionFeeRate()).toBe(0.08);
     expect(calculateProtectionFee(100)).toBe(8);
+  });
+
+  // SECURITY REGRESSION: the fee rate must never be sourced from client-writable
+  // storage. A tampered localStorage value must have no effect on the rate.
+  it('ignores a tampered localStorage override', () => {
+    const store: Record<string, string> = {
+      veribuy_buyer_protection_fee_percent: '0',
+    };
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => {
+        store[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+    });
+
+    process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT = '5';
+
+    expect(getBuyerProtectionFeePercent()).toBe(5);
+    expect(calculateProtectionFee(200)).toBe(10);
+
+    vi.unstubAllGlobals();
   });
 });
