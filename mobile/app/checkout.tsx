@@ -33,6 +33,8 @@ export default function CheckoutScreen() {
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('United Kingdom');
 
+  const [cardholderName, setCardholderName] = useState(user?.name || '');
+
   const itemPrice = Number(params.amount || listing?.price || 0);
   const feePercent = getBuyerProtectionFeePercent();
   const protectionFee = calculateBuyerProtectionFee(itemPrice, feePercent);
@@ -49,7 +51,7 @@ export default function CheckoutScreen() {
         merchantDisplayName: 'VeriBuy',
         allowsDelayedPaymentMethods: false,
         defaultBillingDetails: {
-          name,
+          name: (cardholderName || name).trim(),
           address: {
             line1,
             line2: line2 || undefined,
@@ -66,7 +68,7 @@ export default function CheckoutScreen() {
     } finally {
       setLoading(false);
     }
-  }, [params.listingId, params.clientSecret]);
+  }, [params.listingId, params.clientSecret, cardholderName, name, line1, line2, city, state, postalCode, country]);
 
   useEffect(() => {
     load();
@@ -75,6 +77,10 @@ export default function CheckoutScreen() {
   const onPay = async () => {
     if (!name || !line1 || !city || !postalCode || !country) {
       Alert.alert('Missing fields', 'Please complete your shipping address.');
+      return;
+    }
+    if (!cardholderName || cardholderName.trim().length < 2) {
+      Alert.alert('Missing field', 'Please enter the exact name as it appears on your card.');
       return;
     }
     try {
@@ -92,7 +98,7 @@ export default function CheckoutScreen() {
     }
   };
 
-  const shippingComplete = name && line1 && city && postalCode && country;
+  const shippingComplete = name && line1 && city && postalCode && country && cardholderName.trim().length >= 2;
 
   if (loading) {
     return (
@@ -130,10 +136,10 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        {/* Shipping Address */}
+        {/* Delivery Address */}
         <Card>
           <Text className="font-semibold text-text mb-3">Delivery address</Text>
-          <Input label="Recipient full name *" value={name} onChangeText={setName} />
+          <Input label="Recipient full name *" value={name} onChangeText={(v) => { setName(v); if (!cardholderName) setCardholderName(v); }} />
           <Input label="Address line 1 *" value={line1} onChangeText={setLine1} />
           <Input label="Address line 2 (Optional)" value={line2} onChangeText={setLine2} />
           <View className="flex-row">
@@ -144,6 +150,20 @@ export default function CheckoutScreen() {
             <View className="flex-1 mr-1"><Input label="Postcode *" value={postalCode} onChangeText={setPostalCode} /></View>
             <View className="flex-1 ml-1"><Input label="Country *" value={country} onChangeText={setCountry} /></View>
           </View>
+        </Card>
+
+        {/* Payment & Cardholder Information */}
+        <Card>
+          <Text className="font-semibold text-text mb-1">Payment information</Text>
+          <Input
+            label="Name on card *"
+            value={cardholderName}
+            onChangeText={setCardholderName}
+            placeholder="e.g. JANE SMITH"
+          />
+          <Text className="text-[11px] text-text-muted mt-1 leading-snug">
+            🛡️ The name on your card must match what you enter here for 3D Secure bank authorization and anti-fraud verification.
+          </Text>
         </Card>
 
         {/* Itemized Order Summary */}

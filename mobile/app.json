@@ -3,6 +3,8 @@
     "name": "VeriBuy",
     "slug": "veribuy",
     "version": "1.0.0",
+    "description": "Verification-led marketplace for pre-owned and refurbished electronic devices.",
+    "primaryColor": "#232F3E",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "veribuy",
@@ -11,19 +13,62 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#232F3E"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.veribuy.app"
+      "bundleIdentifier": "com.veribuy.app",
+      "buildNumber": "1",
+      "associatedDomains": [
+        "applinks:veribuy.shop",
+        "applinks:www.veribuy.shop"
+      ],
+      "infoPlist": {
+        "NSCameraUsageDescription": "VeriBuy requires camera access to capture device verification photos, IMEI barcodes, and listing evidence.",
+        "NSPhotoLibraryUsageDescription": "VeriBuy requires photo library access to upload images of devices, verification evidence, and profile photos.",
+        "NSPhotoLibraryAddUsageDescription": "VeriBuy requires permission to save shipping labels, receipts, and order invoices to your photo library.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.veribuy.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#232F3E"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "veribuy.shop"
+            },
+            {
+              "scheme": "https",
+              "host": "www.veribuy.shop"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -36,16 +81,18 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.veribuy",
-          "enableGooglePay": false
+          "merchantIdentifier": "merchant.com.veribuy",
+          "enableGooglePay": true
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow VeriBuy to access your photos so you can add evidence to your listings."
+          "photosPermission": "Allow VeriBuy to access your photos so you can add evidence to your listings.",
+          "cameraPermission": "Allow VeriBuy to access your camera so you can take photos and evidence for device verification."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
