@@ -8,3 +8,4 @@
  */
 export * from './weight-mapping';
 export * from './royal-mail-rates';
+export * from './click-and-drop-types';

@@ -15,7 +15,7 @@ import { RateOrderDto } from './dto/rate-order.dto';
 import Stripe from 'stripe';
 import { PaginationDto, PaginatedResponse, getInternalApiUrl, RoyalMailServiceTier } from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
-import { RoyalMailService } from '../shipping/royal-mail.service';
+import { RoyalMailService, ShippingLabelOrderData } from '../shipping/royal-mail.service';
 
 /**
  * The party performing a status transition, resolved per-order.
@@ -399,11 +399,13 @@ export class TransactionsService implements OnModuleInit {
   }
 
   async confirmPayment(orderId: string, paymentIntentId: string) {
-    // Retrieve payment intent from Stripe for server-side verification
-    const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+    // Retrieve payment intent from Stripe with expanded payment method for server-side verification
+    const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['payment_method'],
+    });
 
     if (paymentIntent.status !== 'succeeded') {
-      throw new BadRequestException('Payment not completed');
+      throw new BadRequestException('Payment was not completed or was declined by issuing bank');
     }
 
     // Idempotency guard: if the order is already in ESCROW_HELD or PAYMENT_RECEIVED
@@ -416,6 +418,28 @@ export class TransactionsService implements OnModuleInit {
     // Verify the paymentIntentId matches what was stored at order creation
     if (existingOrder.paymentIntentId && existingOrder.paymentIntentId !== paymentIntentId) {
       throw new BadRequestException('Payment intent ID does not match this order');
+    }
+
+    // Amount & currency verification to prevent tampering
+    const expectedAmountInMinorUnits = Math.round(Number(existingOrder.totalAmount ?? existingOrder.amount) * 100);
+    if (paymentIntent.amount < expectedAmountInMinorUnits) {
+      this.logger.error(
+        `Payment intent amount mismatch for order ${orderId}: received ${paymentIntent.amount}, expected ${expectedAmountInMinorUnits}`,
+      );
+      throw new BadRequestException('Charged amount does not match order total');
+    }
+
+    if (paymentIntent.currency.toLowerCase() !== (existingOrder.currency || 'gbp').toLowerCase()) {
+      throw new BadRequestException('Currency mismatch on payment confirmation');
+    }
+
+    // Validate and log verified cardholder name from Stripe payment method
+    const paymentMethod = paymentIntent.payment_method as Stripe.PaymentMethod | null;
+    const cardholderName = paymentMethod?.billing_details?.name;
+    if (!cardholderName || cardholderName.trim().length < 2) {
+      this.logger.warn(`PaymentIntent ${paymentIntentId} for order ${orderId} confirmed without cardholder billing name`);
+    } else {
+      this.logger.log(`Verified cardholder name for order ${orderId}: ${cardholderName.trim().substring(0, 3)}***`);
     }
 
     if (
@@ -1518,7 +1542,7 @@ export class TransactionsService implements OnModuleInit {
     const parcelWeightGrams = order.parcelWeightGrams || 320;
     const parcelFormat = order.parcelFormat || 'SMALL_PARCEL';
 
-    return this.royalMailService.generateShippingLabelPdf({
+    const labelData: ShippingLabelOrderData = {
       orderId: order.id,
       trackingNumber,
       service: order.shippingService || 'TRACKED_48',
@@ -1536,7 +1560,30 @@ export class TransactionsService implements OnModuleInit {
       recipientPostcode: shippingAddr.postalCode || buyerProfile?.address?.postalCode || 'SW1A 1AA',
       recipientPhone: shippingAddr.phone || buyerProfile?.phone || undefined,
       createdAt: order.createdAt,
-    });
+    };
+
+    if (this.royalMailService.getApiKey()) {
+      const clickDropResult = await this.royalMailService.createClickDropOrder(labelData, {
+        itemPrice: Number(order.amount),
+        shippingCost: Number(order.shippingFee || 0),
+      });
+
+      if (clickDropResult.success) {
+        if (clickDropResult.trackingNumber && !order.trackingNumber) {
+          await this.prisma.order
+            .update({
+              where: { id: order.id },
+              data: { trackingNumber: clickDropResult.trackingNumber },
+            })
+            .catch((err) => this.logger.warn(`Failed to update tracking number on order: ${err.message}`));
+        }
+        if (clickDropResult.labelPdfBuffer) {
+          return clickDropResult.labelPdfBuffer;
+        }
+      }
+    }
+
+    return this.royalMailService.generateShippingLabelPdf(labelData);
   }
 
   /**

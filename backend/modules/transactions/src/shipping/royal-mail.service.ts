@@ -7,6 +7,11 @@ import {
   calculateRoyalMailRate,
   RoyalMailRateBreakdown,
   RoyalMailParcelFormat,
+  ClickDropCreateOrdersRequest,
+  ClickDropCreateOrdersResponse,
+  ClickDropOrderInfo,
+  ClickDropPackageFormat,
+  ClickDropUpdateOrdersStatusRequest,
 } from '@veribuy/common';
 
 export interface DropoffLocation {
@@ -52,6 +57,270 @@ export interface ShippingLabelOrderData {
 @Injectable()
 export class RoyalMailService {
   private readonly logger = new Logger(RoyalMailService.name);
+
+  /**
+   * Retrieves the configured Royal Mail API Base URL (defaults to v1 Parcel API).
+   */
+  getApiUrl(): string {
+    return (process.env.ROYAL_MAIL_API_URL || 'https://api.parcel.royalmail.com/api/v1').replace(/\/$/, '');
+  }
+
+  /**
+   * Retrieves the configured Click & Drop API Key.
+   */
+  getApiKey(): string | undefined {
+    return process.env.ROYAL_MAIL_CLICK_DROP_KEY;
+  }
+
+  /**
+   * Creates an order in Royal Mail Click & Drop system via REST API.
+   * Base URL: https://api.parcel.royalmail.com/api/v1
+   */
+  async createClickDropOrder(
+    data: ShippingLabelOrderData,
+    options?: { itemPrice?: number; shippingCost?: number; serviceCode?: string },
+  ): Promise<{
+    success: boolean;
+    orderIdentifier?: number;
+    trackingNumber?: string;
+    labelPdfBuffer?: Buffer;
+    error?: string;
+  }> {
+    const apiKey = this.getApiKey();
+    const apiUrl = this.getApiUrl();
+
+    if (!apiKey) {
+      this.logger.debug('ROYAL_MAIL_CLICK_DROP_KEY not set; skipping live Click & Drop order creation');
+      return { success: false, error: 'ROYAL_MAIL_CLICK_DROP_KEY not configured' };
+    }
+
+    try {
+      const formatMap: Record<string, ClickDropPackageFormat> = {
+        SMALL_PARCEL: 'smallParcel',
+        MEDIUM_PARCEL: 'mediumParcel',
+        LARGE_PARCEL: 'largeParcel',
+        LETTER: 'letter',
+        LARGE_LETTER: 'largeLetter',
+      };
+
+      const packageFormat = formatMap[data.parcelFormat] || 'smallParcel';
+      const itemValue = options?.itemPrice && options.itemPrice > 0 ? Number(options.itemPrice) : 100.0;
+      const shippingCost = options?.shippingCost && options.shippingCost >= 0 ? Number(options.shippingCost) : 4.5;
+      const total = Number((itemValue + shippingCost).toFixed(2));
+
+      const payload: ClickDropCreateOrdersRequest = {
+        items: [
+          {
+            orderReference: `VB-${data.orderId.substring(0, 30)}`,
+            orderDate: data.createdAt ? new Date(data.createdAt).toISOString() : new Date().toISOString(),
+            subtotal: itemValue,
+            shippingCostCharged: shippingCost,
+            total,
+            currencyCode: 'GBP',
+            recipient: {
+              address: {
+                fullName: data.recipientName,
+                addressLine1: data.recipientAddressLine1,
+                addressLine2: data.recipientAddressLine2 || undefined,
+                city: data.recipientTown,
+                postcode: data.recipientPostcode,
+                countryCode: 'GB',
+              },
+              phoneNumber: data.recipientPhone || undefined,
+            },
+            billing: {
+              address: {
+                fullName: data.recipientName,
+                addressLine1: data.recipientAddressLine1,
+                addressLine2: data.recipientAddressLine2 || undefined,
+                city: data.recipientTown,
+                postcode: data.recipientPostcode,
+                countryCode: 'GB',
+              },
+              phoneNumber: data.recipientPhone || undefined,
+            },
+            sender: {
+              address: {
+                fullName: data.senderName,
+                addressLine1: data.senderAddressLine1,
+                city: data.senderTown,
+                postcode: data.senderPostcode,
+                countryCode: 'GB',
+              },
+            },
+            packages: [
+              {
+                weightInGrams: Math.max(1, Math.min(30000, data.parcelWeightGrams || 350)),
+                packageFormatIdentifier: packageFormat,
+                contents: [
+                  {
+                    name: data.itemTitle ? data.itemTitle.substring(0, 100) : 'Electronic Device',
+                    quantity: 1,
+                    unitValue: itemValue,
+                    unitWeightInGrams: Math.max(1, data.parcelWeightGrams || 350),
+                  },
+                ],
+              },
+            ],
+            postageDetails: options?.serviceCode
+              ? {
+                  serviceCode: options.serviceCode,
+                  receiveEmailNotification: true,
+                  receiveSmsNotification: Boolean(data.recipientPhone),
+                }
+              : undefined,
+            label: {
+              includeLabelInResponse: true,
+            },
+          },
+        ],
+      };
+
+      const response = await fetch(`${apiUrl}/orders`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        this.logger.warn(`Royal Mail Click & Drop API error (${response.status}): ${errorBody}`);
+        return { success: false, error: `HTTP ${response.status}: ${errorBody}` };
+      }
+
+      const result = (await response.json()) as ClickDropCreateOrdersResponse;
+
+      if (result.createdOrders && result.createdOrders.length > 0) {
+        const created = result.createdOrders[0];
+        let labelPdfBuffer: Buffer | undefined;
+
+        if (created.label) {
+          labelPdfBuffer = Buffer.from(created.label, 'base64');
+        }
+
+        return {
+          success: true,
+          orderIdentifier: created.orderIdentifier,
+          trackingNumber: created.trackingNumber,
+          labelPdfBuffer,
+        };
+      }
+
+      if (result.failedOrders && result.failedOrders.length > 0) {
+        const firstFail = result.failedOrders[0];
+        const errorMsg = firstFail.errors?.map((e) => e.errorMessage).join(', ') || 'Unknown error creating order';
+        this.logger.warn(`Royal Mail Click & Drop order rejected: ${errorMsg}`);
+        return { success: false, error: errorMsg };
+      }
+
+      return { success: false, error: 'No order returned from Click & Drop API' };
+    } catch (err: any) {
+      this.logger.error(`Error connecting to Royal Mail Click & Drop API: ${err.message}`, err.stack);
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * Fetches the official PDF shipping label for one or more orders from Click & Drop.
+   */
+  async fetchClickDropLabelPdf(orderIdentifiers: number | string): Promise<Buffer | null> {
+    const apiKey = this.getApiKey();
+    const apiUrl = this.getApiUrl();
+
+    if (!apiKey) return null;
+
+    try {
+      const response = await fetch(`${apiUrl}/orders/${orderIdentifiers}/label`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/pdf',
+        },
+      });
+
+      if (!response.ok) {
+        this.logger.warn(`Failed to fetch label from Click & Drop API: HTTP ${response.status}`);
+        return null;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    } catch (err: any) {
+      this.logger.error(`Error fetching label PDF from Click & Drop: ${err.message}`, err.stack);
+      return null;
+    }
+  }
+
+  /**
+   * Fetches order information and status from Royal Mail Click & Drop API.
+   */
+  async fetchClickDropOrderInfo(orderIdentifiers: number | string): Promise<ClickDropOrderInfo[] | null> {
+    const apiKey = this.getApiKey();
+    const apiUrl = this.getApiUrl();
+
+    if (!apiKey) return null;
+
+    try {
+      const response = await fetch(`${apiUrl}/orders/${orderIdentifiers}`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return (await response.json()) as ClickDropOrderInfo[];
+    } catch (err: any) {
+      this.logger.error(`Error retrieving order from Click & Drop: ${err.message}`, err.stack);
+      return null;
+    }
+  }
+
+  /**
+   * Updates order dispatch or tracking status in Royal Mail Click & Drop.
+   */
+  async updateClickDropOrderStatus(
+    orderIdentifier: number,
+    status: 'new' | 'despatched' | 'cancelled',
+    trackingNumber?: string,
+  ): Promise<boolean> {
+    const apiKey = this.getApiKey();
+    const apiUrl = this.getApiUrl();
+
+    if (!apiKey) return false;
+
+    try {
+      const payload: ClickDropUpdateOrdersStatusRequest = {
+        orders: [
+          {
+            orderIdentifier,
+            status,
+            trackingNumber,
+          },
+        ],
+      };
+
+      const response = await fetch(`${apiUrl}/orders/status`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      return response.ok;
+    } catch (err: any) {
+      this.logger.error(`Error updating order status in Click & Drop: ${err.message}`, err.stack);
+      return false;
+    }
+  }
 
   /**
    * Generates a realistic Royal Mail tracking number based on the shipping service tier.

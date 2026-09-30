@@ -67,6 +67,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
+  const { user } = useAuth();
 
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -75,7 +76,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
 
   // Shipping address form state
   const [shippingAddress, setShippingAddress] = useState({
-    name: '',
+    name: user?.name || '',
     line1: '',
     line2: '',
     city: '',
@@ -84,9 +85,17 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
     country: 'GB',
   });
 
+  // Cardholder name state
+  const [cardholderName, setCardholderName] = useState(user?.name || '');
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setShippingAddress(prev => ({ ...prev, [name]: value }));
+    setShippingAddress(prev => {
+      if (name === 'name' && (!cardholderName || cardholderName === prev.name)) {
+        setCardholderName(value);
+      }
+      return { ...prev, [name]: value };
+    });
     if (name === 'postal_code') {
       onPostcodeChange(value);
     }
@@ -140,6 +149,12 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
 
     if (!shippingQuote) {
       errors.postal_code = 'Enter a valid UK postcode to calculate shipping';
+    }
+
+    if (!cardholderName || cardholderName.trim().length < 2) {
+      errors.cardholderName = 'Name on card is required and must match your payment card';
+    } else if (!/^[a-zA-Z\s\-'.]+$/.test(cardholderName.trim())) {
+      errors.cardholderName = 'Please enter a valid cardholder name (letters, spaces, and hyphens only)';
     }
 
     setValidationErrors(errors);
@@ -197,14 +212,16 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
         }
       }
 
-      // Step 2: Confirm payment with Stripe using PaymentElement
+      // Step 2: Confirm payment with Stripe using PaymentElement and verified cardholder billing details
       const { error: stripeError, paymentIntent } = await stripe.confirmPayment({
         elements,
         confirmParams: {
           return_url: `${window.location.origin}/orders/${pendingOrder.id}`,
           payment_method_data: {
             billing_details: {
-              name: shippingAddress.name,
+              name: cardholderName.trim(),
+              email: user?.email || undefined,
+              phone: (user as any)?.phone || undefined,
               address: {
                 line1: shippingAddress.line1,
                 line2: shippingAddress.line2 || undefined,
@@ -503,16 +520,83 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
       </div>
 
       {/* Payment Information */}
-      <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
-        <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Payment Information</h2>
+      <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-[var(--color-text)]">Payment Information</h2>
+          <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 font-medium px-2.5 py-1 rounded-full">
+            <Lock className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>256-Bit Escrow Security</span>
+          </div>
+        </div>
 
-        <div className="border border-[var(--color-border)] rounded-lg p-4">
-          <PaymentElement
-            options={{
-              layout: 'tabs',
-              wallets: { applePay: 'never', googlePay: 'never', link: 'never' },
+        {/* Name on Card Input */}
+        <div>
+          <div className="flex items-baseline justify-between mb-1">
+            <label htmlFor="cardholder-name" className="block text-sm font-medium text-[var(--color-text)]">
+              Name on Card <span className="text-[var(--color-danger)]">*</span>
+            </label>
+            <span className="text-xs text-[var(--color-text-muted)]">Exact name on card</span>
+          </div>
+          <input
+            id="cardholder-name"
+            type="text"
+            name="cardholderName"
+            required
+            autoComplete="cc-name"
+            value={cardholderName}
+            onChange={(e) => {
+              setCardholderName(e.target.value);
+              if (validationErrors.cardholderName) {
+                setValidationErrors(prev => {
+                  const newErrors = { ...prev };
+                  delete newErrors.cardholderName;
+                  return newErrors;
+                });
+              }
             }}
+            aria-describedby={validationErrors.cardholderName ? 'error-cardholder' : 'cardholder-hint'}
+            aria-invalid={!!validationErrors.cardholderName}
+            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+              validationErrors.cardholderName ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+            }`}
+            placeholder="e.g. JANE SMITH"
           />
+          {validationErrors.cardholderName ? (
+            <p id="error-cardholder" className="mt-1 text-sm text-[var(--color-danger)]">
+              {validationErrors.cardholderName}
+            </p>
+          ) : (
+            <p id="cardholder-hint" className="mt-1.5 text-xs text-[var(--color-text-muted)] flex items-start gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
+              <span>Please ensure the name on the card matches what you enter here for anti-fraud verification and 3D Secure bank approval.</span>
+            </p>
+          )}
+        </div>
+
+        {/* Card Details Element */}
+        <div>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
+            Card Details
+          </label>
+          <div className="border border-[var(--color-border)] rounded-lg p-4 bg-white shadow-xs">
+            <PaymentElement
+              options={{
+                layout: 'tabs',
+                wallets: { applePay: 'never', googlePay: 'never', link: 'never' },
+                fields: {
+                  billingDetails: {
+                    name: 'never',
+                    address: 'never',
+                  },
+                },
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1 text-xs text-[var(--color-text-muted)]">
+          <Lock className="w-3.5 h-3.5 text-[var(--color-green)] shrink-0" aria-hidden="true" />
+          <span>Processed securely via Stripe Payments UK. Your full card details are encrypted and never stored on VeriBuy servers.</span>
         </div>
       </div>
 
