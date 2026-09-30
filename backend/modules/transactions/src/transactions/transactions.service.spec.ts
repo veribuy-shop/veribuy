@@ -28,6 +28,17 @@ describe('TransactionsService', () => {
         id: 'pi_test_123',
         amount: 52500,
       }),
+      retrieve: jest.fn().mockResolvedValue({
+        id: 'pi_test_123',
+        status: 'succeeded',
+        amount: 52500,
+        currency: 'gbp',
+        payment_method: {
+          billing_details: {
+            name: 'Jane Doe',
+          },
+        },
+      }),
     };
 
     prisma = {
@@ -564,5 +575,62 @@ describe('TransactionsService', () => {
       // PDF header signature check: %PDF-
       expect(buffer.toString('utf-8', 0, 5)).toBe('%PDF-');
     });
+
+    it('should confirm payment, verify cardholder name with Stripe, and transition order to ESCROW_HELD', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        id: 'ord-confirm-1',
+        paymentIntentId: 'pi_test_123',
+        amount: 500,
+        totalAmount: 525,
+        currency: 'gbp',
+        status: 'PENDING',
+        listingId: 'list-1',
+        shippingService: 'TRACKED_48',
+      });
+
+      prisma.order.update.mockResolvedValue({
+        id: 'ord-confirm-1',
+        status: 'ESCROW_HELD',
+        listingId: 'list-1',
+      });
+
+      prisma.escrowRecord.create.mockResolvedValue({
+        id: 'escrow-1',
+        status: 'HELD',
+        amount: 525,
+      });
+
+      prisma.listing.update.mockResolvedValue({ id: 'list-1', status: 'SOLD' });
+
+      const result = await service.confirmPayment('ord-confirm-1', 'pi_test_123');
+      expect(mockPaymentIntents.retrieve).toHaveBeenCalledWith('pi_test_123', {
+        expand: ['payment_method'],
+      });
+      expect(result.order.status).toBe('ESCROW_HELD');
+      expect(result.escrow?.status).toBe('HELD');
+    });
+
+    it('should reject payment confirmation if charged amount is lower than order total', async () => {
+      prisma.order.findUnique.mockResolvedValue({
+        id: 'ord-tamper-1',
+        paymentIntentId: 'pi_test_123',
+        amount: 500,
+        totalAmount: 525,
+        currency: 'gbp',
+        status: 'PENDING',
+      });
+
+      mockPaymentIntents.retrieve.mockResolvedValueOnce({
+        id: 'pi_test_123',
+        status: 'succeeded',
+        amount: 100, // Tampered amount (1.00 instead of 525.00)
+        currency: 'gbp',
+      });
+
+      await expect(service.confirmPayment('ord-tamper-1', 'pi_test_123')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
   });
 });
+
