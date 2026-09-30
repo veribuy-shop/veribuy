@@ -533,12 +533,79 @@ export class TransactionsService implements OnModuleInit {
       this.logger.error('Failed to send order confirmation emails to buyer and seller', err?.stack ?? err);
     });
 
+    // Auto-book order in Royal Mail Click & Drop — fire-and-forget
+    this.bookRoyalMailShipment(updatedOrder).catch((err) => {
+      this.logger.error('Failed to auto-book Royal Mail Click & Drop order', err?.stack ?? err);
+    });
+
     // Generate invoice — fire-and-forget
     this.generateInvoiceForOrder(updatedOrder).catch((err) => {
       this.logger.error('Failed to generate invoice for confirmed payment', err?.stack ?? err);
     });
 
     return { order: updatedOrder, escrow };
+  }
+
+  /**
+   * Automatically books the shipment in Royal Mail Click & Drop upon payment confirmation.
+   * Fire-and-forget so that it never blocks the payment response.
+   */
+  private async bookRoyalMailShipment(order: any): Promise<void> {
+    if (!this.royalMailService.getApiKey()) return;
+
+    try {
+      const [seller, sellerProfile, buyer, buyerProfile] = await Promise.all([
+        this.prisma.user.findUnique({ where: { id: order.sellerId }, select: { name: true } }),
+        this.prisma.profile.findUnique({ where: { userId: order.sellerId }, include: { address: true } }),
+        this.prisma.user.findUnique({ where: { id: order.buyerId }, select: { name: true } }),
+        this.prisma.profile.findUnique({ where: { userId: order.buyerId }, include: { address: true } }),
+      ]);
+
+      const shippingAddr = (order.shippingAddress as Record<string, any>) || {};
+
+      const labelData: ShippingLabelOrderData = {
+        orderId: order.id,
+        trackingNumber:
+          order.trackingNumber ||
+          this.royalMailService.generateTrackingNumber(order.shippingService || 'TRACKED_48'),
+        service: order.shippingService || 'TRACKED_48',
+        parcelWeightGrams: order.parcelWeightGrams || 350,
+        parcelFormat: order.parcelFormat || 'SMALL_PARCEL',
+        itemTitle: order.listingTitle || 'Verified Device',
+        senderName: seller?.name || sellerProfile?.displayName || 'VeriBuy Verified Seller',
+        senderAddressLine1: sellerProfile?.address?.line1 || '10 VeriBuy Logistics Hub',
+        senderTown: sellerProfile?.address?.city || 'London',
+        senderPostcode: sellerProfile?.address?.postalCode || 'EC1A 1BB',
+        recipientName: shippingAddr.name || buyer?.name || buyerProfile?.displayName || 'Customer',
+        recipientAddressLine1: shippingAddr.line1 || buyerProfile?.address?.line1 || '123 High Street',
+        recipientAddressLine2: shippingAddr.line2 || buyerProfile?.address?.line2 || undefined,
+        recipientTown: shippingAddr.city || buyerProfile?.address?.city || 'London',
+        recipientPostcode: shippingAddr.postalCode || buyerProfile?.address?.postalCode || 'SW1A 1AA',
+        recipientPhone: shippingAddr.phone || buyerProfile?.phone || undefined,
+        createdAt: order.createdAt || new Date(),
+      };
+
+      const result = await this.royalMailService.createClickDropOrder(labelData, {
+        itemPrice: Number(order.amount),
+        shippingCost: Number(order.shippingFee || 0),
+      });
+
+      if (result.success) {
+        if (result.trackingNumber && result.trackingNumber !== order.trackingNumber) {
+          await this.prisma.order
+            .update({
+              where: { id: order.id },
+              data: { trackingNumber: result.trackingNumber },
+            })
+            .catch((err) => this.logger.warn(`Failed to update tracking number from Click & Drop: ${err.message}`));
+        }
+        this.logger.log(`Successfully auto-booked order ${order.id} in Royal Mail Click & Drop (ID: ${result.orderIdentifier})`);
+      } else {
+        this.logger.warn(`Royal Mail Click & Drop auto-booking skipped/rejected: ${result.error}`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Error auto-booking order ${order.id} with Royal Mail Click & Drop: ${err.message}`, err.stack);
+    }
   }
 
   /**
