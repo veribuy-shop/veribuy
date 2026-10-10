@@ -250,6 +250,7 @@ describe('UlistingsService', () => {
       prisma.listing.findUnique.mockResolvedValue(activeAuction);
       prisma.$transaction = jest.fn().mockImplementation(async (cb) => {
         return cb({
+          $queryRaw: jest.fn().mockResolvedValue([]),
           listing: {
             findUnique: jest.fn().mockResolvedValue(activeAuction),
             update: jest.fn().mockResolvedValue({
@@ -294,6 +295,7 @@ describe('UlistingsService', () => {
       let capturedEndsAt: Date | undefined;
       prisma.$transaction = jest.fn().mockImplementation(async (cb) => {
         return cb({
+          $queryRaw: jest.fn().mockResolvedValue([]),
           listing: {
             findUnique: jest.fn().mockResolvedValue(activeAuction),
             update: jest.fn().mockImplementation(({ data }) => {

@@ -9,6 +9,9 @@ export class RootController {
     return {
       service: 'veribuy-backend',
       status: 'ok',
+      frontendUrl: 'http://localhost:3010',
+      docsUrl: 'http://localhost:3000/docs',
+      message: 'VeriBuy Backend API is running. Access the web UI at http://localhost:3010',
       timestamp: new Date().toISOString(),
     };
   }

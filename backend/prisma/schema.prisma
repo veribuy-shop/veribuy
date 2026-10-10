@@ -5,8 +5,11 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["auth", "users", "listings", "trust_lens", "evidence", "transactions", "notifications"]
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AUTH DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
 
 model User {
   id                       String         @id @default(uuid())
@@ -22,9 +25,20 @@ model User {
   emailVerificationExpiry  DateTime?      @map("email_verification_expiry")
   passwordResetToken       String?        @map("password_reset_token")
   passwordResetExpiry      DateTime?      @map("password_reset_expiry")
-  refreshTokens            RefreshToken[]
   createdAt                DateTime       @default(now()) @map("created_at")
   updatedAt                DateTime       @updatedAt @map("updated_at")
+
+  // ── Relations ──────────────────────────────────────────────────────────
+  refreshTokens        RefreshToken[]
+  profile              Profile?
+  listings             Listing[]             @relation("SellerListings")
+  bids                 Bid[]                 @relation("BidderBids")
+  wonAuctions          Listing[]             @relation("HighestBidder")
+  purchases            Order[]               @relation("BuyerOrders")
+  sales                Order[]               @relation("SellerOrders")
+  notifications        NotificationLog[]
+  sentMessages         Message[]             @relation("SenderMessages")
+  receivedMessages     Message[]             @relation("RecipientMessages")
 
   @@index([role])
   @@index([isActive])
@@ -32,30 +46,33 @@ model User {
   @@index([deletedAt])
   @@index([emailVerificationToken])
   @@index([passwordResetToken])
-  @@schema("auth")
   @@map("users")
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid())
-  token     String   @unique
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime @map("expires_at")
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([expiresAt])
   @@index([revokedAt])
   @@index([userId, revokedAt])
-  @@schema("auth")
   @@map("refresh_tokens")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  USERS / PROFILES DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
 
 model Profile {
   id                 String             @id @default(uuid())
   userId             String             @unique @map("user_id")
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   displayName        String             @map("display_name")
   firstName          String?            @map("first_name")
   lastName           String?            @map("last_name")
@@ -81,7 +98,6 @@ model Profile {
   @@index([accountType])
   @@index([sellerRating])
   @@index([createdAt])
-  @@schema("users")
   @@map("profiles")
 }
 
@@ -98,13 +114,17 @@ model Address {
   isAddressVerified Boolean   @default(false) @map("is_address_verified")
   addressVerifiedAt DateTime? @map("address_verified_at")
 
-  @@schema("users")
   @@map("addresses")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LISTINGS DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
 
 model Listing {
   id              String          @id @default(uuid())
   sellerId        String          @map("seller_id")
+  seller          User            @relation("SellerListings", fields: [sellerId], references: [id], onDelete: Restrict)
   title           String
   description     String
   deviceType      DeviceType      @map("device_type")
@@ -124,6 +144,7 @@ model Listing {
   currentBid      Decimal?        @db.Decimal(10, 2) @map("current_bid")
   bidCount        Int             @default(0) @map("bid_count")
   highestBidderId String?         @map("highest_bidder_id")
+  highestBidder   User?           @relation("HighestBidder", fields: [highestBidderId], references: [id], onDelete: SetNull)
   highestMaxBid   Decimal?        @db.Decimal(10, 2) @map("highest_max_bid")
   auctionEndsAt   DateTime?       @map("auction_ends_at")
   buyItNowPrice   Decimal?        @db.Decimal(10, 2) @map("buy_it_now_price")
@@ -134,9 +155,15 @@ model Listing {
   trustLensStatus TrustLensStatus @default(PENDING) @map("trust_lens_status")
   viewCount       Int             @default(0) @map("view_count")
   publishedAt     DateTime?       @map("published_at")
-  bids            Bid[]
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  // ── Relations ──────────────────────────────────────────────────────────
+  bids                Bid[]
+  orders              Order[]
+  verificationRequest VerificationRequest?
+  evidencePack        EvidencePack?
+  messages            Message[]
 
   @@index([sellerId])
   @@index([status])
@@ -151,183 +178,193 @@ model Listing {
   @@index([status, createdAt(sort: Desc)])
   @@index([sellerId, createdAt(sort: Desc)])
   @@map("listings")
-  @@schema("listings")
 }
 
 model Bid {
-  id         String   @id @default(uuid())
-  listingId  String   @map("listing_id")
-  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  bidderId   String   @map("bidder_id")
-  amount     Decimal  @db.Decimal(10, 2)
-  maxBid     Decimal? @db.Decimal(10, 2) @map("max_bid")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  listingId String   @map("listing_id")
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidderId  String   @map("bidder_id")
+  bidder    User     @relation("BidderBids", fields: [bidderId], references: [id], onDelete: Restrict)
+  amount    Decimal  @db.Decimal(10, 2)
+  maxBid    Decimal? @db.Decimal(10, 2) @map("max_bid")
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@index([listingId])
   @@index([bidderId])
   @@index([listingId, amount(sort: Desc)])
-  @@schema("listings")
   @@map("bids")
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  TRUST LENS / VERIFICATION DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
+
 model VerificationRequest {
-  id                   String                   @id @default(uuid())
-  listingId            String                   @unique @map("listing_id")
-  sellerId             String                   @map("seller_id")
-  status               ReviewStatus             @default(PENDING)
-  conditionGrade       TrustLensConditionGrade? @map("condition_grade")
-  integrityFlags       TrustLensIntegrityFlag[] @map("integrity_flags")
-  reviewNotes          String?                  @map("review_notes")
+  id                   String               @id @default(uuid())
+  listingId            String               @unique @map("listing_id")
+  listing              Listing              @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  status               ReviewStatus         @default(PENDING)
+  conditionGrade       ConditionGrade?      @map("condition_grade")
+  integrityFlags       IntegrityFlag[]      @map("integrity_flags")
+  reviewNotes          String?              @map("review_notes")
   evidenceChecklist    EvidenceChecklist[]
   identifierValidation IdentifierValidation?
-  completedAt          DateTime?                @map("completed_at")
-  createdAt            DateTime                 @default(now()) @map("created_at")
-  updatedAt            DateTime                 @updatedAt @map("updated_at")
+  completedAt          DateTime?            @map("completed_at")
+  createdAt            DateTime             @default(now()) @map("created_at")
+  updatedAt            DateTime             @updatedAt @map("updated_at")
 
-  @@index([sellerId])
   @@index([status])
   @@index([createdAt])
   @@index([status, createdAt])
-  @@index([sellerId, status])
-  @@schema("trust_lens")
   @@map("verification_requests")
 }
 
 model EvidenceChecklist {
-  id                    String                   @id @default(uuid())
-  verificationRequestId String                   @map("verification_request_id")
-  verificationRequest   VerificationRequest      @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
-  type                  TrustLensEvidenceType
+  id                    String                @id @default(uuid())
+  verificationRequestId String                @map("verification_request_id")
+  verificationRequest   VerificationRequest   @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+  type                  ChecklistEvidenceType
   description           String
-  required              Boolean                  @default(true)
-  fulfilled             Boolean                  @default(false)
-  fulfilledAt           DateTime?                @map("fulfilled_at")
-  createdAt             DateTime                 @default(now()) @map("created_at")
+  required              Boolean               @default(true)
+  fulfilled             Boolean               @default(false)
+  fulfilledAt           DateTime?             @map("fulfilled_at")
+  createdAt             DateTime              @default(now()) @map("created_at")
 
   @@index([verificationRequestId])
   @@index([fulfilled])
   @@index([verificationRequestId, type, fulfilled])
-  @@schema("trust_lens")
   @@map("evidence_checklists")
 }
 
 model IdentifierValidation {
-  id                   String              @id @default(uuid())
+  id                    String              @id @default(uuid())
   verificationRequestId String              @unique @map("verification_request_id")
-  verificationRequest  VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
-  imei                 String?
-  serialNumber         String?             @map("serial_number")
-  imeiProvided         Boolean             @default(false) @map("imei_provided")
-  imeiValid            Boolean?            @map("imei_valid")
-  serialProvided       Boolean             @default(false) @map("serial_provided")
-  serialValid          Boolean?            @map("serial_valid")
-  icloudLocked         Boolean?            @map("icloud_locked")
-  reportedStolen       Boolean?            @map("reported_stolen")
-  blacklisted          Boolean?
-  fmiOn                Boolean?            @map("fmi_on")
-  rawApiResponse       Json?               @map("raw_api_response")
-  verifiedAt           DateTime?           @map("verified_at")
-  createdAt            DateTime            @default(now()) @map("created_at")
+  verificationRequest   VerificationRequest @relation(fields: [verificationRequestId], references: [id], onDelete: Cascade)
+  imei                  String?
+  serialNumber          String?             @map("serial_number")
+  imeiProvided          Boolean             @default(false) @map("imei_provided")
+  imeiValid             Boolean?            @map("imei_valid")
+  serialProvided        Boolean             @default(false) @map("serial_provided")
+  serialValid           Boolean?            @map("serial_valid")
+  icloudLocked          Boolean?            @map("icloud_locked")
+  reportedStolen        Boolean?            @map("reported_stolen")
+  blacklisted           Boolean?
+  fmiOn                 Boolean?            @map("fmi_on")
+  rawApiResponse        Json?               @map("raw_api_response")
+  verifiedAt            DateTime?           @map("verified_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
 
-  @@schema("trust_lens")
   @@map("identifier_validations")
 }
 
 model ImeiRegistry {
-  id              String   @id @default(uuid())
-  imei            String   @unique
-  brand           String?
-  model           String?
-  firstListingId  String   @map("first_listing_id")
-  firstSellerId   String   @map("first_seller_id")
-  lastListingId   String   @map("last_listing_id")
-  lastSellerId    String   @map("last_seller_id")
-  timesListed     Int      @default(1) @map("times_listed")
-  isFlagged       Boolean  @default(false) @map("is_flagged")
-  flagReason      String?  @map("flag_reason")
-  firstListedAt   DateTime @default(now()) @map("first_listed_at")
-  lastListedAt    DateTime @default(now()) @map("last_listed_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  imei           String   @unique
+  brand          String?
+  model          String?
+  firstListingId String   @map("first_listing_id")
+  firstSellerId  String   @map("first_seller_id")
+  lastListingId  String   @map("last_listing_id")
+  lastSellerId   String   @map("last_seller_id")
+  timesListed    Int      @default(1) @map("times_listed")
+  isFlagged      Boolean  @default(false) @map("is_flagged")
+  flagReason     String?  @map("flag_reason")
+  firstListedAt  DateTime @default(now()) @map("first_listed_at")
+  lastListedAt   DateTime @default(now()) @map("last_listed_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@index([imei])
   @@index([isFlagged])
   @@index([firstSellerId])
   @@index([lastSellerId])
-  @@schema("trust_lens")
   @@map("imei_registry")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  EVIDENCE DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
 
 model EvidencePack {
   id        String         @id @default(uuid())
   listingId String         @unique @map("listing_id")
-  sellerId  String         @map("seller_id")
+  listing   Listing        @relation(fields: [listingId], references: [id], onDelete: Cascade)
   items     EvidenceItem[]
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
 
-  @@index([sellerId])
   @@index([createdAt])
-  @@index([sellerId, createdAt(sort: Desc)])
-  @@schema("evidence")
   @@map("evidence_packs")
 }
 
 model EvidenceItem {
-  id        String        @id @default(uuid())
-  packId    String        @map("pack_id")
-  pack      EvidencePack  @relation(fields: [packId], references: [id], onDelete: Cascade)
+  id        String       @id @default(uuid())
+  packId    String       @map("pack_id")
+  pack      EvidencePack @relation(fields: [packId], references: [id], onDelete: Cascade)
   type      EvidenceType
   url       String
   filename  String
-  mimeType  String        @map("mime_type")
-  sizeBytes Int           @map("size_bytes")
-  timestamp DateTime      @default(now())
+  mimeType  String       @map("mime_type")
+  sizeBytes Int          @map("size_bytes")
+  timestamp DateTime     @default(now())
   metadata  Json?
-  createdAt DateTime      @default(now()) @map("created_at")
+  createdAt DateTime     @default(now()) @map("created_at")
 
   @@index([packId])
   @@index([type])
   @@index([createdAt])
   @@index([packId, createdAt(sort: Asc)])
-  @@schema("evidence")
   @@map("evidence_items")
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  TRANSACTIONS DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
+
 model Order {
-  id                String      @id @default(uuid())
-  buyerId           String      @map("buyer_id")
-  sellerId          String      @map("seller_id")
-  listingId         String      @map("listing_id")
-  listingTitle      String?     @map("listing_title")
-  listingDescription String?    @map("listing_description")
-  listingCategory   String?     @map("listing_category")
-  amount            Decimal     @db.Decimal(10, 2)
-  protectionFee     Decimal?    @db.Decimal(10, 2) @map("protection_fee")
-  shippingFee       Decimal?    @db.Decimal(10, 2) @map("shipping_fee")
-  shippingService   String?     @map("shipping_service")
-  freeShipping      Boolean     @default(false) @map("free_shipping")
-  totalAmount       Decimal?    @db.Decimal(10, 2) @map("total_amount")
-  currency          String      @default("GBP")
-  status            OrderStatus @default(PENDING)
-  escrowId          String?     @map("escrow_id")
-  paymentIntentId   String?     @map("payment_intent_id")
-  trackingNumber    String?     @map("tracking_number")
-  parcelWeightGrams Int?        @map("parcel_weight_grams")
-  parcelFormat      String?     @map("parcel_format")
-  shippingLabelUrl  String?     @map("shipping_label_url")
-  dropoffQrCodeUrl  String?     @map("dropoff_qr_code_url")
-  dropoffPointId    String?     @map("dropoff_point_id")
-  dropoffPointName  String?     @map("dropoff_point_name")
-  shippingAddress   Json?       @map("shipping_address")
-  paidAt            DateTime?   @map("paid_at")
-  shippedAt         DateTime?   @map("shipped_at")
-  deliveredAt       DateTime?   @map("delivered_at")
-  completedAt       DateTime?   @map("completed_at")
-  disputedAt        DateTime?   @map("disputed_at")
-  refundedAt        DateTime?   @map("refunded_at")
-  createdAt         DateTime    @default(now()) @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
+  id                 String      @id @default(uuid())
+  buyerId            String      @map("buyer_id")
+  buyer              User        @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  sellerId           String      @map("seller_id")
+  seller             User        @relation("SellerOrders", fields: [sellerId], references: [id], onDelete: Restrict)
+  listingId          String      @map("listing_id")
+  listing            Listing     @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  listingTitle       String?     @map("listing_title")
+  listingDescription String?     @map("listing_description")
+  listingCategory    String?     @map("listing_category")
+  amount             Decimal     @db.Decimal(10, 2)
+  protectionFee      Decimal?    @db.Decimal(10, 2) @map("protection_fee")
+  shippingFee        Decimal?    @db.Decimal(10, 2) @map("shipping_fee")
+  shippingService    String?     @map("shipping_service")
+  freeShipping       Boolean     @default(false) @map("free_shipping")
+  totalAmount        Decimal?    @db.Decimal(10, 2) @map("total_amount")
+  currency           String      @default("GBP")
+  status             OrderStatus @default(PENDING)
+  escrowId           String?     @map("escrow_id")
+  paymentIntentId    String?     @map("payment_intent_id")
+  trackingNumber     String?     @map("tracking_number")
+  parcelWeightGrams  Int?        @map("parcel_weight_grams")
+  parcelFormat       String?     @map("parcel_format")
+  shippingLabelUrl   String?     @map("shipping_label_url")
+  dropoffQrCodeUrl   String?     @map("dropoff_qr_code_url")
+  dropoffPointId     String?     @map("dropoff_point_id")
+  dropoffPointName   String?     @map("dropoff_point_name")
+  shippingAddress    Json?       @map("shipping_address")
+  paidAt             DateTime?   @map("paid_at")
+  shippedAt          DateTime?   @map("shipped_at")
+  deliveredAt        DateTime?   @map("delivered_at")
+  completedAt        DateTime?   @map("completed_at")
+  disputedAt         DateTime?   @map("disputed_at")
+  refundedAt         DateTime?   @map("refunded_at")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  // ── Relations ──────────────────────────────────────────────────────────
+  escrow  EscrowRecord?
+  invoice Invoice[]
+  refunds RefundRecord[]
+  rating  Rating?
 
   @@index([buyerId])
   @@index([sellerId])
@@ -339,13 +376,13 @@ model Order {
   @@index([sellerId, status])
   @@index([buyerId, createdAt(sort: Desc)])
   @@index([sellerId, createdAt(sort: Desc)])
-  @@schema("transactions")
   @@map("orders")
 }
 
 model EscrowRecord {
   id          String       @id @default(uuid())
   orderId     String       @unique @map("order_id")
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
   amount      Decimal      @db.Decimal(10, 2)
   currency    String       @default("GBP")
   status      EscrowStatus @default(HELD)
@@ -358,13 +395,13 @@ model EscrowRecord {
 
   @@index([status])
   @@index([createdAt])
-  @@schema("transactions")
   @@map("escrow_records")
 }
 
 model Invoice {
   id            String      @id @default(uuid())
   orderId       String      @map("order_id")
+  order         Order       @relation(fields: [orderId], references: [id], onDelete: Restrict)
   invoiceNumber String      @unique @map("invoice_number")
   invoiceType   InvoiceType @default(RECEIPT) @map("invoice_type")
   status        OrderStatus @map("status")
@@ -390,13 +427,13 @@ model Invoice {
   @@index([createdAt])
   @@index([buyerId, createdAt(sort: Desc)])
   @@index([orderId, createdAt(sort: Desc)])
-  @@schema("transactions")
   @@map("invoices")
 }
 
 model RefundRecord {
   id             String   @id @default(uuid())
   orderId        String   @map("order_id")
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
   stripeRefundId String   @unique @map("stripe_refund_id")
   amount         Decimal  @db.Decimal(10, 2)
   currency       String   @default("GBP")
@@ -405,52 +442,53 @@ model RefundRecord {
   createdAt      DateTime @default(now()) @map("created_at")
 
   @@index([orderId])
-  @@schema("transactions")
   @@map("refund_records")
 }
 
 model Rating {
   id        String   @id @default(uuid())
   orderId   String   @unique @map("order_id")
-  buyerId   String   @map("buyer_id")
-  sellerId  String   @map("seller_id")
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
   rating    Int
   comment   String?
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([sellerId])
-  @@index([buyerId])
   @@index([createdAt])
-  @@index([sellerId, createdAt(sort: Desc)])
-  @@schema("transactions")
   @@map("ratings")
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  NOTIFICATIONS DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
+
 model NotificationLog {
-  id        String             @id @default(uuid())
-  userId    String             @map("user_id")
+  id        String              @id @default(uuid())
+  userId    String              @map("user_id")
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   channel   NotificationChannel
   template  String
   payload   Json
-  status    NotificationStatus @default(PENDING)
-  sentAt    DateTime?          @map("sent_at")
-  failedAt  DateTime?          @map("failed_at")
+  status    NotificationStatus  @default(PENDING)
+  sentAt    DateTime?           @map("sent_at")
+  failedAt  DateTime?           @map("failed_at")
   error     String?
-  createdAt DateTime           @default(now()) @map("created_at")
+  createdAt DateTime            @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([status])
   @@index([createdAt])
   @@index([userId, status])
-  @@schema("notifications")
   @@map("notification_logs")
 }
 
 model Message {
   id          String   @id @default(uuid())
   senderId    String   @map("sender_id")
+  sender      User     @relation("SenderMessages", fields: [senderId], references: [id], onDelete: Restrict)
   recipientId String   @map("recipient_id")
+  recipient   User     @relation("RecipientMessages", fields: [recipientId], references: [id], onDelete: Restrict)
   listingId   String?  @map("listing_id")
+  listing     Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
   subject     String?
   content     String   @db.Text
   isRead      Boolean  @default(false) @map("is_read")
@@ -464,15 +502,17 @@ model Message {
   @@index([recipientId, isRead])
   @@index([recipientId, createdAt(sort: Desc)])
   @@index([senderId, createdAt(sort: Desc)])
-  @@schema("notifications")
   @@map("messages")
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ENUMS (consolidated — no more duplicates across schemas)
+// ═══════════════════════════════════════════════════════════════════════════
 
 enum Role {
   BUYER
   SELLER
   ADMIN
-  @@schema("auth")
 }
 
 enum VerificationStatus {
@@ -481,20 +521,17 @@ enum VerificationStatus {
   VERIFIED
   REJECTED
   SUSPENDED
-  @@schema("users")
 }
 
 enum AccountType {
   INDIVIDUAL
   BUSINESS
-  @@schema("users")
 }
 
 enum ConditionGrade {
   A
   B
   C
-  @@schema("listings")
 }
 
 enum DeviceType {
@@ -506,7 +543,6 @@ enum DeviceType {
   DESKTOP
   GAMING_CONSOLE
   OTHER
-  @@schema("listings")
 }
 
 enum IntegrityFlag {
@@ -517,13 +553,11 @@ enum IntegrityFlag {
   BLACKLISTED
   SERIAL_MISMATCH
   DUPLICATE_IMEI
-  @@schema("listings")
 }
 
 enum ListingFormat {
   FIXED_PRICE
   AUCTION
-  @@schema("listings")
 }
 
 enum ListingStatus {
@@ -537,7 +571,6 @@ enum ListingStatus {
   AUCTION_ENDED
   SOLD
   DELISTED
-  @@schema("listings")
 }
 
 enum TrustLensStatus {
@@ -546,7 +579,6 @@ enum TrustLensStatus {
   PASSED
   FAILED
   REQUIRES_REVIEW
-  @@schema("listings")
 }
 
 enum ReviewStatus {
@@ -555,38 +587,19 @@ enum ReviewStatus {
   PASSED
   FAILED
   REQUIRES_REVIEW
-  @@schema("trust_lens")
+  @@map("ReviewStatus")
 }
 
-enum TrustLensConditionGrade {
-  A
-  B
-  C
-  @@schema("trust_lens")
-  @@map("ConditionGrade")
-}
-
-enum TrustLensIntegrityFlag {
-  CLEAN
-  IMEI_MISMATCH
-  ICLOUD_LOCKED
-  REPORTED_STOLEN
-  BLACKLISTED
-  SERIAL_MISMATCH
-  DUPLICATE_IMEI
-  @@schema("trust_lens")
-  @@map("IntegrityFlag")
-}
-
-enum TrustLensEvidenceType {
+/// Evidence types for the Trust Lens checklist (high-level media classification)
+enum ChecklistEvidenceType {
   IMAGE
   VIDEO
   SCREENSHOT
   DOCUMENT
-  @@schema("trust_lens")
-  @@map("EvidenceType")
+  @@map("ChecklistEvidenceType")
 }
 
+/// Evidence types for seller-submitted evidence items (device-specific granular types)
 enum EvidenceType {
   DEVICE_IMAGE
   SCREEN_IMAGE
@@ -596,7 +609,6 @@ enum EvidenceType {
   PACKAGING_IMAGE
   ACCESSORIES_IMAGE
   OTHER
-  @@schema("evidence")
 }
 
 enum OrderStatus {
@@ -609,7 +621,6 @@ enum OrderStatus {
   DISPUTED
   REFUNDED
   CANCELLED
-  @@schema("transactions")
 }
 
 enum EscrowStatus {
@@ -617,25 +628,21 @@ enum EscrowStatus {
   RELEASED
   REFUNDED
   DISPUTED
-  @@schema("transactions")
 }
 
 enum InvoiceType {
   RECEIPT
   CREDIT_NOTE
-  @@schema("transactions")
 }
 
 enum NotificationChannel {
   EMAIL
   PUSH
   SMS
-  @@schema("notifications")
 }
 
 enum NotificationStatus {
   PENDING
   SENT
   FAILED
-  @@schema("notifications")
 }

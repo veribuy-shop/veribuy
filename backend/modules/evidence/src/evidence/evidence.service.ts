@@ -50,7 +50,6 @@ export class EvidenceService {
       where: { listingId: dto.listingId },
       create: {
         listingId: dto.listingId,
-        sellerId: dto.sellerId,
       },
       update: {},
       include: {
@@ -165,6 +164,9 @@ export class EvidenceService {
     const pack = await this.prisma.evidencePack.findUnique({
       where: { id: packId },
       include: {
+        listing: {
+          select: { sellerId: true },
+        },
         items: {
           select: ITEM_SELECT,
           orderBy: { createdAt: 'asc' },
@@ -194,8 +196,10 @@ export class EvidenceService {
         pack: {
           select: {
             id: true,
-            sellerId: true,
             listingId: true,
+            listing: {
+              select: { sellerId: true },
+            },
           },
         },
       },
@@ -205,7 +209,7 @@ export class EvidenceService {
       throw new NotFoundException(`Evidence item not found: ${itemId}`);
     }
 
-    if (requestingRole !== 'ADMIN' && item.pack.sellerId !== requestingUserId) {
+    if (requestingRole !== 'ADMIN' && item.pack.listing.sellerId !== requestingUserId) {
       throw new ForbiddenException('You can only delete your own evidence items');
     }
 
@@ -242,7 +246,7 @@ export class EvidenceService {
 
     const [data, total] = await Promise.all([
       this.prisma.evidencePack.findMany({
-        where: { sellerId },
+        where: { listing: { sellerId } },
         skip,
         take: limit,
         include: {
@@ -253,7 +257,7 @@ export class EvidenceService {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.evidencePack.count({ where: { sellerId } }),
+      this.prisma.evidencePack.count({ where: { listing: { sellerId } } }),
     ]);
 
     return {

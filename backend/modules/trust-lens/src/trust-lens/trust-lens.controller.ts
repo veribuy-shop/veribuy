@@ -44,7 +44,8 @@ export class TrustLensController {
       throw new NotFoundException('Verification request not found');
     }
     // Sellers can only view their own verification requests
-    if (!isAdmin && verification.sellerId !== user.userId) {
+    const sellerId = verification.listing?.sellerId;
+    if (!isAdmin && sellerId !== user.userId) {
       throw new ForbiddenException('You can only view your own verification requests');
     }
     return verification;

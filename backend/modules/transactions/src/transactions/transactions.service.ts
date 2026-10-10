@@ -1493,8 +1493,6 @@ export class TransactionsService implements OnModuleInit {
     const rating = await this.prisma.rating.create({
       data: {
         orderId,
-        buyerId,
-        sellerId: order.sellerId,
         rating: dto.rating,
         comment: dto.comment ?? null,
       },
@@ -1515,7 +1513,7 @@ export class TransactionsService implements OnModuleInit {
 
   async getSellerRatings(sellerId: string) {
     const ratings = await this.prisma.rating.findMany({
-      where: { sellerId },
+      where: { order: { sellerId } },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -1540,15 +1538,15 @@ export class TransactionsService implements OnModuleInit {
    */
   private async syncSellerRating(sellerId: string): Promise<void> {
     const aggregate = await this.prisma.rating.aggregate({
-      where: { sellerId },
+      where: { order: { sellerId } },
       _avg: { rating: true },
-      _count: { rating: true },
+      _count: { _all: true },
     });
 
-    const averageRating = aggregate._avg.rating
+    const averageRating = aggregate._avg?.rating
       ? Math.round(aggregate._avg.rating * 100) / 100
       : null;
-    const totalRatings = aggregate._count.rating;
+    const totalRatings = aggregate._count?._all ?? 0;
 
     const USER_SERVICE_URL = getInternalApiUrl();
 

@@ -521,26 +521,61 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    // 1. Delete associated profile and address records
-    const profile = await this.prisma.profile.findUnique({ where: { userId } });
-    if (profile) {
-      await this.prisma.address.deleteMany({ where: { profileId: profile.id } });
-      await this.prisma.profile.delete({ where: { id: profile.id } });
+    // ── ACID Consistency: verify no active constraints before deletion ──
+    const [activeListings, openOrders, heldEscrow] = await Promise.all([
+      this.prisma.listing.count({
+        where: {
+          sellerId: userId,
+          status: { in: ['ACTIVE', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED'] },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          OR: [{ buyerId: userId }, { sellerId: userId }],
+          status: { in: ['PENDING', 'PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'DISPUTED'] },
+        },
+      }),
+      this.prisma.escrowRecord.count({
+        where: {
+          order: { OR: [{ buyerId: userId }, { sellerId: userId }] },
+          status: 'HELD',
+        },
+      }),
+    ]);
+
+    if (activeListings > 0) {
+      throw new ForbiddenException(
+        `Cannot delete user with ${activeListings} active listing(s). Delist them first.`,
+      );
     }
 
-    // 2. Delete all refresh tokens
-    await this.prisma.refreshToken.deleteMany({
-      where: { userId },
-    });
+    if (openOrders > 0) {
+      throw new ForbiddenException(
+        `Cannot delete user with ${openOrders} open order(s). Resolve them first.`,
+      );
+    }
 
-    // 3. Delete any user notifications
-    await this.prisma.notificationLog.deleteMany({
-      where: { userId },
-    });
+    if (heldEscrow > 0) {
+      throw new ForbiddenException(
+        `Cannot delete user with ${heldEscrow} held escrow record(s). Release or refund first.`,
+      );
+    }
 
-    // 4. Hard delete the user from auth.users
-    await this.prisma.user.delete({
-      where: { id: userId },
+    // ── Atomic deletion within a single transaction ──
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Delete dependent records that CASCADE won't cover or need explicit cleanup
+      await tx.bid.deleteMany({ where: { bidderId: userId } });
+      await tx.notificationLog.deleteMany({ where: { userId } });
+      await tx.refreshToken.deleteMany({ where: { userId } });
+
+      // 2. Nullify optional references (messages stay for audit trail)
+      await tx.listing.updateMany({
+        where: { highestBidderId: userId },
+        data: { highestBidderId: null },
+      });
+
+      // 3. Cascade: Profile → Address auto-cascades; User delete triggers profile cascade
+      await tx.user.delete({ where: { id: userId } });
     });
 
     return { message: 'User deleted successfully' };

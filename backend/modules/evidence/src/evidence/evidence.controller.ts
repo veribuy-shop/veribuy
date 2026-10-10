@@ -167,7 +167,8 @@ export class EvidenceController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const pack = await this.evidenceService.getEvidencePack(packId);
-    if (pack && user.role !== 'ADMIN' && pack.sellerId !== user.userId) {
+    const sellerId = pack.listing?.sellerId;
+    if (pack && user.role !== 'ADMIN' && sellerId !== user.userId) {
       throw new ForbiddenException('You can only view your own evidence packs');
     }
     return pack;

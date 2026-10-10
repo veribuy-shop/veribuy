@@ -66,7 +66,7 @@ export class InvoicesService {
 
     // INV-02: Pull next value from the Postgres sequence for a gap-free, human-readable number
     const seqResult = await (this.prisma as any).$queryRaw`
-      SELECT nextval('transactions.invoice_seq') AS seq
+      SELECT nextval('invoice_seq') AS seq
     `;
     const seq = String(seqResult[0].seq).padStart(5, '0');
     const year = new Date().getFullYear();
