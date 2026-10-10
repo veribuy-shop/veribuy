@@ -24,9 +24,23 @@ const db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 async function main() {
   console.log('Starting database seed...\n');
 
-  // Clean existing data (optional - comment out if you want to keep existing data)
+  // Clean existing data in dependency order (child -> parent)
   console.log('Cleaning existing data...');
+  await db.rating.deleteMany();
+  await db.refundRecord.deleteMany();
+  await db.invoice.deleteMany();
+  await db.escrowRecord.deleteMany();
+  await db.order.deleteMany();
+  await db.evidenceItem.deleteMany();
+  await db.evidencePack.deleteMany();
+  await db.evidenceChecklist.deleteMany();
+  await db.identifierValidation.deleteMany();
+  await db.verificationRequest.deleteMany();
+  await db.bid.deleteMany();
+  await db.message.deleteMany();
+  await db.notificationLog.deleteMany();
   await db.listing.deleteMany();
+  await db.address.deleteMany();
   await db.profile.deleteMany();
   await db.refreshToken.deleteMany();
   await db.user.deleteMany();

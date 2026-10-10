@@ -115,7 +115,6 @@ export class TrustLensService {
       const verificationRequest = await tx.verificationRequest.create({
         data: {
           listingId: dto.listingId,
-          sellerId: dto.sellerId,
           conditionGrade: dto.conditionGrade || null,
           status: 'PENDING',
           integrityFlags: [],
@@ -206,6 +205,11 @@ export class TrustLensService {
         },
         identifierValidation: {
           select: forAdmin ? ADMIN_ID_VALIDATION_SELECT : SELLER_ID_VALIDATION_SELECT,
+        },
+        listing: {
+          select: {
+            sellerId: true,
+          },
         },
       },
     });
@@ -464,12 +468,19 @@ export class TrustLensService {
   ) {
     const existing = await this.prisma.verificationRequest.findUnique({
       where: { listingId },
-      select: { completedAt: true, sellerId: true, conditionGrade: true },
+      select: {
+        completedAt: true,
+        conditionGrade: true,
+        listing: {
+          select: { sellerId: true },
+        },
+      },
     });
     if (!existing) {
       throw new NotFoundException(`Verification request not found for listing ${listingId}`);
     }
 
+    const sellerId = existing.listing.sellerId;
     const isTerminal = status === 'PASSED' || status === 'FAILED';
 
     const updated = await this.prisma.verificationRequest.update({
@@ -502,25 +513,25 @@ export class TrustLensService {
 
       if (status === 'PASSED') {
         this.userSync
-          .syncVerificationStatus(existing.sellerId, 'VERIFIED')
+          .syncVerificationStatus(sellerId, 'VERIFIED')
           .catch(() => {});
       } else if (status === 'FAILED') {
         // Only revoke seller verification after FAILURE_THRESHOLD failed listings.
         // A single bad listing should not unverify a trusted seller.
         const failedCount = await this.prisma.verificationRequest.count({
-          where: { sellerId: existing.sellerId, status: 'FAILED' },
+          where: { listing: { sellerId }, status: 'FAILED' },
         });
 
         if (failedCount >= TrustLensService.FAILURE_THRESHOLD) {
           this.logger.warn(
-            `Seller ${existing.sellerId} has ${failedCount} failed verifications (threshold: ${TrustLensService.FAILURE_THRESHOLD}) — syncing REJECTED`,
+            `Seller ${sellerId} has ${failedCount} failed verifications (threshold: ${TrustLensService.FAILURE_THRESHOLD}) — syncing REJECTED`,
           );
           this.userSync
-            .syncVerificationStatus(existing.sellerId, 'REJECTED')
+            .syncVerificationStatus(sellerId, 'REJECTED')
             .catch(() => {});
         } else {
           this.logger.log(
-            `Seller ${existing.sellerId} has ${failedCount} failed verification(s), below threshold of ${TrustLensService.FAILURE_THRESHOLD} — skipping user status sync`,
+            `Seller ${sellerId} has ${failedCount} failed verification(s), below threshold of ${TrustLensService.FAILURE_THRESHOLD} — skipping user status sync`,
           );
         }
       }

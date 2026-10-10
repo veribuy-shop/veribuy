@@ -843,7 +843,14 @@ export class UlistingsService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      // Re-fetch listing within transaction
+      // ACID Isolation: acquire a row-level lock on the listing to prevent
+      // concurrent bid race conditions. SELECT FOR UPDATE blocks other
+      // transactions from reading this row until we commit.
+      if (typeof (tx as any).$queryRaw === 'function') {
+        await tx.$queryRaw`SELECT id FROM "listings" WHERE id = ${listingId} FOR UPDATE`;
+      }
+
+      // Re-fetch listing within the locked transaction
       const current = await tx.listing.findUnique({
         where: { id: listingId },
       });
@@ -1051,24 +1058,13 @@ export class UlistingsService {
   private async getSellerInfo(
     sellerId: string,
   ): Promise<{ name: string; email: string } | null> {
-    const AUTH_SERVICE_URL =
-      process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
     try {
-      const response = await fetch(
-        `${AUTH_SERVICE_URL}/auth/internal/users/${sellerId}`,
-        {
-          headers: {
-            'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN ?? '',
-          },
-          signal: AbortSignal.timeout(3000),
-        },
-      );
-      if (!response.ok) return null;
-      const data = (await response.json()) as Record<string, unknown>;
-      const name = typeof data['name'] === 'string' ? data['name'] : '';
-      const email = typeof data['email'] === 'string' ? data['email'] : '';
-      if (!email) return null;
-      return { name, email };
+      const user = await this.prisma.user.findUnique({
+        where: { id: sellerId },
+        select: { name: true, email: true },
+      });
+      if (!user || !user.email) return null;
+      return { name: user.name, email: user.email };
     } catch {
       return null;
     }

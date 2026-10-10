@@ -284,7 +284,11 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
         // so the listing isn't stuck in limbo forever.
         ...(isNotRun ? { completedAt: new Date(), reviewNotes: 'IMEI check could not run — API key may be missing' } : {}),
       },
-      select: { sellerId: true },
+      select: {
+        listing: {
+          select: { sellerId: true },
+        },
+      },
     });
 
     if (result.imeiValid) {
@@ -315,7 +319,7 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
         .syncTrustLensResult(listingId, 'PASSED', undefined, [])
         .catch(() => {});
       this.userSync
-        .syncVerificationStatus(updatedRequest.sellerId, 'VERIFIED')
+        .syncVerificationStatus(updatedRequest.listing.sellerId, 'VERIFIED')
         .catch(() => {});
     } else if (newStatus === 'REQUIRES_REVIEW') {
       // Sync the human-review state (plus the integrity flags that triggered it) to
