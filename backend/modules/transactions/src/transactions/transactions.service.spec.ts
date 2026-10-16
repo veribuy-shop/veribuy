@@ -63,6 +63,11 @@ describe('TransactionsService', () => {
       escrowRecord: {
         create: jest.fn(),
         findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      referral: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
       },
     };
 
@@ -457,6 +462,40 @@ describe('TransactionsService', () => {
         await expect(
           service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'BUYER', BUYER),
         ).resolves.toBeDefined();
+      });
+
+      it('qualifies referral and increments referrer balance when seller completes first sale', async () => {
+        mockOrderAt('DELIVERED');
+        prisma.order.update.mockResolvedValue({ id: 'ord-1', status: 'COMPLETED', sellerId: SELLER });
+        prisma.referral.findUnique.mockResolvedValue({
+          id: 'ref-123',
+          referrerId: 'user-alice',
+          referredId: SELLER,
+          status: 'PENDING',
+          rewardAmount: 5.0,
+        });
+        prisma.referral.update.mockResolvedValue({ id: 'ref-123', status: 'QUALIFIED' });
+        prisma.profile.update = jest.fn().mockResolvedValue({});
+
+        await service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'BUYER', BUYER);
+
+        expect(prisma.referral.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'ref-123' },
+            data: expect.objectContaining({
+              status: 'QUALIFIED',
+              qualifyingOrderId: 'ord-1',
+            }),
+          }),
+        );
+        expect(prisma.profile.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { userId: 'user-alice' },
+            data: expect.objectContaining({
+              referralBonusBalance: { increment: 5.0 },
+            }),
+          }),
+        );
       });
 
       it('forbids a counterparty from resolving a dispute as REFUNDED', async () => {

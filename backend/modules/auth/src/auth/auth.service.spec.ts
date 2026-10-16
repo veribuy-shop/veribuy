@@ -35,6 +35,9 @@ describe('AuthService', () => {
         update: jest.fn(),
         deleteMany: jest.fn(),
       },
+      referral: {
+        create: jest.fn().mockResolvedValue({ id: 'ref-1' }),
+      },
     };
 
     jwtService = {
@@ -173,6 +176,52 @@ describe('AuthService', () => {
       );
       expect(result.user.accountType).toBe('BUSINESS');
       expect(result.user.companyName).toBe('Electronics Direct Ltd');
+    });
+
+    it('should link referrer and create pending referral when referralCode is provided', async () => {
+      const mockReferrer = { id: 'referrer-1', name: 'Alice Referral' };
+      prisma.user.findUnique.mockResolvedValue(mockReferrer);
+      prisma.user.create.mockResolvedValue({
+        id: 'referred-1',
+        name: 'Bob Newbie',
+        email: 'bob@example.com',
+        role: 'BUYER',
+        referralCode: 'VB-BOB123',
+      });
+      prisma.profile.create.mockResolvedValue({ id: 'prof-bob', userId: 'referred-1' });
+
+      const result = await service.register({
+        name: 'Bob Newbie',
+        email: 'bob@example.com',
+        password: 'Password123!',
+        phone: '+447111222333',
+        line1: '1 Oxford St',
+        city: 'London',
+        postalCode: 'W1D 1BS',
+        referralCode: 'VB-ALICE1',
+      });
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { referralCode: 'VB-ALICE1' },
+        select: { id: true, name: true },
+      });
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            referredById: 'referrer-1',
+          }),
+        }),
+      );
+      expect(prisma.referral.create).toHaveBeenCalledWith({
+        data: {
+          referrerId: 'referrer-1',
+          referredId: 'referred-1',
+          status: 'PENDING',
+          rewardAmount: 5.0,
+          currency: 'GBP',
+        },
+      });
+      expect(result.user).toHaveProperty('referralCode');
     });
 
     it('should throw ConflictException if email is already taken', async () => {

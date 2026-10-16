@@ -19,6 +19,10 @@ describe('UsersService', () => {
       },
       user: {
         findUnique: jest.fn(),
+        update: jest.fn(),
+      },
+      referral: {
+        findMany: jest.fn().mockResolvedValue([]),
       },
     };
 
@@ -98,6 +102,76 @@ describe('UsersService', () => {
       expect(prisma.profile.upsert).toHaveBeenCalled();
       expect(redis.del).toHaveBeenCalledWith('profile:usr-1');
       expect(result).toEqual(updatedMock);
+    });
+  });
+
+  describe('getReferralDetails', () => {
+    it('should return user referral code and referral stats', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'usr-1',
+        name: 'Jane Doe',
+        referralCode: 'VB-JANE1',
+      });
+      prisma.profile.findUnique.mockResolvedValue({
+        referralBonusBalance: 15.0,
+      });
+      prisma.referral.findMany.mockResolvedValue([
+        {
+          id: 'ref-1',
+          referrerId: 'usr-1',
+          referredId: 'usr-2',
+          status: 'QUALIFIED',
+          rewardAmount: 5.0,
+          currency: 'GBP',
+          createdAt: new Date(),
+          qualifiedAt: new Date(),
+          referred: { name: 'Bob Smith', profile: { displayName: 'Bob' } },
+          qualifyingOrder: { listingTitle: 'iPhone 15 Pro' },
+        },
+        {
+          id: 'ref-2',
+          referrerId: 'usr-1',
+          referredId: 'usr-3',
+          status: 'PENDING',
+          rewardAmount: 5.0,
+          currency: 'GBP',
+          createdAt: new Date(),
+          referred: { name: 'Charlie', profile: null },
+        },
+      ]);
+
+      const result = await service.getReferralDetails('usr-1');
+
+      expect(result.referralCode).toBe('VB-JANE1');
+      expect(result.stats.totalReferred).toBe(2);
+      expect(result.stats.qualifiedCount).toBe(1);
+      expect(result.stats.pendingCount).toBe(1);
+      expect(result.stats.totalEarned).toBe(15.0);
+      expect(result.referrals.length).toBe(2);
+      expect(result.referrals[0].referredName).toBe('Bob');
+    });
+  });
+
+  describe('validateReferralCode', () => {
+    it('should return valid true when referral code exists', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'usr-1',
+        name: 'Alice Wonder',
+        profile: { displayName: 'Alice' },
+      });
+
+      const result = await service.validateReferralCode('VB-ALICE1');
+
+      expect(result.valid).toBe(true);
+      expect(result.referrerName).toBe('Alice');
+    });
+
+    it('should return valid false when referral code is invalid', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      const result = await service.validateReferralCode('INVALID');
+
+      expect(result.valid).toBe(false);
     });
   });
 });

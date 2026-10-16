@@ -76,19 +76,19 @@ interface ListingFormData {
   title: string;
   description: string;
   city?: string;
-  
+
   // Bulk / Inventory details
   isBulkListing: boolean;
   quantity: number;
   color: string;
   storageCapacity: string;
-  
+
   // Step 2: Condition
   conditionGrade: ConditionGrade;
   cosmeticCondition: string;
   functionalIssues: string;
   accessories: string[];
-  
+
   // Step 3: Format & Pricing & Delivery
   format: 'FIXED_PRICE' | 'AUCTION';
   price: string;
@@ -98,7 +98,7 @@ interface ListingFormData {
   durationDays: number;
   buyItNowPrice: string;
   freeShipping: boolean;
-  
+
   // Step 4: Device Identifiers & Evidence
   imei: string;
   serialNumber: string;
@@ -208,7 +208,7 @@ export default function CreateListingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{[key: string]: number}>({});
+  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
   const [deviceTypeOptions, setDeviceTypeOptions] = useState<DeviceTypeOption[]>([]);
   const [showImeiGuide, setShowImeiGuide] = useState(false);
 
@@ -297,9 +297,9 @@ export default function CreateListingPage() {
 
   // PERF-06: useObjectURLs must be called after formData is declared so the
   // initial empty arrays are accessible on first render.
-  const deviceImageURLs    = useObjectURLs(formData.deviceImages);
-  const screenImageURLs    = useObjectURLs(formData.screenImages);
-  const settingsImageURLs  = useObjectURLs(formData.settingsScreenshot);
+  const deviceImageURLs = useObjectURLs(formData.deviceImages);
+  const screenImageURLs = useObjectURLs(formData.screenImages);
+  const settingsImageURLs = useObjectURLs(formData.settingsScreenshot);
 
   const updateFormData = (field: keyof ListingFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -347,7 +347,7 @@ export default function CreateListingPage() {
 
   const validateStep = (step: number): boolean => {
     setError('');
-    
+
     if (step === 1) {
       if (!formData.deviceType || !formData.brand || !formData.model || !formData.title || !formData.description) {
         setError('Please fill in all required fields');
@@ -366,14 +366,14 @@ export default function CreateListingPage() {
         return false;
       }
     }
-    
+
     if (step === 2) {
       if (!formData.conditionGrade || !formData.cosmeticCondition) {
         setError('Please select condition grade and describe cosmetic condition');
         return false;
       }
     }
-    
+
     if (step === 3) {
       if (formData.format === 'AUCTION') {
         const startingBid = parseFloat(formData.startingBid);
@@ -403,7 +403,7 @@ export default function CreateListingPage() {
         }
       }
     }
-    
+
     if (step === 4) {
       // For bulk inventory listings, IMEI is not required upfront; 1 representative photo is required
       if (formData.isBulkListing) {
@@ -430,18 +430,18 @@ export default function CreateListingPage() {
           return false;
         }
       }
-      
+
       if (formData.deviceImages.length < 3) {
         setError('Please upload at least 3 device images');
         return false;
       }
-      
+
       if (formData.screenImages.length < 1) {
         setError('Please upload at least 1 screen/display image');
         return false;
       }
     }
-    
+
     return true;
   };
 
@@ -458,7 +458,7 @@ export default function CreateListingPage() {
 
   const handleSubmit = async () => {
     if (!validateStep(currentStep)) return;
-    
+
     setIsSubmitting(true);
     setError('');
 
@@ -505,7 +505,7 @@ export default function CreateListingPage() {
       }
 
       const listing = await response.json();
-      
+
       // Step 2: Upload all evidence files to the newly created listing
       const allFiles = [
         ...formData.deviceImages.map(f => ({ file: f, type: 'DEVICE_IMAGE' })),
@@ -555,7 +555,7 @@ export default function CreateListingPage() {
         router.push(`/listings/${listing.id}`);
         return;
       }
-      
+
       // Step 3: Create verification request in Trust Lens
       let verificationFailed = false;
       try {
@@ -592,7 +592,7 @@ export default function CreateListingPage() {
         verificationFailed = true;
         // Don't block the flow if verification fails
       }
-      
+
       // For IMEI-verified smartphones, route to the dedicated Verification Report
       // stage so the seller sees the live check run and the pass/fail outcome.
       // Other device types keep going to the listing detail page.
@@ -653,11 +653,10 @@ export default function CreateListingPage() {
                 <div className="flex flex-col items-center flex-1">
                   <div
                     aria-hidden="true"
-                    className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold mb-2 ${
-                      currentStep >= step.id
+                    className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold mb-2 ${currentStep >= step.id
                         ? 'bg-[var(--color-green)] text-white'
                         : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
-                    }`}
+                      }`}
                   >
                     {step.id}
                   </div>
@@ -712,11 +711,10 @@ export default function CreateListingPage() {
                     <button
                       type="button"
                       onClick={() => updateFormData('isBulkListing', true)}
-                      className={`p-3.5 rounded-xl border-2 text-left transition-all ${
-                        formData.isBulkListing
+                      className={`p-3.5 rounded-xl border-2 text-left transition-all ${formData.isBulkListing
                           ? 'border-[var(--color-green)] bg-white shadow-xs ring-1 ring-[var(--color-green)]'
                           : 'border-emerald-100 bg-white/60 hover:bg-white'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between font-bold text-xs text-gray-900 mb-1">
                         <span className="flex items-center gap-1.5">
@@ -731,11 +729,10 @@ export default function CreateListingPage() {
                     <button
                       type="button"
                       onClick={() => updateFormData('isBulkListing', false)}
-                      className={`p-3.5 rounded-xl border-2 text-left transition-all ${
-                        !formData.isBulkListing
+                      className={`p-3.5 rounded-xl border-2 text-left transition-all ${!formData.isBulkListing
                           ? 'border-[var(--color-green)] bg-white shadow-xs ring-1 ring-[var(--color-green)]'
                           : 'border-emerald-100 bg-white/60 hover:bg-white'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between font-bold text-xs text-gray-900 mb-1">
                         <span className="flex items-center gap-1.5">
@@ -831,11 +828,11 @@ export default function CreateListingPage() {
                 >
                   {deviceTypeOptions.length > 0
                     ? deviceTypeOptions.map(type => (
-                        <option key={type.value} value={type.value}>{type.label}</option>
-                      ))
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))
                     : Object.keys(POPULAR_BRANDS).map(value => (
-                        <option key={value} value={value}>{DEVICE_TYPE_LABELS[value] ?? value}</option>
-                      ))}
+                      <option key={value} value={value}>{DEVICE_TYPE_LABELS[value] ?? value}</option>
+                    ))}
                 </select>
               </div>
 
@@ -939,7 +936,7 @@ export default function CreateListingPage() {
                   Select the grade that best reflects your device. Honest grading prevents disputes and returns.
                 </p>
               </div>
-              
+
               <fieldset>
                 <legend className="block text-sm font-medium text-[var(--color-text)] mb-3">
                   Condition Grade <span className="text-red-500" aria-hidden="true">*</span>
@@ -951,11 +948,10 @@ export default function CreateListingPage() {
                     type="button"
                     aria-pressed={formData.conditionGrade === 'A'}
                     onClick={() => updateFormData('conditionGrade', 'A')}
-                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${
-                      formData.conditionGrade === 'A'
+                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${formData.conditionGrade === 'A'
                         ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 shadow-sm ring-1 ring-[var(--color-green)]'
                         : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40 bg-white'
-                    }`}
+                      }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -966,7 +962,7 @@ export default function CreateListingPage() {
                       </div>
                       <div className="font-bold text-lg text-[var(--color-text)] mb-1">Pristine / Like New</div>
                       <p className="text-xs text-[var(--color-text-muted)] mb-3">Flawless cosmetic condition with minimal to zero signs of use.</p>
-                      
+
                       <div className="space-y-1.5 text-xs text-[var(--color-text)] border-t border-[var(--color-border)]/60 pt-3">
                         <div className="flex items-center gap-1.5">
                           <Eye className="w-3.5 h-3.5 text-[var(--color-green)] shrink-0" aria-hidden="true" />
@@ -989,11 +985,10 @@ export default function CreateListingPage() {
                     type="button"
                     aria-pressed={formData.conditionGrade === 'B'}
                     onClick={() => updateFormData('conditionGrade', 'B')}
-                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${
-                      formData.conditionGrade === 'B'
+                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${formData.conditionGrade === 'B'
                         ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 shadow-sm ring-1 ring-[var(--color-green)]'
                         : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40 bg-white'
-                    }`}
+                      }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -1004,7 +999,7 @@ export default function CreateListingPage() {
                       </div>
                       <div className="font-bold text-lg text-[var(--color-text)] mb-1">Good Condition</div>
                       <p className="text-xs text-[var(--color-text-muted)] mb-3">Light normal wear. Fully functional with minor cosmetic marks.</p>
-                      
+
                       <div className="space-y-1.5 text-xs text-[var(--color-text)] border-t border-[var(--color-border)]/60 pt-3">
                         <div className="flex items-center gap-1.5">
                           <Eye className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden="true" />
@@ -1027,11 +1022,10 @@ export default function CreateListingPage() {
                     type="button"
                     aria-pressed={formData.conditionGrade === 'C'}
                     onClick={() => updateFormData('conditionGrade', 'C')}
-                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${
-                      formData.conditionGrade === 'C'
+                    className={`relative p-5 border-2 rounded-xl text-left transition-all flex flex-col justify-between ${formData.conditionGrade === 'C'
                         ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 shadow-sm ring-1 ring-[var(--color-green)]'
                         : 'border-[var(--color-border)] hover:border-[var(--color-text-muted)]/40 bg-white'
-                    }`}
+                      }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -1042,7 +1036,7 @@ export default function CreateListingPage() {
                       </div>
                       <div className="font-bold text-lg text-[var(--color-text)] mb-1">Fair / Budget</div>
                       <p className="text-xs text-[var(--color-text-muted)] mb-3">Visible cosmetic wear and scratches, but 100% working hardware.</p>
-                      
+
                       <div className="space-y-1.5 text-xs text-[var(--color-text)] border-t border-[var(--color-border)]/60 pt-3">
                         <div className="flex items-center gap-1.5">
                           <Eye className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-hidden="true" />
@@ -1102,11 +1096,10 @@ export default function CreateListingPage() {
                       type="button"
                       aria-pressed={formData.accessories.includes(accessory)}
                       onClick={() => toggleAccessory(accessory)}
-                      className={`px-4 py-2 border-2 rounded-md text-sm transition ${
-                        formData.accessories.includes(accessory)
+                      className={`px-4 py-2 border-2 rounded-md text-sm transition ${formData.accessories.includes(accessory)
                           ? 'border-[var(--color-green)] bg-[var(--color-green)]/10 text-[var(--color-green)]'
                           : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-text-muted)]/30'
-                      }`}
+                        }`}
                     >
                       {accessory}
                     </button>
@@ -1129,11 +1122,10 @@ export default function CreateListingPage() {
                 <button
                   type="button"
                   onClick={() => updateFormData('format', 'FIXED_PRICE')}
-                  className={`p-4 rounded-xl border-2 text-left transition-all ${
-                    formData.format === 'FIXED_PRICE'
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${formData.format === 'FIXED_PRICE'
                       ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
                       : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-semibold text-base text-[var(--color-text)]">Buy It Now</span>
@@ -1147,11 +1139,10 @@ export default function CreateListingPage() {
                 <button
                   type="button"
                   onClick={() => updateFormData('format', 'AUCTION')}
-                  className={`p-4 rounded-xl border-2 text-left transition-all ${
-                    formData.format === 'AUCTION'
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${formData.format === 'AUCTION'
                       ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
                       : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-1.5">
@@ -1332,38 +1323,43 @@ export default function CreateListingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div
                     onClick={() => updateFormData('freeShipping', false)}
-                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      !formData.freeShipping
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${!formData.freeShipping
                         ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
                         : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
                         <Truck className="w-5 h-5 text-[var(--color-text-muted)]" />
-                        <span className="font-semibold text-sm text-[var(--color-text)]">Buyer Pays Shipping</span>
+                        <div>
+                          <span className="font-semibold text-sm text-[var(--color-text)]">Buyer Pays Shipping</span>
+                          <span className="ml-2 text-[11px] bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded-full border border-blue-200">
+                            Royal Mail Live Rates
+                          </span>
+                        </div>
                       </div>
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        !formData.freeShipping ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-gray-300'
-                      }`}>
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${!formData.freeShipping ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-gray-300'
+                        }`}>
                         {!formData.freeShipping && <div className="w-2 h-2 rounded-full bg-white" />}
                       </div>
                     </div>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-2">
-                      Standard tracked UK courier shipping fee (£12.00) will be paid by the buyer during checkout.
+                    <p className="text-xs text-[var(--color-text-muted)] mt-2 leading-relaxed">
+                      Delivery cost is calculated automatically at checkout by Royal Mail based on the buyer&apos;s location (UK postcode) and item parcel size &amp; weight.
                     </p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                      Buyer protection fee is calculated separately.
-                    </p>
+                    <div className="mt-2.5 pt-2 border-t border-[var(--color-border)]/60 flex items-center justify-between text-xs">
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> 0% Seller Commission
+                      </span>
+                      <span className="text-[var(--color-text-muted)] text-[11px]">Sellers keep 100% of price</span>
+                    </div>
                   </div>
 
                   <div
                     onClick={() => updateFormData('freeShipping', true)}
-                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                      formData.freeShipping
+                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.freeShipping
                         ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
                         : 'border-[var(--color-border)] bg-white hover:border-[var(--color-text-muted)]/30'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
@@ -1373,18 +1369,20 @@ export default function CreateListingPage() {
                           <span className="ml-2 text-xs bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">Covered by Seller</span>
                         </div>
                       </div>
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                        formData.freeShipping ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-gray-300'
-                      }`}>
+                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${formData.freeShipping ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-gray-300'
+                        }`}>
                         {formData.freeShipping && <div className="w-2 h-2 rounded-full bg-white" />}
                       </div>
                     </div>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                    <p className="text-xs text-[var(--color-text-muted)] mt-2 leading-relaxed">
                       You cover delivery (assumed included in your asking price). Buyer pays <strong className="text-emerald-700">£0.00</strong> for shipping.
                     </p>
-                    <p className="text-xs text-amber-700 font-medium mt-1">
-                      Note: VeriBuy Buyer Protection fee remains applicable to ensure secure escrow.
-                    </p>
+                    <div className="mt-2.5 pt-2 border-t border-[var(--color-border)]/60 flex items-center justify-between text-xs">
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> 0% Seller Commission
+                      </span>
+                      <span className="text-amber-700 text-[11px] font-medium">Buyer protection applies</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1480,14 +1478,13 @@ export default function CreateListingPage() {
                           placeholder="15-digit IMEI (numbers only)"
                           maxLength={15}
                           aria-describedby="device-imei-hint"
-                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
-                            (() => {
+                          className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${(() => {
                               const check = validateImeiChecksum(formData.imei);
                               if (check.status === 'valid') return 'border-[var(--color-green)] focus:ring-[var(--color-green)] pr-10';
                               if (check.status === 'invalid') return 'border-amber-500 focus:ring-amber-500 pr-10';
                               return 'border-[var(--color-border)] focus:ring-[var(--color-green)]';
                             })()
-                          }`}
+                            }`}
                         />
                         {(() => {
                           const check = validateImeiChecksum(formData.imei);
@@ -1715,8 +1712,8 @@ export default function CreateListingPage() {
               disabled={isSubmitting}
               className="px-6 py-3 bg-[var(--color-accent)] text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
-              {isSubmitting 
-                ? (uploadingFiles ? 'Uploading Images...' : 'Creating Listing...') 
+              {isSubmitting
+                ? (uploadingFiles ? 'Uploading Images...' : 'Creating Listing...')
                 : (formData.isBulkListing ? 'Publish Business Listing' : 'Submit for Verification')}
             </button>
           )}

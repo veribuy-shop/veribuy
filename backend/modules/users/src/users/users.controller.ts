@@ -32,6 +32,29 @@ interface AuthenticatedUser {
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  /**
+   * Public endpoint to validate a referral code during registration.
+   */
+  @Get('referral-code/:code/validate')
+  @Public()
+  async validateReferralCode(@Param('code') code: string) {
+    return this.usersService.validateReferralCode(code);
+  }
+
+  /**
+   * Get referral dashboard and statistics for a user.
+   */
+  @Get(':userId/referrals')
+  async getReferrals(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (user.userId !== userId && user.role !== 'ADMIN') {
+      throw new ForbiddenException('You can only view your own referrals');
+    }
+    return this.usersService.getReferralDetails(userId);
+  }
+
   @Get(':userId/profile')
   async getProfile(
     @Param('userId', ParseUUIDPipe) userId: string,

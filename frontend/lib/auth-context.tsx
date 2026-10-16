@@ -10,6 +10,7 @@ interface User {
   role: 'BUYER' | 'SELLER' | 'ADMIN';
   accountType?: 'INDIVIDUAL' | 'BUSINESS';
   companyName?: string | null;
+  referralCode?: string | null;
 }
 
 export interface RegisterData {
@@ -27,6 +28,7 @@ export interface RegisterData {
   companyName?: string;
   companyNumber?: string;
   vatNumber?: string;
+  referralCode?: string;
 }
 
 interface AuthContextType {

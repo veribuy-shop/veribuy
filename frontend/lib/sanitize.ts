@@ -29,6 +29,7 @@ export interface SafeAuthUser {
   role: string;
   accountType?: 'INDIVIDUAL' | 'BUSINESS';
   companyName?: string | null;
+  referralCode?: string | null;
 }
 
 /** Admin user record — includes account timestamps for admin user-management views. */
@@ -65,6 +66,7 @@ export interface SafeProfile {
   sellerRating: number | null;
   totalSales: number;
   totalPurchases: number;
+  referralBonusBalance?: number;
   address?: SafeProfileAddress | null;
   city?: string | null;
   country?: string | null;
@@ -268,6 +270,7 @@ export function sanitizeAuthUser(raw: Record<string, any>): SafeAuthUser {
     role: raw.role ?? '',
     accountType: raw.accountType ?? 'INDIVIDUAL',
     companyName: raw.companyName ?? null,
+    referralCode: raw.referralCode ?? null,
   };
 }
 
@@ -303,6 +306,7 @@ export function sanitizeProfile(raw: Record<string, any>): SafeProfile {
     sellerRating: raw.sellerRating != null ? Number(raw.sellerRating) : null,
     totalSales: Number(raw.totalSales ?? 0),
     totalPurchases: Number(raw.totalPurchases ?? 0),
+    referralBonusBalance: Number(raw.referralBonusBalance ?? 0),
     address: raw.address
       ? {
           id: raw.address.id,

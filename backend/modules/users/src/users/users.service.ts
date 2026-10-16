@@ -4,6 +4,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { RedisService } from '@veribuy/redis-cache';
 import { CreateProfileDto } from './dto/create-profile.dto';
@@ -25,6 +26,7 @@ const PROFILE_SELECT = {
   sellerRating: true,
   totalSales: true,
   totalPurchases: true,
+  referralBonusBalance: true,
   createdAt: true,
   updatedAt: true,
   address: {
@@ -301,4 +303,131 @@ export class UsersService {
       `Updated sellerRating to ${sellerRating} (${totalRatings} ratings) for user ${userId}`,
     );
   }
+
+  async getReferralDetails(userId: string) {
+    let user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        referralCode: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Auto-generate referral code for legacy accounts if missing
+    if (!user.referralCode) {
+      const newCode = 'VB-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+      user = await this.prisma.user.update({
+        where: { id: userId },
+        data: { referralCode: newCode },
+        select: { id: true, name: true, email: true, referralCode: true },
+      });
+    }
+
+    const profile = await this.prisma.profile.findUnique({
+      where: { userId },
+      select: { referralBonusBalance: true },
+    });
+
+    const referrals = await this.prisma.referral.findMany({
+      where: { referrerId: userId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        referred: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            profile: {
+              select: {
+                displayName: true,
+                avatarUrl: true,
+              },
+            },
+          },
+        },
+        qualifyingOrder: {
+          select: {
+            id: true,
+            listingTitle: true,
+            amount: true,
+            completedAt: true,
+          },
+        },
+      },
+    });
+
+    const pendingCount = referrals.filter((r: any) => r.status === 'PENDING').length;
+    const qualifiedCount = referrals.filter((r: any) => r.status === 'QUALIFIED' || r.status === 'PAID').length;
+    const totalEarned = Number(profile?.referralBonusBalance || 0);
+
+    return {
+      referralCode: user.referralCode,
+      referralLink: `https://veribuy.shop/register?ref=${user.referralCode}`,
+      rewardPerSale: 5.0,
+      currency: 'GBP',
+      bonusBalance: totalEarned,
+      stats: {
+        totalReferred: referrals.length,
+        pendingCount,
+        qualifiedCount,
+        totalEarned,
+      },
+      referrals: referrals.map((r: any) => ({
+        id: r.id,
+        referredName:
+          r.referred?.profile?.displayName ||
+          r.referred?.name ||
+          'Referred Friend',
+        status: r.status,
+        rewardAmount: Number(r.rewardAmount || 5.0),
+        currency: r.currency || 'GBP',
+        createdAt: r.createdAt,
+        qualifiedAt: r.qualifiedAt,
+        listingTitle: r.qualifyingOrder?.listingTitle || null,
+      })),
+    };
+  }
+
+  async validateReferralCode(rawCode: string) {
+    const clean = (rawCode || '').trim().toUpperCase();
+    if (!clean) {
+      return { valid: false, message: 'Referral code is required' };
+    }
+
+    const referrer = await this.prisma.user.findUnique({
+      where: { referralCode: clean },
+      select: {
+        id: true,
+        name: true,
+        profile: {
+          select: {
+            displayName: true,
+          },
+        },
+      },
+    });
+
+    if (!referrer) {
+      return { valid: false, message: 'Invalid referral code' };
+    }
+
+    const referrerName =
+      referrer.profile?.displayName ||
+      referrer.name.split(' ')[0] ||
+      'VeriBuy Member';
+
+    return {
+      valid: true,
+      referralCode: clean,
+      referrerName,
+      message: `Invited by ${referrerName}`,
+    };
+  }
 }
+

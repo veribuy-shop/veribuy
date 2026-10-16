@@ -42,6 +42,12 @@ import {
   Filter,
   MapPin,
   Phone,
+  Gift,
+  Copy,
+  Check,
+  Share2,
+  Users,
+  Coins,
 } from 'lucide-react';
 import { PhoneVerificationModal } from '@/components/phone-verification-modal';
 import {
@@ -104,7 +110,7 @@ interface VerificationRequest {
   createdAt: string;
 }
 
-type NavId = 'dashboard' | 'listings' | 'purchases' | 'sales' | 'earnings' | 'analytics' | 'profile' | 'settings';
+type NavId = 'dashboard' | 'listings' | 'purchases' | 'sales' | 'earnings' | 'referrals' | 'analytics' | 'profile' | 'settings';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -206,11 +212,52 @@ function DashboardContent() {
   const router = useRouter();
   const { user, logout, authFetch } = useAuth();
   const searchParams = useSearchParams();
-  const validTabs: NavId[] = ['dashboard', 'listings', 'purchases', 'sales', 'earnings', 'analytics', 'profile', 'settings'];
+  const validTabs: NavId[] = ['dashboard', 'listings', 'purchases', 'sales', 'earnings', 'referrals', 'analytics', 'profile', 'settings'];
   const initialTab = validTabs.includes(searchParams.get('tab') as NavId) ? (searchParams.get('tab') as NavId) : 'dashboard';
   const [activeNav, setActiveNav] = useState<NavId>(initialTab);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Referral state
+  const [referralData, setReferralData] = useState<{
+    referralCode: string;
+    referralLink: string;
+    rewardPerSale: number;
+    currency: string;
+    bonusBalance: number;
+    stats: {
+      totalReferred: number;
+      pendingCount: number;
+      qualifiedCount: number;
+      totalEarned: number;
+    };
+    referrals: Array<{
+      id: string;
+      referredName: string;
+      status: 'PENDING' | 'QUALIFIED' | 'PAID';
+      rewardAmount: number;
+      currency: string;
+      createdAt: string;
+      qualifiedAt?: string;
+      listingTitle?: string | null;
+    }>;
+  } | null>(null);
+  const [copiedReferralLink, setCopiedReferralLink] = useState(false);
+  const [copiedReferralCode, setCopiedReferralCode] = useState(false);
+
+  const handleCopyLink = () => {
+    if (!referralData?.referralLink) return;
+    navigator.clipboard.writeText(referralData.referralLink);
+    setCopiedReferralLink(true);
+    setTimeout(() => setCopiedReferralLink(false), 2000);
+  };
+
+  const handleCopyCode = () => {
+    if (!referralData?.referralCode) return;
+    navigator.clipboard.writeText(referralData.referralCode);
+    setCopiedReferralCode(true);
+    setTimeout(() => setCopiedReferralCode(false), 2000);
+  };
 
   const [listings, setListings] = useState<Listing[]>([]);
   const [sellerOrders, setSellerOrders] = useState<Order[]>([]);
@@ -288,12 +335,13 @@ function DashboardContent() {
       const withTimeout = <T,>(p: Promise<T>, ms = 10_000): Promise<T | null> =>
         Promise.race([p, new Promise<null>((r) => setTimeout(() => r(null), ms))]);
 
-      const [listRes, sellerOrdRes, buyerOrdRes, verRes, profileRes] = await Promise.allSettled([
+      const [listRes, sellerOrdRes, buyerOrdRes, verRes, profileRes, refRes] = await Promise.allSettled([
         withTimeout(authFetch(`/api/listings?sellerId=${user.id}`)),
         withTimeout(authFetch(`/api/checkout/orders/seller/${user.id}`)),
         withTimeout(authFetch(`/api/checkout/orders/buyer/${user.id}`)),
         withTimeout(authFetch('/api/trust-lens?limit=100')),
         withTimeout(fetch(`/api/users/${user.id}/profile`, { credentials: 'include' })),
+        withTimeout(authFetch(`/api/users/${user.id}/referrals`)),
       ]);
 
       const settleOk = (r: PromiseSettledResult<Response | null>): Response | null =>
@@ -329,6 +377,11 @@ function DashboardContent() {
       if (verVal?.ok) {
         const d = await verVal.json();
         setVerifications(Array.isArray(d) ? d : d.data ?? []);
+      }
+      const refVal = settleOk(refRes);
+      if (refVal?.ok) {
+        const d = await refVal.json();
+        setReferralData(d);
       }
       const profileVal = settleOk(profileRes);
       if (profileVal?.ok) {
@@ -478,12 +531,13 @@ function DashboardContent() {
     return true;
   });
 
-  const navItems: { id: NavId; label: string; icon: any; count?: number }[] = [
+  const navItems: { id: NavId; label: string; icon: any; count?: number; badge?: string }[] = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'listings', label: 'My Listings', icon: List, count: listings.length },
     { id: 'purchases', label: 'Purchases', icon: ShoppingCart, count: buyerOrders.length },
     { id: 'sales', label: 'Sales & Orders', icon: ShoppingBag, count: sellerOrders.length },
     { id: 'earnings', label: 'Escrow & Earnings', icon: DollarSign },
+    { id: 'referrals', label: 'Refer & Earn £5', icon: Gift, count: referralData?.stats.totalReferred, badge: '£5' },
     { id: 'analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'profile', label: 'Profile', icon: UserCircle },
     { id: 'settings', label: 'Settings', icon: Settings },
@@ -597,7 +651,18 @@ function DashboardContent() {
                     <Icon className={cn('w-4 h-4', isActive ? 'text-white' : isDarkMode ? 'text-neutral-400' : 'text-slate-500')} />
                     <span>{item.label}</span>
                   </div>
-                  {item.count !== undefined && item.count > 0 && (
+                  {item.badge ? (
+                    <span
+                      className={cn(
+                        'px-2 py-0.5 rounded-full text-[11px] font-mono font-bold',
+                        isActive
+                          ? 'bg-emerald-700 text-white'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                      )}
+                    >
+                      {item.badge}
+                    </span>
+                  ) : item.count !== undefined && item.count > 0 ? (
                     <span
                       className={cn(
                         'px-2 py-0.5 rounded-full text-xs font-mono font-semibold',
@@ -610,7 +675,7 @@ function DashboardContent() {
                     >
                       {item.count}
                     </span>
-                  )}
+                  ) : null}
                 </button>
               );
             })}
@@ -654,6 +719,7 @@ function DashboardContent() {
                 {activeNav === 'purchases' && 'My Purchases'}
                 {activeNav === 'sales' && 'Sales & Fulfillment'}
                 {activeNav === 'earnings' && 'Escrow & Payouts'}
+                {activeNav === 'referrals' && 'Refer & Earn £5'}
                 {activeNav === 'analytics' && 'Performance Analytics'}
                 {activeNav === 'profile' && 'Public Profile'}
                 {activeNav === 'settings' && 'Account & Security'}
@@ -1363,7 +1429,7 @@ function DashboardContent() {
         {/* ─── TAB 5: EARNINGS & ESCROW ─── */}
         {activeNav === 'earnings' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               <div
                 className={cn(
                   'border rounded-3xl p-6 shadow-sm',
@@ -1394,6 +1460,32 @@ function DashboardContent() {
                 <p className={cn('text-xs mt-2', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
                   Releases upon buyer inspection
                 </p>
+              </div>
+
+              <div
+                className={cn(
+                  'border rounded-3xl p-6 shadow-sm',
+                  isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
+                )}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className={cn('text-xs uppercase tracking-wider font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Referral Bonus
+                  </span>
+                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                    £5 Per Sale
+                  </span>
+                </div>
+                <p className="text-3xl font-bold text-emerald-600">
+                  {formatPrice(referralData?.stats?.totalEarned ?? 0, 'GBP')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveNav('referrals')}
+                  className="text-xs text-[var(--color-green)] font-semibold mt-2 hover:underline flex items-center gap-1"
+                >
+                  View Referral Hub <ArrowUpRight className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               <div
@@ -1443,6 +1535,279 @@ function DashboardContent() {
                   Instant Settlement
                 </span>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB: REFERRALS & ADVERT BOUNTY ─── */}
+        {activeNav === 'referrals' && (
+          <div className="space-y-6">
+            {/* Promotional Hero Banner */}
+            <div className="relative overflow-hidden rounded-3xl p-8 bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-900 text-white shadow-xl">
+              <div className="absolute -right-8 -bottom-8 w-64 h-64 bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />
+              <div className="relative z-10 max-w-2xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-emerald-100 text-xs font-bold uppercase tracking-wider mb-4 border border-white/20">
+                  <Gift className="w-3.5 h-3.5 text-amber-300" />
+                  <span>VeriBuy Advert Referral Bounty</span>
+                </div>
+                <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-white mb-3">
+                  Refer Sellers. Earn £5.00 Cash for Every First Sale.
+                </h2>
+                <p className="text-emerald-100 text-sm leading-relaxed mb-6">
+                  Spread the word about VeriBuy&apos;s 0% seller commission and Trust Lens verification. Share your personal invite link with friends or sellers. When someone signs up and completes their first device sale, you immediately earn a <strong className="text-white underline decoration-emerald-400">£5.00 cash bonus</strong> credited directly to your balance!
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="px-5 py-3 rounded-xl bg-white text-emerald-900 font-bold text-xs hover:bg-emerald-50 transition-all flex items-center gap-2 shadow-sm"
+                  >
+                    {copiedReferralLink ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedReferralLink ? 'Invite Link Copied!' : 'Copy Invite Link'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyCode}
+                    className="px-4 py-3 rounded-xl bg-emerald-800/80 hover:bg-emerald-800 text-white font-mono font-bold text-xs border border-white/20 transition-all flex items-center gap-2"
+                  >
+                    {copiedReferralCode ? <Check className="w-4 h-4 text-emerald-300" /> : <Gift className="w-4 h-4 text-amber-300" />}
+                    <span>{copiedReferralCode ? 'Code Copied!' : `Code: ${referralData?.referralCode || '...'}`}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* 4 Metric Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+              <div className={cn('p-5 rounded-2xl border shadow-sm', isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200')}>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs uppercase font-bold tracking-wider">Friends Invited</span>
+                  <Users className="w-4 h-4 text-blue-500" />
+                </div>
+                <p className={cn('text-2xl sm:text-3xl font-extrabold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                  {referralData?.stats?.totalReferred ?? 0}
+                </p>
+                <span className="text-[11px] text-slate-400 mt-1 block">Signed up via your link</span>
+              </div>
+
+              <div className={cn('p-5 rounded-2xl border shadow-sm', isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200')}>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs uppercase font-bold tracking-wider">Pending First Sale</span>
+                  <Package className="w-4 h-4 text-amber-500" />
+                </div>
+                <p className={cn('text-2xl sm:text-3xl font-extrabold text-amber-600', isDarkMode ? 'text-amber-400' : 'text-amber-600')}>
+                  {referralData?.stats?.pendingCount ?? 0}
+                </p>
+                <span className="text-[11px] text-slate-400 mt-1 block">Listing tech / awaiting sale</span>
+              </div>
+
+              <div className={cn('p-5 rounded-2xl border shadow-sm', isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200')}>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs uppercase font-bold tracking-wider">Qualified Sales</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                </div>
+                <p className={cn('text-2xl sm:text-3xl font-extrabold text-emerald-600', isDarkMode ? 'text-emerald-400' : 'text-emerald-600')}>
+                  {referralData?.stats?.qualifiedCount ?? 0}
+                </p>
+                <span className="text-[11px] text-slate-400 mt-1 block">First sale completed</span>
+              </div>
+
+              <div className={cn('p-5 rounded-2xl border shadow-sm', isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200')}>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs uppercase font-bold tracking-wider">Total Bounty Earned</span>
+                  <Coins className="w-4 h-4 text-emerald-600" />
+                </div>
+                <p className={cn('text-2xl sm:text-3xl font-extrabold text-emerald-600', isDarkMode ? 'text-emerald-400' : 'text-emerald-600')}>
+                  {formatPrice(referralData?.stats?.totalEarned ?? 0, 'GBP')}
+                </p>
+                <span className="text-[11px] text-emerald-600 font-semibold mt-1 block">£5.00 per first sale</span>
+              </div>
+            </div>
+
+            {/* Sharing Tools Card */}
+            <div className={cn('p-6 sm:p-7 rounded-3xl border shadow-sm', isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200')}>
+              <h3 className={cn('text-base font-bold mb-4 flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                <Share2 className="w-5 h-5 text-emerald-600" />
+                Share Your Referral Link
+              </h3>
+              <p className={cn('text-xs mb-6', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                Send this link or code directly to sellers on WhatsApp, Instagram, Twitter/X, or forums.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                    Your Personal Referral Link
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={referralData?.referralLink || 'Generating link...'}
+                      className={cn(
+                        'w-full px-4 py-2.5 rounded-xl border text-xs font-mono select-all focus:outline-none',
+                        isDarkMode ? 'bg-neutral-950 border-neutral-800 text-neutral-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                      )}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopyLink}
+                      className="px-4 py-2.5 rounded-xl bg-[var(--color-green)] text-white text-xs font-bold hover:bg-[var(--color-green-dark)] transition-all flex items-center gap-1.5 shrink-0"
+                    >
+                      {copiedReferralLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedReferralLink ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                    Quick Social Sharing
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(`Sell electronics with 0% seller commission and Trust Lens verification on VeriBuy: ${referralData?.referralLink || ''}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center gap-1.5"
+                    >
+                      <span>Share on WhatsApp</span>
+                    </a>
+                    <a
+                      href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Join VeriBuy to buy and sell verified tech with 0% seller commission: ${referralData?.referralLink || ''}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 rounded-xl bg-neutral-900 hover:bg-black text-white text-xs font-bold transition-all flex items-center gap-1.5"
+                    >
+                      <span>Post on X</span>
+                    </a>
+                    <a
+                      href={`mailto:?subject=${encodeURIComponent('Sell on VeriBuy with 0% commission')}&body=${encodeURIComponent(`Hey! I recommend checking out VeriBuy to sell tech with 0% commission: ${referralData?.referralLink || ''}`)}`}
+                      className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-neutral-700 text-slate-700 dark:text-neutral-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-neutral-800 transition-all flex items-center gap-1.5"
+                    >
+                      <span>Email Invite</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* How It Works 3-Step Guide */}
+            <div className={cn('p-6 sm:p-7 rounded-3xl border shadow-sm', isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200')}>
+              <h3 className={cn('text-base font-bold mb-4', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                How the Advert Referral Program Works
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className={cn('p-4 rounded-2xl border', isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200')}>
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center mb-3">
+                    1
+                  </div>
+                  <h4 className={cn('text-sm font-bold mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Share Your Invite Link
+                  </h4>
+                  <p className={cn('text-xs leading-relaxed', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Send your link to individuals, creators, or businesses selling phones, tablets, MacBooks, or gaming consoles.
+                  </p>
+                </div>
+
+                <div className={cn('p-4 rounded-2xl border', isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200')}>
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center mb-3">
+                    2
+                  </div>
+                  <h4 className={cn('text-sm font-bold mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    They List &amp; Sell Their First Item
+                  </h4>
+                  <p className={cn('text-xs leading-relaxed', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Your referred friend creates a listing with 0% seller commission and completes their first sale through escrow.
+                  </p>
+                </div>
+
+                <div className={cn('p-4 rounded-2xl border', isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200')}>
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center mb-3">
+                    3
+                  </div>
+                  <h4 className={cn('text-sm font-bold mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    You Receive £5.00 Cash Bonus
+                  </h4>
+                  <p className={cn('text-xs leading-relaxed', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Once the order completes and escrow funds release, £5.00 is immediately added to your earnings balance.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Referral Activity History */}
+            <div className={cn('p-6 sm:p-7 rounded-3xl border shadow-sm', isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200')}>
+              <h3 className={cn('text-base font-bold mb-4 flex items-center justify-between', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                <span>Referral Activity &amp; Payout History</span>
+                <span className="text-xs font-normal text-slate-500">
+                  {referralData?.referrals?.length ?? 0} referred
+                </span>
+              </h3>
+
+              {referralData && referralData.referrals.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className={cn('border-b text-slate-400 uppercase tracking-wider', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
+                        <th className="pb-3 font-semibold">Friend</th>
+                        <th className="pb-3 font-semibold">Joined Date</th>
+                        <th className="pb-3 font-semibold">Status</th>
+                        <th className="pb-3 font-semibold">Item Sold</th>
+                        <th className="pb-3 font-semibold text-right">Bounty</th>
+                      </tr>
+                    </thead>
+                    <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-100')}>
+                      {referralData.referrals.map((r) => (
+                        <tr key={r.id} className="hover:bg-slate-50/50 dark:hover:bg-neutral-800/30 transition-colors">
+                          <td className="py-3.5 font-bold text-slate-900 dark:text-white">
+                            {r.referredName}
+                          </td>
+                          <td className="py-3.5 text-slate-500 dark:text-neutral-400">
+                            {new Date(r.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </td>
+                          <td className="py-3.5">
+                            {r.status === 'QUALIFIED' || r.status === 'PAID' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                                <CheckCircle2 className="w-3 h-3" /> £5.00 Earned
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                <Package className="w-3 h-3" /> Awaiting First Sale
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 text-slate-600 dark:text-neutral-300">
+                            {r.listingTitle || '—'}
+                          </td>
+                          <td className="py-3.5 text-right font-extrabold text-emerald-600">
+                            {r.status === 'QUALIFIED' || r.status === 'PAID' ? '£5.00' : 'Pending (£5.00)'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-12 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center">
+                    <Gift className="w-6 h-6" />
+                  </div>
+                  <h4 className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    No referrals yet
+                  </h4>
+                  <p className={cn('text-xs max-w-sm mx-auto', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
+                    Share your invite link above with friends and tech sellers. You&apos;ll earn £5.00 automatically when they complete their first sale!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="mt-2 px-4 py-2 bg-[var(--color-green)] text-white text-xs font-bold rounded-xl hover:bg-[var(--color-green-dark)] transition-all"
+                  >
+                    Copy Your Referral Link
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

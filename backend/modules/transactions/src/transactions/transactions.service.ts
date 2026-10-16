@@ -689,11 +689,15 @@ export class TransactionsService implements OnModuleInit {
     // DI-04: Wrap escrow update + order update in a single transaction so a
     // mid-flight crash cannot leave them in inconsistent states.
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
-      if (updateOrderStatusDto.status === 'COMPLETED' && order.escrowId) {
-        await tx.escrowRecord.update({
-          where: { id: order.escrowId },
-          data: { status: 'RELEASED', releasedAt: now },
-        });
+      if (updateOrderStatusDto.status === 'COMPLETED') {
+        if (order.escrowId) {
+          await tx.escrowRecord.update({
+            where: { id: order.escrowId },
+            data: { status: 'RELEASED', releasedAt: now },
+          });
+        }
+        // Referral system: check if this is the first completed sale for a referred seller
+        await this.processReferralBonusOnFirstSale(tx, order.sellerId, order.id, now);
       } else if (updateOrderStatusDto.status === 'DISPUTED' && order.escrowId) {
         await tx.escrowRecord.update({
           where: { id: order.escrowId },
@@ -746,6 +750,66 @@ export class TransactionsService implements OnModuleInit {
     }
 
     return order;
+  }
+
+  /**
+   * Process referral bonus (£5.00) when a referred seller completes their first sale.
+   */
+  private async processReferralBonusOnFirstSale(
+    tx: any,
+    sellerId: string,
+    orderId: string,
+    now: Date,
+  ): Promise<void> {
+    try {
+      if (!sellerId) return;
+
+      // Find if this seller has an active pending referral record
+      const referral = await tx.referral.findUnique({
+        where: { referredId: sellerId },
+      });
+
+      if (referral && referral.status === 'PENDING') {
+        const reward = Number(referral.rewardAmount || 5.0);
+
+        // Mark referral as QUALIFIED with qualifying order
+        await tx.referral.update({
+          where: { id: referral.id },
+          data: {
+            status: 'QUALIFIED',
+            qualifyingOrderId: orderId,
+            qualifiedAt: now,
+          },
+        });
+
+        // Credit the referrer's profile referral bonus balance
+        await tx.profile.update({
+          where: { userId: referral.referrerId },
+          data: {
+            referralBonusBalance: { increment: reward },
+          },
+        });
+
+        this.logger.log(
+          `Referral reward of £${reward.toFixed(2)} granted to referrer ${referral.referrerId} on seller ${sellerId}'s first sale (order ${orderId})`,
+        );
+
+        // Send celebratory in-app notification to the referrer
+        this.sendOrderNotification({
+          orderId,
+          buyerId: referral.referrerId,
+          sellerId,
+          recipientId: referral.referrerId,
+          subject: '🎉 £5.00 Referral Bonus Earned!',
+          content: `Congratulations! A friend you referred just completed their first device sale on VeriBuy. £${reward.toFixed(2)} has been credited to your referral balance!`,
+        }).catch((err) => {
+          this.logger.warn(`Failed to send referral reward in-app notification: ${err?.message}`);
+        });
+      }
+    } catch (err: any) {
+      // Non-fatal error: log but do not abort order completion
+      this.logger.error(`Error processing referral bonus for seller ${sellerId}: ${err?.message}`, err?.stack);
+    }
   }
 
   /**
