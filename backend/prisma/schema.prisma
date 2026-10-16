@@ -25,12 +25,18 @@ model User {
   emailVerificationExpiry  DateTime?      @map("email_verification_expiry")
   passwordResetToken       String?        @map("password_reset_token")
   passwordResetExpiry      DateTime?      @map("password_reset_expiry")
+  referralCode             String?        @unique @map("referral_code")
+  referredById             String?        @map("referred_by_id")
   createdAt                DateTime       @default(now()) @map("created_at")
   updatedAt                DateTime       @updatedAt @map("updated_at")
 
   // ── Relations ──────────────────────────────────────────────────────────
   refreshTokens        RefreshToken[]
   profile              Profile?
+  referrer             User?                 @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referredUsers        User[]                @relation("UserReferrals")
+  referralsGiven       Referral[]            @relation("ReferrerReferrals")
+  referralReceived     Referral?             @relation("ReferredReferral")
   listings             Listing[]             @relation("SellerListings")
   bids                 Bid[]                 @relation("BidderBids")
   wonAuctions          Listing[]             @relation("HighestBidder")
@@ -42,6 +48,8 @@ model User {
 
   @@index([role])
   @@index([isActive])
+  @@index([referralCode])
+  @@index([referredById])
   @@index([createdAt])
   @@index([deletedAt])
   @@index([emailVerificationToken])
@@ -90,6 +98,7 @@ model Profile {
   companyName        String?            @map("company_name")
   companyNumber      String?            @map("company_number")
   vatNumber          String?            @map("vat_number")
+  referralBonusBalance Decimal          @default(0.00) @db.Decimal(10, 2) @map("referral_bonus_balance")
   address            Address?
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
@@ -361,10 +370,11 @@ model Order {
   updatedAt          DateTime    @updatedAt @map("updated_at")
 
   // ── Relations ──────────────────────────────────────────────────────────
-  escrow  EscrowRecord?
-  invoice Invoice[]
-  refunds RefundRecord[]
-  rating  Rating?
+  escrow          EscrowRecord?
+  invoice         Invoice[]
+  refunds         RefundRecord[]
+  rating          Rating?
+  referralReward  Referral?             @relation("QualifyingOrder")
 
   @@index([buyerId])
   @@index([sellerId])
@@ -646,3 +656,37 @@ enum NotificationStatus {
   SENT
   FAILED
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  REFERRALS DOMAIN
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Referral {
+  id                String         @id @default(uuid())
+  referrerId        String         @map("referrer_id")
+  referrer          User           @relation("ReferrerReferrals", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredId        String         @unique @map("referred_id")
+  referred          User           @relation("ReferredReferral", fields: [referredId], references: [id], onDelete: Cascade)
+  status            ReferralStatus @default(PENDING)
+  rewardAmount      Decimal        @default(5.00) @db.Decimal(10, 2) @map("reward_amount")
+  currency          String         @default("GBP")
+  qualifyingOrderId String?        @unique @map("qualifying_order_id")
+  qualifyingOrder   Order?         @relation("QualifyingOrder", fields: [qualifyingOrderId], references: [id], onDelete: SetNull)
+  qualifiedAt       DateTime?      @map("qualified_at")
+  paidAt            DateTime?      @map("paid_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  @@index([referrerId])
+  @@index([referredId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("referrals")
+}
+
+enum ReferralStatus {
+  PENDING
+  QUALIFIED
+  PAID
+}
+

@@ -58,7 +58,25 @@ export class AuthService {
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-    let user: { id: string; name: string; email: string; role: string };
+    // Generate a unique referral code for this user and lookup inviter if provided
+    let referredById: string | null = null;
+    if (dto.referralCode) {
+      try {
+        const referrer = await this.prisma.user.findUnique({
+          where: { referralCode: dto.referralCode.trim().toUpperCase() },
+          select: { id: true, name: true },
+        });
+        if (referrer) {
+          referredById = referrer.id;
+        }
+      } catch (err: any) {
+        this.logger.warn(`Referral lookup failed for code ${dto.referralCode}: ${err?.message}`);
+      }
+    }
+
+    const newReferralCode = 'VB-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+
+    let user: { id: string; name: string; email: string; role: string; referralCode?: string | null };
     try {
       user = await this.prisma.user.create({
         data: {
@@ -66,6 +84,8 @@ export class AuthService {
           email: dto.email,
           passwordHash,
           isEmailVerified: autoVerify,
+          referralCode: newReferralCode,
+          referredById: referredById || null,
           ...(autoVerify
             ? {}
             : {
@@ -78,8 +98,24 @@ export class AuthService {
           name: true,
           email: true,
           role: true,
+          referralCode: true,
         },
       });
+
+      // If registered with a valid referral, create pending referral record
+      if (referredById) {
+        await this.prisma.referral.create({
+          data: {
+            referrerId: referredById,
+            referredId: user.id,
+            status: 'PENDING',
+            rewardAmount: 5.00,
+            currency: 'GBP',
+          },
+        }).catch((refErr) => {
+          this.logger.warn(`Failed to create pending referral record for ${user.id}: ${refErr?.message}`);
+        });
+      }
 
       // Auto-create user profile and address with required full address & phone
       await this.prisma.profile.create({
@@ -138,6 +174,7 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        referralCode: user.referralCode || newReferralCode,
         accountType: dto.accountType || 'INDIVIDUAL',
         companyName: dto.companyName || null,
       },
