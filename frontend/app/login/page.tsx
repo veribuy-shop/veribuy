@@ -89,15 +89,28 @@ function LoginContent() {
     }
   };
 
-  const handleSocialAuth = async (provider: 'GOOGLE' | 'APPLE') => {
+  const [socialModalProvider, setSocialModalProvider] = useState<'GOOGLE' | 'APPLE' | null>(null);
+  const [socialModalEmail, setSocialModalEmail] = useState('');
+
+  const triggerSocialLogin = async (provider: 'GOOGLE' | 'APPLE', targetEmail: string) => {
     setError('');
     setSocialLoading(provider);
     try {
-      await socialLogin(provider, undefined, redirectTo);
+      await socialLogin(provider, { email: targetEmail.trim(), action: 'login' }, redirectTo);
+      setSocialModalProvider(null);
     } catch (err: any) {
       setError(err.message || `${provider} sign in failed. Please try again.`);
     } finally {
       setSocialLoading(null);
+    }
+  };
+
+  const handleSocialAuth = async (provider: 'GOOGLE' | 'APPLE') => {
+    if (email.trim()) {
+      await triggerSocialLogin(provider, email.trim());
+    } else {
+      setSocialModalEmail('');
+      setSocialModalProvider(provider);
     }
   };
 
@@ -123,9 +136,21 @@ function LoginContent() {
 
         {/* Error Notification */}
         {error && (
-          <div role="alert" className="flex items-center gap-2.5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6 text-xs font-semibold">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" aria-hidden="true" />
-            <span>{error}</span>
+          <div role="alert" className="flex items-center justify-between gap-2.5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6 text-xs font-semibold">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+            {error.toLowerCase().includes('sign up first') && (
+              <Link href="/register" className="underline font-bold text-red-900 shrink-0 hover:text-black">
+                Create account →
+              </Link>
+            )}
+            {error.toLowerCase().includes('verify your email') && (
+              <Link href="/check-email" className="underline font-bold text-red-900 shrink-0 hover:text-black">
+                Verify email →
+              </Link>
+            )}
           </div>
         )}
 
@@ -307,6 +332,72 @@ function LoginContent() {
           </div>
         </div>
       </div>
+
+      {/* ── Social Sign-In Email Dialog ── */}
+      {socialModalProvider && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-100">
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                {socialModalProvider === 'APPLE' ? (
+                  <AppleIcon className="w-6 h-6 fill-black" />
+                ) : (
+                  <GoogleIcon className="w-6 h-6" />
+                )}
+              </div>
+              <h3 className="text-lg font-black text-gray-900">
+                Sign in with {socialModalProvider === 'APPLE' ? 'Apple' : 'Google'}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
+                Enter your {socialModalProvider === 'APPLE' ? 'Apple ID' : 'Google'} email address to access your verified account.
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (socialModalEmail.trim()) {
+                  triggerSocialLogin(socialModalProvider, socialModalEmail.trim());
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  autoFocus
+                  value={socialModalEmail}
+                  onChange={(e) => setSocialModalEmail(e.target.value)}
+                  placeholder="your.email@example.com"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSocialModalProvider(null)}
+                  disabled={Boolean(socialLoading)}
+                  className="flex-1 py-3 px-4 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!socialModalEmail.trim() || Boolean(socialLoading)}
+                  className="flex-1 py-3 px-4 bg-black text-white hover:bg-gray-900 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  {socialLoading ? 'Verifying...' : 'Sign In'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

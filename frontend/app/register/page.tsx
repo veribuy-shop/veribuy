@@ -67,6 +67,8 @@ function GoogleIcon({ className = "w-4 h-4" }: { className?: string }) {
 export default function RegisterPage() {
   const { register, socialLogin } = useAuth();
   const [socialLoading, setSocialLoading] = useState<'GOOGLE' | 'APPLE' | null>(null);
+  const [socialModalProvider, setSocialModalProvider] = useState<'GOOGLE' | 'APPLE' | null>(null);
+  const [socialModalEmail, setSocialModalEmail] = useState('');
 
   const [step, setStep]                   = useState<1 | 2>(1);
   const [accountType, setAccountType]     = useState<'INDIVIDUAL' | 'BUSINESS'>('INDIVIDUAL');
@@ -85,6 +87,34 @@ export default function RegisterPage() {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError]                 = useState('');
   const [loading, setLoading]             = useState(false);
+
+  const triggerSocialSignUp = async (provider: 'GOOGLE' | 'APPLE', targetEmail: string) => {
+    setError('');
+    setSocialLoading(provider);
+    try {
+      await socialLogin(provider, {
+        email: targetEmail.trim(),
+        name: name.trim() || undefined,
+        referralCode: referralStatus === 'valid' ? referralCode : undefined,
+        action: 'register',
+      });
+      setSocialModalProvider(null);
+    } catch (err: any) {
+      setError(err.message || `${provider} sign-up failed. Please try again.`);
+    } finally {
+      setSocialLoading(null);
+    }
+  };
+
+  const handleSocialSignUpClick = (provider: 'GOOGLE' | 'APPLE') => {
+    setError('');
+    if (email.trim()) {
+      triggerSocialSignUp(provider, email.trim());
+    } else {
+      setSocialModalEmail('');
+      setSocialModalProvider(provider);
+    }
+  };
 
   // Postcode live validation state
   const [postcodeLoading, setPostcodeLoading] = useState(false);
@@ -288,9 +318,16 @@ export default function RegisterPage() {
 
         {/* Error */}
         {error && (
-          <div role="alert" className="flex items-center gap-2.5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6 text-xs font-semibold">
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" aria-hidden="true" />
-            <span>{error}</span>
+          <div role="alert" className="flex items-center justify-between gap-2.5 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6 text-xs font-semibold">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" aria-hidden="true" />
+              <span>{error}</span>
+            </div>
+            {error.toLowerCase().includes('already exists') && (
+              <Link href="/login" className="underline font-bold text-red-900 shrink-0 hover:text-black">
+                Sign in instead →
+              </Link>
+            )}
           </div>
         )}
 
@@ -308,19 +345,7 @@ export default function RegisterPage() {
             <div className="space-y-2.5">
               <button
                 type="button"
-                onClick={async () => {
-                  setError('');
-                  setSocialLoading('APPLE');
-                  try {
-                    await socialLogin('APPLE', {
-                      referralCode: referralStatus === 'valid' ? referralCode : undefined,
-                    });
-                  } catch (err: any) {
-                    setError(err.message || 'Apple sign-up failed. Please try again.');
-                  } finally {
-                    setSocialLoading(null);
-                  }
-                }}
+                onClick={() => handleSocialSignUpClick('APPLE')}
                 disabled={loading || Boolean(socialLoading)}
                 className="w-full py-3 px-4 bg-black text-white hover:bg-gray-900 rounded-xl font-bold text-xs flex items-center justify-between transition-all shadow-xs disabled:opacity-50"
               >
@@ -335,19 +360,7 @@ export default function RegisterPage() {
 
               <button
                 type="button"
-                onClick={async () => {
-                  setError('');
-                  setSocialLoading('GOOGLE');
-                  try {
-                    await socialLogin('GOOGLE', {
-                      referralCode: referralStatus === 'valid' ? referralCode : undefined,
-                    });
-                  } catch (err: any) {
-                    setError(err.message || 'Google sign-up failed. Please try again.');
-                  } finally {
-                    setSocialLoading(null);
-                  }
-                }}
+                onClick={() => handleSocialSignUpClick('GOOGLE')}
                 disabled={loading || Boolean(socialLoading)}
                 className="w-full py-3 px-4 bg-white border border-gray-200 hover:bg-slate-50 text-gray-800 rounded-xl font-bold text-xs flex items-center justify-between transition-all shadow-xs disabled:opacity-50"
               >
@@ -971,6 +984,72 @@ export default function RegisterPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Social Sign-Up Email Dialog ── */}
+      {socialModalProvider && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-100">
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-3">
+                {socialModalProvider === 'APPLE' ? (
+                  <AppleIcon className="w-6 h-6 fill-black" />
+                ) : (
+                  <GoogleIcon className="w-6 h-6" />
+                )}
+              </div>
+              <h3 className="text-lg font-black text-gray-900">
+                Sign up with {socialModalProvider === 'APPLE' ? 'Apple' : 'Google'}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1 max-w-xs mx-auto">
+                Enter your {socialModalProvider === 'APPLE' ? 'Apple ID' : 'Google'} email address. We will verify your email to secure your account.
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (socialModalEmail.trim()) {
+                  triggerSocialSignUp(socialModalProvider, socialModalEmail.trim());
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Email Address *
+                </label>
+                <input
+                  type="email"
+                  required
+                  autoFocus
+                  value={socialModalEmail}
+                  onChange={(e) => setSocialModalEmail(e.target.value)}
+                  placeholder="your.email@example.com"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSocialModalProvider(null)}
+                  disabled={Boolean(socialLoading)}
+                  className="flex-1 py-3 px-4 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!socialModalEmail.trim() || Boolean(socialLoading)}
+                  className="flex-1 py-3 px-4 bg-black text-white hover:bg-gray-900 rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  {socialLoading ? 'Verifying...' : 'Continue'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

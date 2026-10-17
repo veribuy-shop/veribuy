@@ -11,6 +11,9 @@ interface User {
   accountType?: 'INDIVIDUAL' | 'BUSINESS';
   companyName?: string | null;
   referralCode?: string | null;
+  isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
+  profileCompleted?: boolean;
 }
 
 export interface RegisterData {
@@ -37,9 +40,15 @@ interface AuthContextType {
   login: (email: string, password: string, redirectTo?: string) => Promise<void>;
   socialLogin: (
     provider: 'GOOGLE' | 'APPLE',
-    payload?: { email?: string; name?: string; token?: string; referralCode?: string },
+    payload?: {
+      email?: string;
+      name?: string;
+      token?: string;
+      referralCode?: string;
+      action?: 'login' | 'register';
+    },
     redirectTo?: string,
-  ) => Promise<void>;
+  ) => Promise<{ requiresEmailVerification?: boolean; requiresProfileCompletion?: boolean; user?: User }>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   /** Fetch wrapper that auto-retries once on 401 after refreshing the token. */
@@ -182,14 +191,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const socialLogin = async (
     provider: 'GOOGLE' | 'APPLE',
-    payload?: { email?: string; name?: string; token?: string; referralCode?: string },
+    payload?: {
+      email?: string;
+      name?: string;
+      token?: string;
+      referralCode?: string;
+      action?: 'login' | 'register';
+    },
     redirectTo?: string,
   ) => {
-    const defaultEmail =
-      payload?.email ||
-      (provider === 'GOOGLE' ? 'buyer.google@veribuy.co.uk' : 'buyer.apple@veribuy.co.uk');
+    if (!payload?.email) {
+      throw new Error(`Please enter your ${provider === 'GOOGLE' ? 'Google' : 'Apple'} email address to continue.`);
+    }
+
+    const email = payload.email.toLowerCase().trim();
     const defaultName =
-      payload?.name || (provider === 'GOOGLE' ? 'Google Verified User' : 'Apple Verified User');
+      payload?.name?.trim() || (provider === 'GOOGLE' ? 'Google Verified User' : 'Apple Verified User');
 
     const response = await fetch('/api/auth/social', {
       method: 'POST',
@@ -197,10 +214,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       credentials: 'include',
       body: JSON.stringify({
         provider,
-        email: defaultEmail,
+        email,
         name: defaultName,
         token: payload?.token,
         referralCode: payload?.referralCode,
+        action: payload?.action,
       }),
     });
 
@@ -210,7 +228,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.message || `${provider} authentication failed`);
     }
 
+    if (data.requiresEmailVerification || !data.user.isEmailVerified) {
+      router.push('/check-email');
+      return { requiresEmailVerification: true, user: data.user };
+    }
+
     setUser(data.user);
+
+    if (data.requiresProfileCompletion) {
+      router.push('/profile?setup=required');
+      return { requiresProfileCompletion: true, user: data.user };
+    }
 
     if (redirectTo) {
       router.push(redirectTo);
@@ -219,6 +247,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       router.push('/dashboard');
     }
+
+    return { user: data.user };
   };
 
   const register = async (data: RegisterData) => {

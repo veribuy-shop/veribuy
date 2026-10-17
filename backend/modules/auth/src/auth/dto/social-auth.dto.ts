@@ -11,6 +11,10 @@ export class SocialAuthDto {
   email: string;
 
   @IsOptional()
+  @IsIn(['login', 'register'])
+  action?: 'login' | 'register';
+
+  @IsOptional()
   @IsString()
   @MaxLength(100)
   name?: string;

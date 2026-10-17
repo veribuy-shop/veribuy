@@ -336,22 +336,40 @@ export class AuthService {
     });
 
     if (existingUser) {
+      // 1. Strict Conflict check: If user clicked "register" / "sign up" with social,
+      // prevent silent login into existing accounts.
+      if (dto.action === 'register') {
+        throw new ConflictException(
+          'An account with this email address already exists. Please sign in instead.',
+        );
+      }
+
       if (!existingUser.isActive) {
         throw new UnauthorizedException('Account is disabled');
       }
 
-      // Accounts verified by Google / Apple
+      // 2. Strict Email Verification check:
+      // Even with social login, require verification from our own platform if not verified.
       if (!existingUser.isEmailVerified) {
-        await this.prisma.user.update({
-          where: { id: existingUser.id },
-          data: { isEmailVerified: true },
-        });
+        throw new ForbiddenException(
+          'Please verify your email address before logging in. Check your inbox for the verification link.',
+        );
       }
 
-      const [profile] = await Promise.all([
+      const [profile, address] = await Promise.all([
         this.prisma.profile.findUnique({
           where: { userId: existingUser.id },
-          select: { accountType: true, companyName: true, avatarUrl: true },
+          select: {
+            accountType: true,
+            companyName: true,
+            avatarUrl: true,
+            phone: true,
+            isPhoneVerified: true,
+          },
+        }),
+        this.prisma.address.findFirst({
+          where: { profile: { userId: existingUser.id } },
+          select: { id: true },
         }),
         this.prisma.user.update({
           where: { id: existingUser.id },
@@ -359,6 +377,7 @@ export class AuthService {
         }),
       ]);
 
+      const isProfileComplete = Boolean(profile?.phone && address?.id);
       const tokens = await this.generateTokens(existingUser.id, existingUser.role);
 
       return {
@@ -370,13 +389,33 @@ export class AuthService {
           accountType: profile?.accountType || 'INDIVIDUAL',
           companyName: profile?.companyName || null,
           avatarUrl: profile?.avatarUrl || dto.avatarUrl || null,
+          isEmailVerified: existingUser.isEmailVerified,
+          isPhoneVerified: Boolean(profile?.isPhoneVerified),
+          profileCompleted: isProfileComplete,
         },
         ...tokens,
         isNewUser: false,
+        requiresEmailVerification: false,
+        requiresProfileCompletion: !isProfileComplete,
       };
     }
 
+    // If attempting to log in, but no account exists, require sign-up
+    if (dto.action === 'login') {
+      throw new NotFoundException(
+        'No account found with this email. Please sign up first.',
+      );
+    }
+
     // New user sign up via Google / Apple
+    const autoVerify =
+      this.configService.get<string>('AUTO_VERIFY_EMAIL')?.toLowerCase() === 'true';
+
+    // Generate a raw verification token; store its SHA-256 hash in the DB
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
 
     let referredById: string | null = null;
@@ -397,24 +436,47 @@ export class AuthService {
     const newReferralCode = 'VB-' + crypto.randomBytes(4).toString('hex').toUpperCase();
     const displayName = dto.name?.trim() || email.split('@')[0];
 
-    const newUser = await this.prisma.user.create({
-      data: {
-        name: displayName,
-        email,
-        passwordHash,
-        isEmailVerified: true,
-        referralCode: newReferralCode,
-        referredById: referredById || null,
-        lastLoginAt: new Date(),
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        referralCode: true,
-      },
-    });
+    let newUser: {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      referralCode: string | null;
+      isEmailVerified: boolean;
+    };
+
+    try {
+      newUser = await this.prisma.user.create({
+        data: {
+          name: displayName,
+          email,
+          passwordHash,
+          isEmailVerified: autoVerify,
+          referralCode: newReferralCode,
+          referredById: referredById || null,
+          lastLoginAt: new Date(),
+          ...(autoVerify
+            ? {}
+            : {
+                emailVerificationToken: tokenHash,
+                emailVerificationExpiry: tokenExpiry,
+              }),
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          referralCode: true,
+          isEmailVerified: true,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        throw new ConflictException('An account with this email address already exists. Please sign in instead.');
+      }
+      throw err;
+    }
 
     // Create default profile for newly registered social account
     const nameParts = displayName.split(' ');
@@ -430,6 +492,8 @@ export class AuthService {
         avatarUrl: dto.avatarUrl || null,
         accountType: 'INDIVIDUAL',
       },
+    }).catch((profileErr) => {
+      this.logger.warn(`Failed to create initial profile for social user ${newUser.id}: ${profileErr?.message}`);
     });
 
     if (referredById) {
@@ -446,14 +510,20 @@ export class AuthService {
       });
     }
 
-    const tokens = await this.generateTokens(newUser.id, newUser.role);
-
-    // Welcome email (fire-and-forget)
-    this.notification
-      .sendWelcomeEmail(newUser.email, newUser.name)
-      .catch((err) =>
-        this.logger.error(`Failed to send welcome email to ${newUser.email}: ${err?.message}`),
+    if (autoVerify) {
+      this.logger.warn(
+        `AUTO_VERIFY_EMAIL is enabled — social user ${newUser.email} was auto-verified (dev mode)`,
       );
+    } else {
+      // Fire verification email (fire-and-forget — never block registration)
+      this.notification
+        .sendVerificationEmail(newUser.email, newUser.name, rawToken)
+        .catch((err) =>
+          this.logger.error(`Failed to send verification email to ${newUser.email}: ${err?.message}`),
+        );
+    }
+
+    const tokens = await this.generateTokens(newUser.id, newUser.role);
 
     return {
       user: {
@@ -464,9 +534,14 @@ export class AuthService {
         accountType: 'INDIVIDUAL',
         companyName: null,
         avatarUrl: dto.avatarUrl || null,
+        isEmailVerified: newUser.isEmailVerified,
+        isPhoneVerified: false,
+        profileCompleted: false,
       },
       ...tokens,
       isNewUser: true,
+      requiresEmailVerification: !autoVerify,
+      requiresProfileCompletion: true,
     };
   }
 
