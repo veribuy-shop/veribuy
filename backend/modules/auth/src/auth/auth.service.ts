@@ -18,6 +18,7 @@ import { NotificationService } from './notification.service';
 import { SmsService } from '../../../notifications/src/notifications/sms.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { SocialAuthDto } from './dto/social-auth.dto';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -317,6 +318,155 @@ export class AuthService {
         companyName: profile?.companyName || null,
       },
       ...tokens,
+    };
+  }
+
+  async socialLogin(dto: SocialAuthDto) {
+    const email = dto.email.toLowerCase().trim();
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isActive: true,
+        isEmailVerified: true,
+      },
+    });
+
+    if (existingUser) {
+      if (!existingUser.isActive) {
+        throw new UnauthorizedException('Account is disabled');
+      }
+
+      // Accounts verified by Google / Apple
+      if (!existingUser.isEmailVerified) {
+        await this.prisma.user.update({
+          where: { id: existingUser.id },
+          data: { isEmailVerified: true },
+        });
+      }
+
+      const [profile] = await Promise.all([
+        this.prisma.profile.findUnique({
+          where: { userId: existingUser.id },
+          select: { accountType: true, companyName: true, avatarUrl: true },
+        }),
+        this.prisma.user.update({
+          where: { id: existingUser.id },
+          data: { lastLoginAt: new Date() },
+        }),
+      ]);
+
+      const tokens = await this.generateTokens(existingUser.id, existingUser.role);
+
+      return {
+        user: {
+          id: existingUser.id,
+          name: existingUser.name,
+          email: existingUser.email,
+          role: existingUser.role,
+          accountType: profile?.accountType || 'INDIVIDUAL',
+          companyName: profile?.companyName || null,
+          avatarUrl: profile?.avatarUrl || dto.avatarUrl || null,
+        },
+        ...tokens,
+        isNewUser: false,
+      };
+    }
+
+    // New user sign up via Google / Apple
+    const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+
+    let referredById: string | null = null;
+    if (dto.referralCode) {
+      try {
+        const referrer = await this.prisma.user.findUnique({
+          where: { referralCode: dto.referralCode.trim().toUpperCase() },
+          select: { id: true, name: true },
+        });
+        if (referrer) {
+          referredById = referrer.id;
+        }
+      } catch (err: any) {
+        this.logger.warn(`Referral lookup failed for social signup code ${dto.referralCode}: ${err?.message}`);
+      }
+    }
+
+    const newReferralCode = 'VB-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    const displayName = dto.name?.trim() || email.split('@')[0];
+
+    const newUser = await this.prisma.user.create({
+      data: {
+        name: displayName,
+        email,
+        passwordHash,
+        isEmailVerified: true,
+        referralCode: newReferralCode,
+        referredById: referredById || null,
+        lastLoginAt: new Date(),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        referralCode: true,
+      },
+    });
+
+    // Create default profile for newly registered social account
+    const nameParts = displayName.split(' ');
+    const firstName = nameParts[0] || 'User';
+    const lastName = nameParts.slice(1).join(' ') || null;
+
+    await this.prisma.profile.create({
+      data: {
+        userId: newUser.id,
+        displayName,
+        firstName,
+        lastName,
+        avatarUrl: dto.avatarUrl || null,
+        accountType: 'INDIVIDUAL',
+      },
+    });
+
+    if (referredById) {
+      await this.prisma.referral.create({
+        data: {
+          referrerId: referredById,
+          referredId: newUser.id,
+          status: 'PENDING',
+          rewardAmount: 5.00,
+          currency: 'GBP',
+        },
+      }).catch((refErr) => {
+        this.logger.warn(`Failed to create pending referral record for social user ${newUser.id}: ${refErr?.message}`);
+      });
+    }
+
+    const tokens = await this.generateTokens(newUser.id, newUser.role);
+
+    // Welcome email (fire-and-forget)
+    this.notification
+      .sendWelcomeEmail(newUser.email, newUser.name)
+      .catch((err) =>
+        this.logger.error(`Failed to send welcome email to ${newUser.email}: ${err?.message}`),
+      );
+
+    return {
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        accountType: 'INDIVIDUAL',
+        companyName: null,
+        avatarUrl: dto.avatarUrl || null,
+      },
+      ...tokens,
+      isNewUser: true,
     };
   }
 

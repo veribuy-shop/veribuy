@@ -7,6 +7,7 @@ import {
   Message,
   Notification,
   Order,
+  ReferralSummary,
   TrustLensReport,
   User,
   UserProfile,
@@ -64,6 +65,12 @@ export const usersService = {
     api.post<UserProfile>(`/users/${userId}/profile`, data),
   updateProfile: (userId: string, data: Record<string, unknown>) =>
     api.put<UserProfile>(`/users/${userId}/profile`, data),
+  validateReferralCode: (code: string) =>
+    api.public.get<{ valid: boolean; referrerName?: string }>(
+      `/users/referral-code/${encodeURIComponent(code)}/validate`,
+    ),
+  getReferrals: (userId: string) =>
+    api.get<ReferralSummary>(`/users/${userId}/referrals`),
 };
 
 // ── Trust Lens ────────────────────────────────────────────────────────────

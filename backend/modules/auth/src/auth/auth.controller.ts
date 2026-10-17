@@ -19,6 +19,7 @@ import * as crypto from 'crypto';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { SocialAuthDto } from './dto/social-auth.dto';
 import { BootstrapAdminDto } from './dto/bootstrap-admin.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -113,6 +114,15 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  // 10 social login attempts per minute per IP
+  @Post('social')
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async socialLogin(@Body() dto: SocialAuthDto) {
+    return this.authService.socialLogin(dto);
   }
 
   // 10 refresh attempts per minute per IP

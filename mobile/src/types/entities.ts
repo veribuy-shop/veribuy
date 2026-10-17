@@ -6,6 +6,38 @@ export interface User {
   email: string;
   role: Role;
   isEmailVerified?: boolean;
+  referralCode?: string;
+  referralBonusBalance?: number;
+  referredById?: string;
+}
+
+export type ReferralStatus = 'PENDING' | 'QUALIFIED' | 'PAID';
+
+export interface Referral {
+  id: string;
+  referrerId: string;
+  referredUserId: string;
+  status: ReferralStatus;
+  bonusAmount: number;
+  createdAt: string;
+  qualifiedAt?: string;
+  paidAt?: string;
+  referredUser?: {
+    id: string;
+    name: string;
+    email: string;
+    createdAt: string;
+  };
+}
+
+export interface ReferralSummary {
+  referralCode: string;
+  referralBonusBalance: number;
+  referrals: Referral[];
+  totalEarned: number;
+  pendingCount: number;
+  qualifiedCount: number;
+  paidCount: number;
 }
 
 export interface UserProfile {
@@ -36,9 +68,17 @@ export interface Listing {
   price: number;
   currency: string;
   condition: string;
+  conditionGrade?: string;
   status: ListingStatus;
   images?: string[];
   trustLensStatus?: string;
+  freeShipping?: boolean;
+  storageCapacity?: string;
+  color?: string;
+  imei?: string;
+  batteryHealth?: number;
+  originalPrice?: number;
+  checksSummary?: string[];
   createdAt: string;
   updatedAt: string;
   seller?: {
@@ -90,11 +130,17 @@ export interface Order {
   protectionFee?: number | null;
   shippingFee?: number | null;
   shippingService?: string | null;
+  shippingLabelUrl?: string | null;
+  dropoffQrCodeUrl?: string | null;
+  parcelWeightGrams?: number | null;
+  parcelFormat?: string | null;
+  freeShipping?: boolean;
   trackingNumber?: string | null;
   carrier?: string | null;
   dispatchedAt?: string | null;
   deliveredAt?: string | null;
   completedAt?: string | null;
+  disputedAt?: string | null;
   totalAmount?: number | null;
   shippingAddress?: ShippingAddress;
   buyer?: { id?: string; displayName?: string; name?: string; email?: string; avatarUrl?: string | null } | null;

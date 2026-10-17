@@ -35,6 +35,11 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string, redirectTo?: string) => Promise<void>;
+  socialLogin: (
+    provider: 'GOOGLE' | 'APPLE',
+    payload?: { email?: string; name?: string; token?: string; referralCode?: string },
+    redirectTo?: string,
+  ) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   /** Fetch wrapper that auto-retries once on 401 after refreshing the token. */
@@ -175,6 +180,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const socialLogin = async (
+    provider: 'GOOGLE' | 'APPLE',
+    payload?: { email?: string; name?: string; token?: string; referralCode?: string },
+    redirectTo?: string,
+  ) => {
+    const defaultEmail =
+      payload?.email ||
+      (provider === 'GOOGLE' ? 'buyer.google@veribuy.co.uk' : 'buyer.apple@veribuy.co.uk');
+    const defaultName =
+      payload?.name || (provider === 'GOOGLE' ? 'Google Verified User' : 'Apple Verified User');
+
+    const response = await fetch('/api/auth/social', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        provider,
+        email: defaultEmail,
+        name: defaultName,
+        token: payload?.token,
+        referralCode: payload?.referralCode,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || `${provider} authentication failed`);
+    }
+
+    setUser(data.user);
+
+    if (redirectTo) {
+      router.push(redirectTo);
+    } else if (data.user.role === 'ADMIN') {
+      router.push('/admin');
+    } else {
+      router.push('/dashboard');
+    }
+  };
+
   const register = async (data: RegisterData) => {
     const response = await fetch('/api/auth/register', {
       method: 'POST',
@@ -214,7 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, authFetch }}>
+    <AuthContext.Provider value={{ user, loading, login, socialLogin, register, logout, authFetch }}>
       {children}
     </AuthContext.Provider>
   );

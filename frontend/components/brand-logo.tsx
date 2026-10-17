@@ -14,7 +14,10 @@ export function BrandLogo({ className, priority = false }: BrandLogoProps) {
       width={512}
       height={279}
       priority={priority}
-      className={cn('object-contain', className)}
+      className={cn(
+        'h-12 sm:h-14 w-auto object-contain drop-shadow-xs transition-transform duration-200 hover:scale-[1.02]',
+        className,
+      )}
     />
   );
 }
