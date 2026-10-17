@@ -21,6 +21,12 @@ interface AuthResponse {
   refreshToken: string;
 }
 
+export interface SocialAuthResponse extends AuthResponse {
+  isNewUser?: boolean;
+  requiresEmailVerification?: boolean;
+  requiresProfileCompletion?: boolean;
+}
+
 interface RegisterResponse extends AuthResponse {
   autoVerified: boolean;
 }
@@ -38,8 +44,14 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<User>;
   socialLogin: (
     provider: 'GOOGLE' | 'APPLE',
-    payload?: { email?: string; name?: string; token?: string; referralCode?: string },
-  ) => Promise<User>;
+    payload?: {
+      email?: string;
+      name?: string;
+      token?: string;
+      referralCode?: string;
+      action?: 'login' | 'register';
+    },
+  ) => Promise<SocialAuthResponse>;
   register: (
     name: string,
     email: string,
@@ -99,24 +111,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const socialLogin = useCallback(
     async (
       provider: 'GOOGLE' | 'APPLE',
-      payload?: { email?: string; name?: string; token?: string; referralCode?: string },
-    ) => {
-      const defaultEmail =
-        payload?.email ||
-        (provider === 'GOOGLE' ? 'buyer.google@veribuy.co.uk' : 'buyer.apple@veribuy.co.uk');
+      payload?: {
+        email?: string;
+        name?: string;
+        token?: string;
+        referralCode?: string;
+        action?: 'login' | 'register';
+      },
+    ): Promise<SocialAuthResponse> => {
+      if (!payload?.email) {
+        throw new Error(`Please provide your ${provider === 'GOOGLE' ? 'Google' : 'Apple'} email address.`);
+      }
+
+      const email = payload.email.toLowerCase().trim();
       const defaultName =
         payload?.name || (provider === 'GOOGLE' ? 'Google Verified User' : 'Apple Verified User');
 
-      const res = await api.public.post<AuthResponse>('/auth/social', {
+      const res = await api.public.post<SocialAuthResponse>('/auth/social', {
         provider,
-        email: defaultEmail,
+        email,
         name: defaultName,
         token: payload?.token,
         referralCode: payload?.referralCode,
+        action: payload?.action,
       });
 
-      await persistAuth(res);
-      return res.user;
+      if (res.requiresEmailVerification || !res.user.isEmailVerified) {
+        await saveTokens({
+          accessToken: res.accessToken,
+          refreshToken: res.refreshToken,
+        });
+      } else {
+        await persistAuth(res);
+      }
+
+      return res;
     },
     [persistAuth],
   );

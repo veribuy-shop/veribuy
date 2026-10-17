@@ -1,7 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException, ConflictException } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  ConflictException,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../../../../src/database/prisma.service';
@@ -28,6 +33,9 @@ describe('AuthService', () => {
       profile: {
         create: jest.fn(),
         findUnique: jest.fn(),
+      },
+      address: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       refreshToken: {
         create: jest.fn().mockResolvedValue({ id: 'rt-1', token: 'mock-rt' }),
@@ -301,6 +309,123 @@ describe('AuthService', () => {
           password: 'AnyPassword123!',
         }),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('socialLogin', () => {
+    it('should throw ConflictException if user tries to register with an existing email', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'usr-existing',
+        name: 'Existing User',
+        email: 'alex@example.com',
+        role: 'BUYER',
+        isActive: true,
+        isEmailVerified: true,
+      });
+
+      await expect(
+        service.socialLogin({
+          provider: 'GOOGLE',
+          email: 'alex@example.com',
+          action: 'register',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('should throw NotFoundException if user tries to log in but account does not exist', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.socialLogin({
+          provider: 'GOOGLE',
+          email: 'newuser@example.com',
+          action: 'login',
+        }),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw ForbiddenException if existing user tries to log in with unverified email', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'usr-unverified',
+        name: 'Unverified User',
+        email: 'unverified@example.com',
+        role: 'BUYER',
+        isActive: true,
+        isEmailVerified: false,
+      });
+
+      await expect(
+        service.socialLogin({
+          provider: 'GOOGLE',
+          email: 'unverified@example.com',
+          action: 'login',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should register a new social user, require verification when AUTO_VERIFY_EMAIL=false, and flag required profile completion', async () => {
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'AUTO_VERIFY_EMAIL') return 'false';
+        if (key === 'JWT_ACCESS_SECRET') return 'test-access-secret';
+        if (key === 'JWT_REFRESH_SECRET') return 'test-refresh-secret';
+        return null;
+      });
+
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: 'usr-new-social',
+        name: 'New Social User',
+        email: 'social.new@example.com',
+        role: 'BUYER',
+        referralCode: 'VB-XYZ123',
+        isEmailVerified: false,
+      });
+      prisma.profile.create.mockResolvedValue({ id: 'prof-1' });
+
+      const result = await service.socialLogin({
+        provider: 'GOOGLE',
+        email: 'social.new@example.com',
+        name: 'New Social User',
+        action: 'register',
+      });
+
+      expect(result.isNewUser).toBe(true);
+      expect(result.requiresEmailVerification).toBe(true);
+      expect(result.requiresProfileCompletion).toBe(true);
+      expect(notificationService.sendVerificationEmail).toHaveBeenCalled();
+    });
+
+    it('should successfully log in verified social user and compute profile completion', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'usr-verified',
+        name: 'Verified User',
+        email: 'verified@example.com',
+        role: 'BUYER',
+        isActive: true,
+        isEmailVerified: true,
+      });
+
+      prisma.profile.findUnique.mockResolvedValue({
+        accountType: 'INDIVIDUAL',
+        companyName: null,
+        avatarUrl: null,
+        phone: '+447123456789',
+        isPhoneVerified: true,
+      });
+
+      prisma.address.findFirst.mockResolvedValue({ id: 'addr-1' });
+      prisma.user.update.mockResolvedValue({});
+
+      const result = await service.socialLogin({
+        provider: 'GOOGLE',
+        email: 'verified@example.com',
+        action: 'login',
+      });
+
+      expect(result.isNewUser).toBe(false);
+      expect(result.requiresEmailVerification).toBe(false);
+      expect(result.user.profileCompleted).toBe(true);
+      expect(result.requiresProfileCompletion).toBe(false);
     });
   });
 });

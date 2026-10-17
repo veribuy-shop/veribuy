@@ -2,6 +2,7 @@ import { Link, router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   Text,
@@ -26,20 +27,43 @@ export default function RegisterScreen() {
   const [refError, setRefError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'GOOGLE' | 'APPLE' | null>(null);
+  const [socialModalProvider, setSocialModalProvider] = useState<'GOOGLE' | 'APPLE' | null>(null);
+  const [socialEmailInput, setSocialEmailInput] = useState('');
   const [error, setError] = useState('');
 
-  const onSocialAuth = async (provider: 'GOOGLE' | 'APPLE') => {
+  const executeSocialAuth = async (provider: 'GOOGLE' | 'APPLE', targetEmail: string) => {
     setSocialLoading(provider);
     setError('');
     try {
-      const user = await socialLogin(provider, {
+      const res = await socialLogin(provider, {
+        email: targetEmail.trim(),
+        name: name.trim() || undefined,
         referralCode: referrerName ? referralCode.trim() : undefined,
+        action: 'register',
       });
-      router.replace(user.role === 'ADMIN' ? '/admin' : '/(main)');
+
+      setSocialModalProvider(null);
+
+      if (res.requiresEmailVerification || !res.user.isEmailVerified) {
+        router.replace('/check-email');
+      } else if (res.requiresProfileCompletion) {
+        router.replace('/profile-edit');
+      } else {
+        router.replace(res.user.role === 'ADMIN' ? '/admin' : '/(main)');
+      }
     } catch (e: any) {
       setError(e?.message || `${provider} sign-up failed`);
     } finally {
       setSocialLoading(null);
+    }
+  };
+
+  const onSocialAuth = async (provider: 'GOOGLE' | 'APPLE') => {
+    if (email.trim()) {
+      await executeSocialAuth(provider, email.trim());
+    } else {
+      setSocialEmailInput('');
+      setSocialModalProvider(provider);
     }
   };
 
@@ -316,6 +340,70 @@ export default function RegisterScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ── Social Email Entry Modal ── */}
+      <Modal
+        visible={Boolean(socialModalProvider)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSocialModalProvider(null)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center px-6">
+          <View className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl">
+            <View className="items-center mb-4">
+              <View className="w-12 h-12 rounded-full bg-slate-100 items-center justify-center mb-2">
+                <Text className="text-xl">
+                  {socialModalProvider === 'GOOGLE' ? '🌐' : ''}
+                </Text>
+              </View>
+              <Text className="text-base font-black text-slate-900">
+                Sign up with {socialModalProvider === 'GOOGLE' ? 'Google' : 'Apple'}
+              </Text>
+              <Text className="text-xs text-slate-500 text-center mt-1">
+                Enter your {socialModalProvider === 'GOOGLE' ? 'Google' : 'Apple'} email address. We will verify your account.
+              </Text>
+            </View>
+
+            <View className="mb-4">
+              <Text className="text-xs font-bold text-slate-700 mb-1">Email Address *</Text>
+              <TextInput
+                value={socialEmailInput}
+                onChangeText={setSocialEmailInput}
+                placeholder="your.email@example.com"
+                placeholderTextColor="#94A3B8"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoFocus
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs text-slate-800"
+              />
+            </View>
+
+            <View className="flex-row gap-2">
+              <TouchableOpacity
+                onPress={() => setSocialModalProvider(null)}
+                disabled={Boolean(socialLoading)}
+                className="flex-1 py-3 rounded-xl border border-slate-200 items-center justify-center"
+              >
+                <Text className="text-xs font-bold text-slate-600">Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  if (socialModalProvider && socialEmailInput.trim()) {
+                    executeSocialAuth(socialModalProvider, socialEmailInput.trim());
+                  }
+                }}
+                disabled={!socialEmailInput.trim() || Boolean(socialLoading)}
+                className="flex-1 py-3 rounded-xl bg-slate-900 items-center justify-center disabled:opacity-50"
+              >
+                <Text className="text-xs font-bold text-white">
+                  {socialLoading ? 'Verifying...' : 'Continue'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

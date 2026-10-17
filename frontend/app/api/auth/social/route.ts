@@ -35,6 +35,8 @@ export async function POST(request: NextRequest) {
     const nextResponse = NextResponse.json({
       user: sanitizeAuthUser(data.user),
       isNewUser: Boolean(data.isNewUser),
+      requiresEmailVerification: Boolean(data.requiresEmailVerification),
+      requiresProfileCompletion: Boolean(data.requiresProfileCompletion),
     });
 
     // Set HttpOnly cookies for tokens (secure, inaccessible via client JavaScript)
