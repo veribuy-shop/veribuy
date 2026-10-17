@@ -238,8 +238,40 @@ export class TransactionsService implements OnModuleInit {
     const rate = getBuyerProtectionFeeRate();
     const protectionFee = Math.round(numericAmount * rate * 100) / 100;
 
-    // Compute total: item price + buyer protection fee + shipping (waived/0 if covered by seller)
-    const totalAmount = Math.round((numericAmount + protectionFee + numericShipping) * 100) / 100;
+    // Optional charity donation (e.g. £1 to Good Things Foundation / Digital Inclusion)
+    const donationAmount = (createOrderDto as any).donationAmount && Number((createOrderDto as any).donationAmount) > 0
+      ? Math.round(Number((createOrderDto as any).donationAmount) * 100) / 100
+      : 0;
+
+    // Compute total: item price + buyer protection fee + shipping (waived/0 if covered by seller) + optional donation
+    const totalAmount = Math.round((numericAmount + protectionFee + numericShipping + donationAmount) * 100) / 100;
+
+    const deliveryMethod = (createOrderDto as any).deliveryMethod || 'HOME';
+    let enrichedShippingAddress: Record<string, any> = shippingAddress ? { ...shippingAddress } : {};
+    if (deliveryMethod === 'CLICK_AND_COLLECT') {
+      const collectionPin = (createOrderDto as any).collectionPin || Math.floor(100000 + Math.random() * 900000).toString();
+      enrichedShippingAddress = {
+        ...enrichedShippingAddress,
+        deliveryMethod: 'CLICK_AND_COLLECT',
+        collectionPoint: (createOrderDto as any).collectionPoint || null,
+        collectionPin,
+      };
+    } else {
+      enrichedShippingAddress = {
+        ...enrichedShippingAddress,
+        deliveryMethod: 'HOME',
+      };
+    }
+
+    if (donationAmount > 0) {
+      enrichedShippingAddress = {
+        ...enrichedShippingAddress,
+        donation: {
+          amount: donationAmount,
+          charity: (createOrderDto as any).charityName || 'Good Things Foundation (Digital Inclusion UK)',
+        },
+      };
+    }
 
     // Check if an existing PENDING order already exists for this buyer and listing
     const existingPendingOrder = await this.prisma.order.findFirst({
@@ -278,7 +310,7 @@ export class TransactionsService implements OnModuleInit {
               freeShipping: isFreeShipping,
               totalAmount,
               currency,
-              shippingAddress: shippingAddress as any,
+              shippingAddress: enrichedShippingAddress as any,
             },
           });
 
@@ -293,12 +325,19 @@ export class TransactionsService implements OnModuleInit {
       }
     }
 
-    // Create Stripe Payment Intent — charge the total (item + protection fee + shipping)
+    // Create Stripe Payment Intent — charge the total (item + protection fee + shipping + donation)
+    // Supports Card, Klarna, and Clearpay BNPL deferred escrow capture
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount: Math.round(totalAmount * 100),
       currency: currency.toLowerCase(),
-      metadata: { buyerId, sellerId, listingId },
-      payment_method_types: ['card'],
+      metadata: {
+        buyerId,
+        sellerId,
+        listingId,
+        deliveryMethod,
+        donationAmount: donationAmount.toString(),
+      },
+      payment_method_types: ['card', 'klarna', 'afterpay_clearpay'],
     });
 
     // Create order in database — store paymentIntentId immediately
@@ -321,7 +360,7 @@ export class TransactionsService implements OnModuleInit {
         currency,
         status: 'PENDING',
         paymentIntentId: paymentIntent.id,
-        shippingAddress: shippingAddress as any,
+        shippingAddress: enrichedShippingAddress as any,
       },
     });
 
@@ -370,19 +409,50 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Unable to verify listing details. Please try again.');
     }
 
-    const shippingAddress = order.shippingAddress as Record<string, any> | null;
+    const currentAddress = (dto.shippingAddress || order.shippingAddress || {}) as Record<string, any>;
+    const deliveryMethod = dto.deliveryMethod || currentAddress.deliveryMethod || 'HOME';
+    const effectiveDonation = dto.donationAmount !== undefined
+      ? Math.round(Number(dto.donationAmount) * 100) / 100
+      : (currentAddress.donation?.amount ? Number(currentAddress.donation.amount) : 0);
+
+    const enrichedShippingAddress = {
+      ...currentAddress,
+      deliveryMethod,
+      ...(deliveryMethod === 'CLICK_AND_COLLECT'
+        ? {
+            collectionPoint: dto.collectionPoint || currentAddress.collectionPoint || null,
+            collectionPin: currentAddress.collectionPin || Math.floor(100000 + Math.random() * 900000).toString(),
+          }
+        : {}),
+      ...(effectiveDonation > 0
+        ? {
+            donation: {
+              amount: effectiveDonation,
+              charity: 'Good Things Foundation (Digital Inclusion UK)',
+            },
+          }
+        : {}),
+    };
+
     const effectiveShippingFee = this.resolveShippingFee(listing, {
       serviceTier: dto.shippingService,
-      destinationPostcode: shippingAddress?.postal_code,
+      destinationPostcode: (enrichedShippingAddress as any).postal_code || (enrichedShippingAddress as any).postcode,
       itemValue: Number(order.amount),
       isFreeShipping: !!order.freeShipping,
     });
 
-    const newTotal = Math.round((Number(order.amount) + protectionFee + effectiveShippingFee) * 100) / 100;
+    const newTotal = Math.round((Number(order.amount) + protectionFee + effectiveShippingFee + effectiveDonation) * 100) / 100;
 
     // Update Stripe PaymentIntent amount
     await this.stripe.paymentIntents.update(order.paymentIntentId, {
       amount: Math.round(newTotal * 100),
+      metadata: {
+        orderId: order.id,
+        buyerId: order.buyerId,
+        sellerId: order.sellerId,
+        deliveryMethod: deliveryMethod || 'HOME',
+        donationAmount: effectiveDonation.toString(),
+      },
     });
 
     // Update order in database
@@ -392,6 +462,7 @@ export class TransactionsService implements OnModuleInit {
         shippingFee: effectiveShippingFee > 0 ? effectiveShippingFee : null,
         shippingService: dto.shippingService,
         totalAmount: newTotal,
+        shippingAddress: enrichedShippingAddress as any,
       },
     });
 
@@ -1753,6 +1824,21 @@ export class TransactionsService implements OnModuleInit {
       parcelFormat: order.parcelFormat || 'SMALL_PARCEL',
       shippingService: order.shippingService || 'TRACKED_48',
       locations,
+    };
+  }
+
+  /**
+   * Finds local Click & Collect parcel collection points (Post Offices, CSPs, Parcel points) by postcode.
+   */
+  getCollectionPoints(postcode: string = 'SW1A 1AA') {
+    const clean = (postcode || 'SW1A 1AA').trim().toUpperCase();
+    const locations = this.royalMailService.findDropoffLocations(clean);
+    return {
+      postcode: clean,
+      locations: locations.map((loc) => ({
+        ...loc,
+        clickAndCollectEligible: true,
+      })),
     };
   }
 

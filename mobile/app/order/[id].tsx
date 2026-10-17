@@ -49,6 +49,21 @@ export default function OrderDetailScreen() {
           state: 'London',
           postal_code: 'W8 4EP',
           country: 'GB',
+          deliveryMethod: 'CLICK_AND_COLLECT',
+          collectionPoint: {
+            id: 'pudo-1',
+            name: 'Kensington High Street Post Office',
+            address: '208-212 Kensington High St',
+            city: 'London',
+            postcode: 'W8 7RG',
+            distance: '0.3 mi',
+            hours: 'Mon-Sat 08:30 - 18:00',
+          },
+          collectionPin: '849 204',
+          donation: {
+            amount: 1.0,
+            charity: 'Good Things Foundation (Digital Inclusion UK)',
+          },
         },
         listing: {
           id: 'showcase-1',
@@ -186,9 +201,71 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
+        {/* ── Click & Collect Collection Pass (If Click & Collect) ───────────── */}
+        {order.shippingAddress?.deliveryMethod === 'CLICK_AND_COLLECT' && (
+          <View className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-500/40 rounded-2xl p-4 mb-3.5 shadow-xs">
+            <View className="flex-row items-center justify-between mb-2.5">
+              <View className="flex-row items-center gap-1.5">
+                <Text className="text-base">🏪</Text>
+                <Text className="text-xs font-black text-text">Click &amp; Collect Collection Pass</Text>
+              </View>
+              <View className="bg-emerald-600 px-2 py-0.5 rounded-full">
+                <Text className="text-[9px] font-black text-white">Pickup Pass</Text>
+              </View>
+            </View>
+
+            <View className="bg-white p-3 rounded-xl border border-emerald-200 mb-2.5">
+              <Text className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-0.5">
+                Collection Location
+              </Text>
+              <Text className="text-xs font-black text-text">
+                {order.shippingAddress.collectionPoint?.name || 'Kensington High Street Post Office'}
+              </Text>
+              <Text className="text-[11px] text-text-muted mt-0.5">
+                {order.shippingAddress.collectionPoint?.address || order.shippingAddress.line1}, {order.shippingAddress.collectionPoint?.postcode || order.shippingAddress.postal_code}
+              </Text>
+            </View>
+
+            <View className="bg-white p-3 rounded-xl border border-emerald-200 flex-row items-center justify-between">
+              <View>
+                <Text className="text-[9px] font-bold text-text-muted uppercase">6-Digit Collection PIN</Text>
+                <Text className="text-xl font-black font-mono text-emerald-800 tracking-widest mt-0.5">
+                  {order.shippingAddress.collectionPin || '849 204'}
+                </Text>
+              </View>
+              <View className="w-12 h-12 bg-slate-900 rounded-lg items-center justify-center p-1">
+                <Text className="text-white text-xs font-bold">QR</Text>
+                <Text className="text-[7px] text-emerald-400 font-bold">SCAN</Text>
+              </View>
+            </View>
+            <Text className="text-[10px] text-emerald-800 mt-2 text-center">
+              Present this PIN or QR code with your photo ID at the counter.
+            </Text>
+          </View>
+        )}
+
+        {/* ── Charity Donation Acknowledgment (If donated) ───────────────── */}
+        {order.shippingAddress?.donation && (
+          <View className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 mb-3.5 flex-row items-center justify-between shadow-xs">
+            <View className="flex-row items-center gap-2 flex-1">
+              <Text className="text-base">❤️</Text>
+              <View className="flex-1">
+                <Text className="text-xs font-black text-rose-900">Digital Inclusion Charity Donation</Text>
+                <Text className="text-[10px] text-rose-700 leading-tight">
+                  £1.00 donated to Good Things Foundation (Reg. #1165209). Thank you!
+                </Text>
+              </View>
+            </View>
+            <View className="bg-rose-200/80 px-2 py-0.5 rounded-full">
+              <Text className="text-[9px] font-bold text-rose-900">+£1.00</Text>
+            </View>
+          </View>
+        )}
+
         {/* ── Live Escrow Pipeline (Step 2 of 4) (Matching screen5.png) ─────── */}
         <View className="bg-white rounded-2xl border border-borderc p-4 mb-3.5 shadow-xs">
           <View className="flex-row items-center justify-between mb-3.5 pb-2.5 border-b border-borderc">
+
             <View className="flex-row items-center gap-2">
               <Text className="text-emerald-700 text-sm">⏱</Text>
               <Text className="text-xs font-black text-text">Live Escrow Pipeline</Text>

@@ -28,7 +28,15 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     // NOTE: `shippingFee` is a display hint only — the backend always recomputes
     // the authoritative fee from the listing weight profile and destination.
-    const { orderId, shippingFee, shippingService } = body;
+    const {
+      orderId,
+      shippingFee,
+      shippingService,
+      donationAmount,
+      deliveryMethod,
+      collectionPoint,
+      shippingAddress,
+    } = body;
 
     if (!orderId) {
       return NextResponse.json(
@@ -56,7 +64,14 @@ export async function PATCH(req: NextRequest) {
       {
         method: 'PATCH',
         headers: createAuthHeaders(authResult.token),
-        body: JSON.stringify({ shippingFee: shippingFee ?? undefined, shippingService }),
+        body: JSON.stringify({
+          shippingFee: shippingFee ?? undefined,
+          shippingService,
+          donationAmount: donationAmount ?? undefined,
+          deliveryMethod: deliveryMethod ?? undefined,
+          collectionPoint: collectionPoint ?? undefined,
+          shippingAddress: shippingAddress ?? undefined,
+        }),
       },
     );
 

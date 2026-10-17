@@ -47,9 +47,45 @@ export default function CheckoutScreen() {
   const [city, setCity] = useState('London');
   const [postalCode, setPostalCode] = useState('W8 4EP');
   const [country, setCountry] = useState('United Kingdom');
-  const [selectedPaymentSource, setSelectedPaymentSource] = useState<'APPLE_PAY' | 'GOOGLE_PAY' | 'CARD'>('APPLE_PAY');
+  const [selectedPaymentSource, setSelectedPaymentSource] = useState<'APPLE_PAY' | 'GOOGLE_PAY' | 'CARD' | 'KLARNA' | 'CLEARPAY'>('APPLE_PAY');
   const [selectedService, setSelectedService] = useState<RoyalMailService>('SPECIAL_DELIVERY_1PM');
   const [editAddress, setEditAddress] = useState(false);
+
+  // Click & Collect state
+  const [deliveryMethod, setDeliveryMethod] = useState<'HOME' | 'CLICK_AND_COLLECT'>('HOME');
+  const [collectionPoints] = useState([
+    {
+      id: 'pudo-1',
+      name: 'Kensington High Street Post Office',
+      address: '208-212 Kensington High St',
+      city: 'London',
+      postcode: 'W8 7RG',
+      distance: '0.3 mi',
+      hours: 'Mon-Sat 08:30 - 18:00',
+    },
+    {
+      id: 'pudo-2',
+      name: 'Royal Mail Kensington Customer Service Point',
+      address: '42 Earls Court Road',
+      city: 'London',
+      postcode: 'W8 6EJ',
+      distance: '0.6 mi',
+      hours: 'Mon-Sat 08:00 - 14:00',
+    },
+    {
+      id: 'pudo-3',
+      name: 'Evri ParcelShop / Kensington News',
+      address: '14 Kensington Church Street',
+      city: 'London',
+      postcode: 'W8 4EP',
+      distance: '0.1 mi',
+      hours: 'Mon-Sun 07:00 - 22:00',
+    },
+  ]);
+  const [selectedCollectionPoint, setSelectedCollectionPoint] = useState(collectionPoints[0]);
+
+  // Charity donation state
+  const [donateToCharity, setDonateToCharity] = useState(false);
 
   const itemPrice = Number(params.amount || listing?.price || 799);
   const feePercent = getBuyerProtectionFeePercent();
@@ -73,7 +109,10 @@ export default function CheckoutScreen() {
   }, [shippingQuotes, selectedService]);
 
   const effectiveShippingFee = listing?.freeShipping ? 0 : 0; // Covered in demo showcase
-  const totalAmount = itemPrice;
+  const donationAmount = donateToCharity ? 1.00 : 0;
+  const totalAmount = itemPrice + donationAmount;
+  const klarnaInstallment = formatPrice(Math.round((totalAmount / 3) * 100) / 100, currency);
+  const clearpayInstallment = formatPrice(Math.round((totalAmount / 4) * 100) / 100, currency);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -281,6 +320,16 @@ export default function CheckoutScreen() {
               <Text className="text-xs text-text-muted">Insured Royal Mail Special Delivery 🚚</Text>
               <Text className="text-xs font-bold text-emerald-700">FREE</Text>
             </View>
+
+            {donateToCharity && (
+              <View className="flex-row items-center justify-between bg-rose-50 p-2 rounded-xl border border-rose-200">
+                <View className="flex-row items-center gap-1.5">
+                  <Text className="text-xs">❤️</Text>
+                  <Text className="text-xs font-bold text-rose-900">Good Things Foundation (Digital Charity)</Text>
+                </View>
+                <Text className="text-xs font-bold text-rose-800">+£1.00</Text>
+              </View>
+            )}
           </View>
 
           <View className="pt-3 border-t border-borderc flex-row items-baseline justify-between">
@@ -361,72 +410,164 @@ export default function CheckoutScreen() {
           </View>
         </View>
 
-        {/* ── Delivery Destination (Matching screen3.png) ──────────────────── */}
+        {/* ── Delivery Method (Home Delivery vs Click & Collect) ───────────── */}
         <View className="bg-white rounded-2xl border border-borderc p-4 mb-3 shadow-xs">
-          <View className="flex-row items-center justify-between mb-2">
+          <View className="flex-row items-center justify-between mb-3">
             <Text className="text-[11px] font-black text-text uppercase tracking-wider">
-              Delivery Destination
+              Delivery Method
             </Text>
-            <TouchableOpacity onPress={() => setEditAddress(!editAddress)}>
-              <Text className="text-xs font-bold text-emerald-700">
-                {editAddress ? 'Save' : 'Change'}
-              </Text>
+            <View className="bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+              <Text className="text-[9px] font-bold text-slate-700">Royal Mail UK Network</Text>
+            </View>
+          </View>
+
+          {/* Delivery Mode Pills */}
+          <View className="flex-row gap-2 mb-3">
+            <TouchableOpacity
+              onPress={() => setDeliveryMethod('HOME')}
+              className={`flex-1 p-3 rounded-xl border ${
+                deliveryMethod === 'HOME'
+                  ? 'bg-emerald-50/60 border-emerald-500'
+                  : 'bg-white border-borderc'
+              }`}
+            >
+              <View className="flex-row items-center justify-between mb-1">
+                <Text className="text-sm">🚚</Text>
+                <View className={`w-4 h-4 rounded-full items-center justify-center ${
+                  deliveryMethod === 'HOME' ? 'bg-emerald-600' : 'border border-borderc'
+                }`}>
+                  {deliveryMethod === 'HOME' ? <Text className="text-white text-[9px] font-bold">✓</Text> : null}
+                </View>
+              </View>
+              <Text className="text-xs font-black text-text">Home Delivery</Text>
+              <Text className="text-[10px] text-text-muted mt-0.5">Direct to door</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setDeliveryMethod('CLICK_AND_COLLECT')}
+              className={`flex-1 p-3 rounded-xl border ${
+                deliveryMethod === 'CLICK_AND_COLLECT'
+                  ? 'bg-emerald-50/60 border-emerald-500'
+                  : 'bg-white border-borderc'
+              }`}
+            >
+              <View className="flex-row items-center justify-between mb-1">
+                <Text className="text-sm">🏪</Text>
+                <View className={`w-4 h-4 rounded-full items-center justify-center ${
+                  deliveryMethod === 'CLICK_AND_COLLECT' ? 'bg-emerald-600' : 'border border-borderc'
+                }`}>
+                  {deliveryMethod === 'CLICK_AND_COLLECT' ? <Text className="text-white text-[9px] font-bold">✓</Text> : null}
+                </View>
+              </View>
+              <Text className="text-xs font-black text-text">Click &amp; Collect</Text>
+              <Text className="text-[10px] text-text-muted mt-0.5">Post Office / PUDO</Text>
             </TouchableOpacity>
           </View>
 
-          {editAddress ? (
-            <View className="space-y-2 mt-2">
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="Full Name"
-                className="bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
-              />
-              <TextInput
-                value={line1}
-                onChangeText={setLine1}
-                placeholder="Address line 1"
-                className="bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
-              />
-              <View className="flex-row gap-2">
-                <TextInput
-                  value={city}
-                  onChangeText={setCity}
-                  placeholder="City"
-                  className="flex-1 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
-                />
-                <TextInput
-                  value={postalCode}
-                  onChangeText={(v) => setPostalCode(v.toUpperCase())}
-                  placeholder="Postcode"
-                  className="w-28 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs uppercase"
-                />
+          {deliveryMethod === 'CLICK_AND_COLLECT' ? (
+            <View className="space-y-2">
+              <Text className="text-[11px] font-bold text-text-muted mb-1">Nearest Collection Points ({postalCode}):</Text>
+              {collectionPoints.map((pt) => {
+                const isSelected = selectedCollectionPoint?.id === pt.id;
+                return (
+                  <TouchableOpacity
+                    key={pt.id}
+                    onPress={() => setSelectedCollectionPoint(pt)}
+                    className={`p-3 rounded-xl border ${
+                      isSelected ? 'bg-emerald-50/50 border-emerald-500' : 'bg-slate-50 border-borderc'
+                    }`}
+                  >
+                    <View className="flex-row items-start justify-between">
+                      <View className="flex-1">
+                        <Text className="text-xs font-black text-text">{pt.name}</Text>
+                        <Text className="text-[11px] text-text-muted mt-0.5">{pt.address}, {pt.postcode}</Text>
+                        <Text className="text-[10px] text-emerald-700 font-bold mt-1">🕒 {pt.hours}</Text>
+                      </View>
+                      <View className="items-end gap-1">
+                        <View className="bg-slate-200/70 px-1.5 py-0.5 rounded">
+                          <Text className="text-[9px] font-bold text-slate-800">{pt.distance}</Text>
+                        </View>
+                        {isSelected ? <Text className="text-emerald-700 text-xs font-bold">✓</Text> : null}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+              <View className="bg-blue-50 border border-blue-100 p-2.5 rounded-xl flex-row items-start gap-2 mt-1">
+                <Text className="text-xs">📱</Text>
+                <Text className="text-[10px] text-blue-900 leading-tight">
+                  You will receive an automated 6-digit Collection PIN and QR pass to present at the counter.
+                </Text>
               </View>
             </View>
           ) : (
-            <View className="flex-row items-start gap-2.5">
-              <View className="w-8 h-8 rounded-full bg-[#eff4ff] items-center justify-center mt-0.5">
-                <Text className="text-sm">📍</Text>
+            <>
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-[11px] font-black text-text uppercase tracking-wider">
+                  Address Details
+                </Text>
+                <TouchableOpacity onPress={() => setEditAddress(!editAddress)}>
+                  <Text className="text-xs font-bold text-emerald-700">
+                    {editAddress ? 'Save' : 'Change'}
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <View className="flex-1">
-                <View className="flex-row items-center gap-2 mb-0.5">
-                  <Text className="text-xs font-black text-text">{name}</Text>
-                  <View className="bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                    <Text className="text-[9px] font-bold text-slate-700">Default</Text>
+
+              {editAddress ? (
+                <View className="space-y-2 mt-2">
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Full Name"
+                    className="bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
+                  />
+                  <TextInput
+                    value={line1}
+                    onChangeText={setLine1}
+                    placeholder="Address line 1"
+                    className="bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
+                  />
+                  <View className="flex-row gap-2">
+                    <TextInput
+                      value={city}
+                      onChangeText={setCity}
+                      placeholder="City"
+                      className="flex-1 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
+                    />
+                    <TextInput
+                      value={postalCode}
+                      onChangeText={(v) => setPostalCode(v.toUpperCase())}
+                      placeholder="Postcode"
+                      className="w-28 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs uppercase"
+                    />
                   </View>
                 </View>
-                <Text className="text-[11px] text-text-muted leading-relaxed">
-                  {line1}, {city}, {postalCode}, {country}
-                </Text>
-                <Text className="text-[10px] font-bold text-emerald-700 mt-1">
-                  ⚡ Guaranteed Delivery by Thursday 1:00 PM
-                </Text>
-              </View>
-            </View>
+              ) : (
+                <View className="flex-row items-start gap-2.5">
+                  <View className="w-8 h-8 rounded-full bg-[#eff4ff] items-center justify-center mt-0.5">
+                    <Text className="text-sm">📍</Text>
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center gap-2 mb-0.5">
+                      <Text className="text-xs font-black text-text">{name}</Text>
+                      <View className="bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                        <Text className="text-[9px] font-bold text-slate-700">Default</Text>
+                      </View>
+                    </View>
+                    <Text className="text-[11px] text-text-muted leading-relaxed">
+                      {line1}, {city}, {postalCode}, {country}
+                    </Text>
+                    <Text className="text-[10px] font-bold text-emerald-700 mt-1">
+                      ⚡ Guaranteed Delivery by Thursday 1:00 PM
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </>
           )}
         </View>
 
-        {/* ── Select Escrow Source (Matching screen3.png) ──────────────────── */}
+        {/* ── Select Escrow Source (Cards, Apple Pay, Google Pay, Klarna, Clearpay) ───────────── */}
         <View className="bg-white rounded-2xl border border-borderc p-4 mb-3 shadow-xs">
           <View className="flex-row items-center justify-between mb-3">
             <Text className="text-[11px] font-black text-text uppercase tracking-wider">
@@ -492,6 +633,60 @@ export default function CheckoutScreen() {
               </View>
             </TouchableOpacity>
 
+            {/* Klarna (Pay in 3) */}
+            <TouchableOpacity
+              onPress={() => setSelectedPaymentSource('KLARNA')}
+              className={`p-3 rounded-xl border flex-row items-center justify-between ${
+                selectedPaymentSource === 'KLARNA'
+                  ? 'bg-purple-50/50 border-purple-500'
+                  : 'bg-white border-borderc'
+              }`}
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="w-9 h-9 rounded-xl bg-[#FFB3C7] items-center justify-center">
+                  <Text className="text-black text-xs font-black">Klarna.</Text>
+                </View>
+                <View>
+                  <Text className="text-xs font-black text-text">Klarna (Pay in 3)</Text>
+                  <Text className="text-[10px] text-text-muted">3 interest-free payments of {klarnaInstallment}</Text>
+                </View>
+              </View>
+              <View className={`w-5 h-5 rounded-full items-center justify-center ${
+                selectedPaymentSource === 'KLARNA' ? 'bg-purple-600' : 'border border-borderc'
+              }`}>
+                {selectedPaymentSource === 'KLARNA' ? (
+                  <Text className="text-white text-[10px] font-bold">✓</Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+
+            {/* Clearpay (Pay in 4) */}
+            <TouchableOpacity
+              onPress={() => setSelectedPaymentSource('CLEARPAY')}
+              className={`p-3 rounded-xl border flex-row items-center justify-between ${
+                selectedPaymentSource === 'CLEARPAY'
+                  ? 'bg-emerald-50/50 border-emerald-500'
+                  : 'bg-white border-borderc'
+              }`}
+            >
+              <View className="flex-row items-center gap-3">
+                <View className="w-9 h-9 rounded-xl bg-[#B2FCE4] items-center justify-center">
+                  <Text className="text-black text-xs font-black">clearpay</Text>
+                </View>
+                <View>
+                  <Text className="text-xs font-black text-text">Clearpay (Pay in 4)</Text>
+                  <Text className="text-[10px] text-text-muted">4 interest-free payments of {clearpayInstallment}</Text>
+                </View>
+              </View>
+              <View className={`w-5 h-5 rounded-full items-center justify-center ${
+                selectedPaymentSource === 'CLEARPAY' ? 'bg-emerald-600' : 'border border-borderc'
+              }`}>
+                {selectedPaymentSource === 'CLEARPAY' ? (
+                  <Text className="text-white text-[10px] font-bold">✓</Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+
             {/* Card */}
             <TouchableOpacity
               onPress={() => setSelectedPaymentSource('CARD')}
@@ -520,6 +715,33 @@ export default function CheckoutScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ── Donate to Charity Toggle ────────────────────────────────────── */}
+        <TouchableOpacity
+          onPress={() => setDonateToCharity(!donateToCharity)}
+          className={`bg-white rounded-2xl border p-4 mb-3 shadow-xs flex-row items-start gap-3 ${
+            donateToCharity ? 'border-rose-400 bg-rose-50/30' : 'border-borderc'
+          }`}
+        >
+          <View className={`w-6 h-6 rounded-lg items-center justify-center mt-0.5 ${
+            donateToCharity ? 'bg-rose-500' : 'border border-slate-300 bg-slate-50'
+          }`}>
+            {donateToCharity ? <Text className="text-white text-xs font-bold">✓</Text> : null}
+          </View>
+          <View className="flex-1">
+            <View className="flex-row items-center justify-between mb-0.5">
+              <View className="flex-row items-center gap-1.5">
+                <Text className="text-xs">❤️</Text>
+                <Text className="text-xs font-black text-text">Donate £1.00 to Digital Inclusion UK</Text>
+              </View>
+              <Text className="text-xs font-black text-rose-600">+£1.00</Text>
+            </View>
+            <Text className="text-[11px] text-text-muted leading-relaxed">
+              Provides refurbished devices and vital skills to UK families in need via Good Things Foundation (Reg. Charity #1165209).
+            </Text>
+          </View>
+        </TouchableOpacity>
+
 
         {/* ── Money-Back Guarantee Callout (Matching screen3.png) ─────────── */}
         <View className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4 flex-row items-start gap-3">

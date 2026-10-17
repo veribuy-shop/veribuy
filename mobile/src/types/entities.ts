@@ -169,6 +169,21 @@ export interface ShippingAddress {
   postal_code?: string;
   postalCode?: string;
   country: string;
+  deliveryMethod?: 'HOME' | 'CLICK_AND_COLLECT';
+  collectionPoint?: {
+    id?: string;
+    name: string;
+    address?: string;
+    city?: string;
+    postcode?: string;
+    distance?: string;
+    hours?: string;
+  };
+  collectionPin?: string;
+  donation?: {
+    amount: number;
+    charity: string;
+  };
 }
 
 export interface CreateOrderResult {
