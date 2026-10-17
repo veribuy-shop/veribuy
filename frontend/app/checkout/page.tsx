@@ -7,7 +7,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import Link from 'next/link';
 import { formatPrice } from '@/lib/currency';
-import { CircleCheck, CircleX, Truck, Clock, ShieldCheck, Lock, RotateCcw, Award, CheckCircle } from 'lucide-react';
+import { CircleCheck, CircleX, Truck, Clock, ShieldCheck, Lock, RotateCcw, Award, CheckCircle, Store, MapPin, Heart, CreditCard, Search, Building2 } from 'lucide-react';
 import {
   calculateShippingFee,
   formatShippingService,
@@ -53,17 +53,49 @@ interface PendingOrder {
   totalAmount?: number | null;
 }
 
+interface CollectionPoint {
+  id: string;
+  name: string;
+  type: string;
+  addressLine1: string;
+  town: string;
+  postcode: string;
+  distanceMiles: number;
+  openingHours: Record<string, string>;
+  features: string[];
+}
+
 interface CheckoutFormProps {
   listing: Listing;
   pendingOrder: PendingOrder;
   selectedService: ShippingService;
   shippingQuote: ShippingQuote | null;
   feePercentFallback: number;
+  deliveryMethod: 'HOME' | 'CLICK_AND_COLLECT';
+  onDeliveryMethodChange: (method: 'HOME' | 'CLICK_AND_COLLECT') => void;
+  selectedCollectionPoint: CollectionPoint | null;
+  onCollectionPointChange: (point: CollectionPoint | null) => void;
+  donateToCharity: boolean;
+  onDonateToCharityChange: (donate: boolean) => void;
   onServiceChange: (service: ShippingService) => void;
   onPostcodeChange: (postcode: string) => void;
 }
 
-function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, feePercentFallback, onServiceChange, onPostcodeChange }: CheckoutFormProps) {
+function CheckoutForm({
+  listing,
+  pendingOrder,
+  selectedService,
+  shippingQuote,
+  feePercentFallback,
+  deliveryMethod,
+  onDeliveryMethodChange,
+  selectedCollectionPoint,
+  onCollectionPointChange,
+  donateToCharity,
+  onDonateToCharityChange,
+  onServiceChange,
+  onPostcodeChange,
+}: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
@@ -88,6 +120,52 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
   // Cardholder name state
   const [cardholderName, setCardholderName] = useState(user?.name || '');
 
+  // Click & Collect lookup state
+  const [lookupPostcode, setLookupPostcode] = useState(shippingAddress.postal_code || 'SW1A 1AA');
+  const [collectionPoints, setCollectionPoints] = useState<CollectionPoint[]>([]);
+  const [loadingPoints, setLoadingPoints] = useState(false);
+  const [pointsError, setPointsError] = useState('');
+
+  const fetchCollectionPoints = async (pc: string) => {
+    const cleanPc = pc.trim();
+    if (!cleanPc) return;
+    setLoadingPoints(true);
+    setPointsError('');
+    try {
+      const res = await fetch(`/api/shipping/collection-points?postcode=${encodeURIComponent(cleanPc)}`);
+      if (!res.ok) throw new Error('Could not find collection points for this postcode.');
+      const data = await res.json();
+      const locations: CollectionPoint[] = data.locations || [];
+      setCollectionPoints(locations);
+      if (locations.length > 0 && !selectedCollectionPoint) {
+        handleSelectCollectionPoint(locations[0]);
+      }
+    } catch (err: any) {
+      setPointsError(err.message || 'Error loading collection points');
+    } finally {
+      setLoadingPoints(false);
+    }
+  };
+
+  const handleSelectCollectionPoint = (point: CollectionPoint) => {
+    onCollectionPointChange(point);
+    onPostcodeChange(point.postcode);
+    setShippingAddress(prev => ({
+      ...prev,
+      line1: `${point.name}, ${point.addressLine1}`,
+      city: point.town,
+      state: point.town,
+      postal_code: point.postcode,
+    }));
+    if (validationErrors.collectionPoint) {
+      setValidationErrors(prev => {
+        const next = { ...prev };
+        delete next.collectionPoint;
+        return next;
+      });
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setShippingAddress(prev => {
@@ -98,6 +176,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
     });
     if (name === 'postal_code') {
       onPostcodeChange(value);
+      setLookupPostcode(value);
     }
     if (validationErrors[name]) {
       setValidationErrors(prev => {
@@ -127,27 +206,33 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
       errors.name = 'Full name must be at least 2 characters';
     }
 
-    if (!shippingAddress.line1 || shippingAddress.line1.trim().length < 5) {
-      errors.line1 = 'Address must be at least 5 characters';
+    if (deliveryMethod === 'CLICK_AND_COLLECT') {
+      if (!selectedCollectionPoint) {
+        errors.collectionPoint = 'Please select a Click & Collect pickup point';
+      }
+    } else {
+      if (!shippingAddress.line1 || shippingAddress.line1.trim().length < 5) {
+        errors.line1 = 'Address must be at least 5 characters';
+      }
+
+      if (!shippingAddress.city || shippingAddress.city.trim().length < 2) {
+        errors.city = 'City must be at least 2 characters';
+      }
+
+      if (!shippingAddress.state || shippingAddress.state.trim().length < 2) {
+        errors.state = 'State/Province is required';
+      }
+
+      if (!shippingAddress.postal_code || shippingAddress.postal_code.trim().length < 3) {
+        errors.postal_code = 'Valid postal code is required';
+      }
+
+      if (!shippingAddress.country || shippingAddress.country.length !== 2) {
+        errors.country = 'Please select a country';
+      }
     }
 
-    if (!shippingAddress.city || shippingAddress.city.trim().length < 2) {
-      errors.city = 'City must be at least 2 characters';
-    }
-
-    if (!shippingAddress.state || shippingAddress.state.trim().length < 2) {
-      errors.state = 'State/Province is required';
-    }
-
-    if (!shippingAddress.postal_code || shippingAddress.postal_code.trim().length < 3) {
-      errors.postal_code = 'Valid postal code is required';
-    }
-
-    if (!shippingAddress.country || shippingAddress.country.length !== 2) {
-      errors.country = 'Please select a country';
-    }
-
-    if (!shippingQuote) {
+    if (!shippingQuote && !listing.freeShipping) {
       errors.postal_code = 'Enter a valid UK postcode to calculate shipping';
     }
 
@@ -166,14 +251,13 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
     pendingOrder.protectionFee != null
       ? Number(pendingOrder.protectionFee)
       : calculateProtectionFee(itemPrice);
-  const feePercent =
-    itemPrice > 0 && protectionFee > 0
-      ? Math.round((protectionFee / itemPrice) * 100)
-      : feePercentFallback;
   const effectiveShippingFee = listing.freeShipping
     ? 0
     : (shippingQuote ? shippingQuote.totalFee : 0);
-  const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee) * 100) / 100;
+  const donationAmount = donateToCharity ? 1.00 : 0;
+  const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee + donationAmount) * 100) / 100;
+  const klarnaInstallment = (totalPrice / 3).toFixed(2);
+  const clearpayInstallment = (totalPrice / 4).toFixed(2);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,22 +278,36 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
     try {
       // Step 1: Update shipping details on the order + Stripe PaymentIntent
       // before confirming payment so the charged amount matches the displayed total.
-      if (shippingQuote) {
-        const updateRes = await fetch('/api/checkout/update-shipping', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            orderId: pendingOrder.id,
-            shippingFee: listing.freeShipping ? 0 : shippingQuote.totalFee,
-            shippingService: selectedService,
-          }),
-        });
+      const resolvedAddress = deliveryMethod === 'CLICK_AND_COLLECT' && selectedCollectionPoint ? {
+        ...shippingAddress,
+        line1: `${selectedCollectionPoint.name}, ${selectedCollectionPoint.addressLine1}`,
+        city: selectedCollectionPoint.town,
+        state: selectedCollectionPoint.town,
+        postal_code: selectedCollectionPoint.postcode,
+      } : shippingAddress;
 
-        if (!updateRes.ok) {
-          const errData = await updateRes.json();
-          throw new Error(errData.error || 'Failed to update shipping details');
-        }
+      const updateRes = await fetch('/api/checkout/update-shipping', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          orderId: pendingOrder.id,
+          shippingFee: listing.freeShipping ? 0 : (shippingQuote?.totalFee || 0),
+          shippingService: selectedService,
+          deliveryMethod,
+          collectionPoint: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint : undefined,
+          donationAmount: donateToCharity ? 1.00 : 0,
+          shippingAddress: {
+            ...resolvedAddress,
+            deliveryMethod,
+            collectionPoint: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint : undefined,
+          },
+        }),
+      });
+
+      if (!updateRes.ok) {
+        const errData = await updateRes.json();
+        throw new Error(errData.error || 'Failed to update shipping details');
       }
 
       // Step 2: Confirm payment with Stripe using PaymentElement and verified cardholder billing details
@@ -223,12 +321,12 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
               email: user?.email || undefined,
               phone: (user as any)?.phone || undefined,
               address: {
-                line1: shippingAddress.line1,
-                line2: shippingAddress.line2 || undefined,
-                city: shippingAddress.city,
-                state: shippingAddress.state,
-                postal_code: shippingAddress.postal_code,
-                country: shippingAddress.country,
+                line1: resolvedAddress.line1,
+                line2: resolvedAddress.line2 || undefined,
+                city: resolvedAddress.city,
+                state: resolvedAddress.state,
+                postal_code: resolvedAddress.postal_code,
+                country: resolvedAddress.country,
               },
             },
           },
@@ -237,7 +335,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
       });
 
       if (stripeError) {
-        throw new Error(stripeError.message || 'Payment failed. Please check your card details.');
+        throw new Error(stripeError.message || 'Payment failed. Please check your card or BNPL details.');
       }
 
       if (!paymentIntent || paymentIntent.status !== 'succeeded') {
@@ -278,7 +376,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
     return (
       <div className="text-center py-12">
         <CircleCheck aria-hidden="true" className="inline-block h-16 w-16 text-[var(--color-success)] mb-4" />
-        <h2 className="text-2xl font-bold text-[var(--color-success)] mb-2">Payment Successful!</h2>
+        <h2 className="text-2xl font-bold text-[var(--color-success)] mb-2">Payment Authorized into Escrow!</h2>
         <p className="text-[var(--color-text-muted)]">Redirecting to order confirmation...</p>
       </div>
     );
@@ -286,161 +384,330 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Shipping Address */}
+      {/* Delivery Mode Choice (Home Delivery vs Click & Collect) */}
       <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
-        <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Shipping Address</h2>
-
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="shipping-name" className="block text-sm font-medium text-[var(--color-text)] mb-1">Full Name</label>
-            <input
-              id="shipping-name"
-              type="text"
-              name="name"
-              required
-              autoComplete="name"
-              value={shippingAddress.name}
-              onChange={handleInputChange}
-              aria-describedby={validationErrors.name ? 'error-name' : undefined}
-              aria-invalid={!!validationErrors.name}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
-                validationErrors.name ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
-              }`}
-              placeholder="Jane Smith"
-            />
-            {validationErrors.name && (
-              <p id="error-name" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.name}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="shipping-line1" className="block text-sm font-medium text-[var(--color-text)] mb-1">Address Line 1</label>
-            <input
-              id="shipping-line1"
-              type="text"
-              name="line1"
-              required
-              autoComplete="address-line1"
-              value={shippingAddress.line1}
-              onChange={handleInputChange}
-              aria-describedby={validationErrors.line1 ? 'error-line1' : undefined}
-              aria-invalid={!!validationErrors.line1}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
-                validationErrors.line1 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
-              }`}
-              placeholder="1 Example Street"
-            />
-            {validationErrors.line1 && (
-              <p id="error-line1" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.line1}</p>
-            )}
-          </div>
-
-          <div>
-            <label htmlFor="shipping-line2" className="block text-sm font-medium text-[var(--color-text)] mb-1">Address Line 2 (Optional)</label>
-            <input
-              id="shipping-line2"
-              type="text"
-              name="line2"
-              autoComplete="address-line2"
-              value={shippingAddress.line2}
-              onChange={handleInputChange}
-              className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-              placeholder="Flat 4B"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="shipping-city" className="block text-sm font-medium text-[var(--color-text)] mb-1">City</label>
-              <input
-                id="shipping-city"
-                type="text"
-                name="city"
-                required
-                autoComplete="address-level2"
-                value={shippingAddress.city}
-                onChange={handleInputChange}
-                aria-describedby={validationErrors.city ? 'error-city' : undefined}
-                aria-invalid={!!validationErrors.city}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
-                  validationErrors.city ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
-                }`}
-                placeholder="London"
-              />
-              {validationErrors.city && (
-                <p id="error-city" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.city}</p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="shipping-state" className="block text-sm font-medium text-[var(--color-text)] mb-1">County / State</label>
-              <input
-                id="shipping-state"
-                type="text"
-                name="state"
-                required
-                autoComplete="address-level1"
-                value={shippingAddress.state}
-                onChange={handleInputChange}
-                aria-describedby={validationErrors.state ? 'error-state' : undefined}
-                aria-invalid={!!validationErrors.state}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
-                  validationErrors.state ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
-                }`}
-                placeholder="Greater London"
-              />
-              {validationErrors.state && (
-                <p id="error-state" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.state}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="shipping-postal" className="block text-sm font-medium text-[var(--color-text)] mb-1">Postal Code</label>
-              <input
-                id="shipping-postal"
-                type="text"
-                name="postal_code"
-                required
-                autoComplete="postal-code"
-                value={shippingAddress.postal_code}
-                onChange={handleInputChange}
-                aria-describedby={validationErrors.postal_code ? 'error-postal' : undefined}
-                aria-invalid={!!validationErrors.postal_code}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
-                  validationErrors.postal_code ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
-                }`}
-                placeholder="SW1A 1AA"
-              />
-              {validationErrors.postal_code && (
-                <p id="error-postal" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.postal_code}</p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="shipping-country" className="block text-sm font-medium text-[var(--color-text)] mb-1">Country</label>
-              <select
-                id="shipping-country"
-                name="country"
-                required
-                autoComplete="country"
-                value={shippingAddress.country}
-                onChange={handleCountryChange}
-                aria-describedby={validationErrors.country ? 'error-country' : undefined}
-                aria-invalid={!!validationErrors.country}
-                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white ${
-                  validationErrors.country ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
-                }`}
-              >
-                <option value="GB">United Kingdom</option>
-              </select>
-              {validationErrors.country && (
-                <p id="error-country" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.country}</p>
-              )}
-            </div>
-          </div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-[var(--color-text)]">Delivery Option</h2>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+            Royal Mail UK Network
+          </span>
         </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          <button
+            type="button"
+            onClick={() => onDeliveryMethodChange('HOME')}
+            className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between ${
+              deliveryMethod === 'HOME'
+                ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
+                : 'border-[var(--color-border)] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Truck className={`w-5 h-5 ${deliveryMethod === 'HOME' ? 'text-[var(--color-green)]' : 'text-slate-500'}`} />
+                <span className="font-bold text-sm text-[var(--color-text)]">Home Delivery</span>
+              </div>
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                deliveryMethod === 'HOME' ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-slate-300'
+              }`}>
+                {deliveryMethod === 'HOME' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+              </div>
+            </div>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Direct tracked delivery to your home or office address.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onDeliveryMethodChange('CLICK_AND_COLLECT');
+              if (collectionPoints.length === 0) {
+                fetchCollectionPoints(shippingAddress.postal_code || lookupPostcode);
+              }
+            }}
+            className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between ${
+              deliveryMethod === 'CLICK_AND_COLLECT'
+                ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
+                : 'border-[var(--color-border)] hover:border-slate-300'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Store className={`w-5 h-5 ${deliveryMethod === 'CLICK_AND_COLLECT' ? 'text-[var(--color-green)]' : 'text-slate-500'}`} />
+                <span className="font-bold text-sm text-[var(--color-text)]">Click &amp; Collect</span>
+              </div>
+              <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                deliveryMethod === 'CLICK_AND_COLLECT' ? 'border-[var(--color-green)] bg-[var(--color-green)]' : 'border-slate-300'
+              }`}>
+                {deliveryMethod === 'CLICK_AND_COLLECT' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+              </div>
+            </div>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Pick up at a local Post Office, Royal Mail CSP, or ParcelShop.
+            </p>
+          </button>
+        </div>
+
+        {deliveryMethod === 'CLICK_AND_COLLECT' ? (
+          <div className="space-y-4 pt-2 border-t border-[var(--color-border)]/60">
+            <div>
+              <label htmlFor="collector-name" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                Recipient Full Name <span className="text-[var(--color-danger)]">*</span>
+              </label>
+              <input
+                id="collector-name"
+                type="text"
+                name="name"
+                required
+                value={shippingAddress.name}
+                onChange={handleInputChange}
+                aria-describedby={validationErrors.name ? 'error-name' : undefined}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] ${
+                  validationErrors.name ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+                }`}
+                placeholder="Must match your official photo ID for pickup"
+              />
+              <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+                You must present government ID matching this name when collecting.
+              </p>
+              {validationErrors.name && (
+                <p id="error-name" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.name}</p>
+              )}
+            </div>
+
+            {/* Postcode lookup for Click & Collect */}
+            <div>
+              <label htmlFor="collection-postcode" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+                Find Collection Points Near You
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="collection-postcode"
+                  type="text"
+                  value={lookupPostcode}
+                  onChange={(e) => setLookupPostcode(e.target.value.toUpperCase())}
+                  placeholder="e.g. SW1A 1AA"
+                  className="flex-1 px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm uppercase focus:ring-2 focus:ring-[var(--color-green)]"
+                />
+                <button
+                  type="button"
+                  onClick={() => fetchCollectionPoints(lookupPostcode)}
+                  disabled={loadingPoints}
+                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition disabled:opacity-50"
+                >
+                  <Search className="w-4 h-4" />
+                  {loadingPoints ? 'Searching...' : 'Search'}
+                </button>
+              </div>
+              {pointsError && <p className="text-xs text-[var(--color-danger)] mt-1">{pointsError}</p>}
+              {validationErrors.collectionPoint && (
+                <p className="text-xs text-[var(--color-danger)] mt-1">{validationErrors.collectionPoint}</p>
+              )}
+            </div>
+
+            {/* Locations List */}
+            {collectionPoints.length > 0 && (
+              <div className="space-y-2 mt-3">
+                <span className="text-xs font-semibold text-slate-700">Choose your pickup point:</span>
+                <div className="grid grid-cols-1 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                  {collectionPoints.map((point) => {
+                    const isSelected = selectedCollectionPoint?.id === point.id;
+                    return (
+                      <div
+                        key={point.id}
+                        onClick={() => handleSelectCollectionPoint(point)}
+                        className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'border-[var(--color-green)] bg-[var(--color-green)]/5 ring-1 ring-[var(--color-green)]'
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-2.5">
+                            <Store className={`w-4 h-4 mt-0.5 ${isSelected ? 'text-[var(--color-green)]' : 'text-slate-400'}`} />
+                            <div>
+                              <span className="font-bold text-xs text-slate-900 block">{point.name}</span>
+                              <span className="text-[11px] text-slate-600 block">{point.addressLine1}, {point.town} {point.postcode}</span>
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                                Mon-Fri: {point.openingHours?.monday || 'Open'} • Sat: {point.openingHours?.saturday || 'Open'}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                              {point.distanceMiles} mi
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-900 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <span>
+                <strong>Automated Collection Pass:</strong> Once your seller dispatches the item, VeriBuy will send you an SMS and email with your 6-digit Collection PIN and secure QR code to show at the counter.
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4 pt-2 border-t border-[var(--color-border)]/60">
+            <div>
+              <label htmlFor="shipping-name" className="block text-sm font-medium text-[var(--color-text)] mb-1">Full Name</label>
+              <input
+                id="shipping-name"
+                type="text"
+                name="name"
+                required
+                autoComplete="name"
+                value={shippingAddress.name}
+                onChange={handleInputChange}
+                aria-describedby={validationErrors.name ? 'error-name' : undefined}
+                aria-invalid={!!validationErrors.name}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                  validationErrors.name ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+                }`}
+                placeholder="Jane Smith"
+              />
+              {validationErrors.name && (
+                <p id="error-name" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.name}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="shipping-line1" className="block text-sm font-medium text-[var(--color-text)] mb-1">Address Line 1</label>
+              <input
+                id="shipping-line1"
+                type="text"
+                name="line1"
+                required
+                autoComplete="address-line1"
+                value={shippingAddress.line1}
+                onChange={handleInputChange}
+                aria-describedby={validationErrors.line1 ? 'error-line1' : undefined}
+                aria-invalid={!!validationErrors.line1}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                  validationErrors.line1 ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+                }`}
+                placeholder="1 Example Street"
+              />
+              {validationErrors.line1 && (
+                <p id="error-line1" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.line1}</p>
+              )}
+            </div>
+
+            <div>
+              <label htmlFor="shipping-line2" className="block text-sm font-medium text-[var(--color-text)] mb-1">Address Line 2 (Optional)</label>
+              <input
+                id="shipping-line2"
+                type="text"
+                name="line2"
+                autoComplete="address-line2"
+                value={shippingAddress.line2}
+                onChange={handleInputChange}
+                className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
+                placeholder="Flat 4B"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="shipping-city" className="block text-sm font-medium text-[var(--color-text)] mb-1">City</label>
+                <input
+                  id="shipping-city"
+                  type="text"
+                  name="city"
+                  required
+                  autoComplete="address-level2"
+                  value={shippingAddress.city}
+                  onChange={handleInputChange}
+                  aria-describedby={validationErrors.city ? 'error-city' : undefined}
+                  aria-invalid={!!validationErrors.city}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                    validationErrors.city ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+                  }`}
+                  placeholder="London"
+                />
+                {validationErrors.city && (
+                  <p id="error-city" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.city}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="shipping-state" className="block text-sm font-medium text-[var(--color-text)] mb-1">County / State</label>
+                <input
+                  id="shipping-state"
+                  type="text"
+                  name="state"
+                  required
+                  autoComplete="address-level1"
+                  value={shippingAddress.state}
+                  onChange={handleInputChange}
+                  aria-describedby={validationErrors.state ? 'error-state' : undefined}
+                  aria-invalid={!!validationErrors.state}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                    validationErrors.state ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+                  }`}
+                  placeholder="Greater London"
+                />
+                {validationErrors.state && (
+                  <p id="error-state" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.state}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="shipping-postal" className="block text-sm font-medium text-[var(--color-text)] mb-1">Postal Code</label>
+                <input
+                  id="shipping-postal"
+                  type="text"
+                  name="postal_code"
+                  required
+                  autoComplete="postal-code"
+                  value={shippingAddress.postal_code}
+                  onChange={handleInputChange}
+                  aria-describedby={validationErrors.postal_code ? 'error-postal' : undefined}
+                  aria-invalid={!!validationErrors.postal_code}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent ${
+                    validationErrors.postal_code ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+                  }`}
+                  placeholder="SW1A 1AA"
+                />
+                {validationErrors.postal_code && (
+                  <p id="error-postal" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.postal_code}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="shipping-country" className="block text-sm font-medium text-[var(--color-text)] mb-1">Country</label>
+                <select
+                  id="shipping-country"
+                  name="country"
+                  required
+                  autoComplete="country"
+                  value={shippingAddress.country}
+                  onChange={handleCountryChange}
+                  aria-describedby={validationErrors.country ? 'error-country' : undefined}
+                  aria-invalid={!!validationErrors.country}
+                  className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent bg-white ${
+                    validationErrors.country ? 'border-[var(--color-danger)]' : 'border-[var(--color-border)]'
+                  }`}
+                >
+                  <option value="GB">United Kingdom</option>
+                </select>
+                {validationErrors.country && (
+                  <p id="error-country" className="mt-1 text-sm text-[var(--color-danger)]">{validationErrors.country}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Shipping Service */}
@@ -462,7 +729,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
         {shippingQuote ? (
           <div className="space-y-3">
             {(['TRACKED_48', 'TRACKED_24'] as ShippingService[]).map((svc) => {
-              const quote = calculateShippingFee(listing.deviceType, shippingAddress.postal_code, svc, {
+              const quote = calculateShippingFee(listing.deviceType, shippingAddress.postal_code || 'SW1A 1AA', svc, {
                 brand: listing.brand,
                 model: listing.model,
                 quantity: listing.quantity,
@@ -519,23 +786,56 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
         )}
       </div>
 
-      {/* Payment Information */}
+      {/* BNPL (Klarna / Clearpay) & Payment Information */}
       <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-[var(--color-text)]">Payment Information</h2>
+          <h2 className="text-xl font-semibold text-[var(--color-text)]">Payment Method</h2>
           <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 font-medium px-2.5 py-1 rounded-full">
             <Lock className="w-3.5 h-3.5" aria-hidden="true" />
             <span>256-Bit Escrow Security</span>
           </div>
         </div>
 
+        {/* BNPL Options Banner */}
+        <div className="bg-gradient-to-r from-purple-50 via-emerald-50 to-blue-50 border border-slate-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              Buy Now, Pay Later (0% APR)
+            </span>
+            <span className="text-[10px] font-bold bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">
+              Escrow Deferred Capture
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="bg-white/80 p-2.5 rounded-lg border border-purple-100 flex items-center gap-2">
+              <span className="bg-[#FFB3C7] text-black font-black text-[10px] px-1.5 py-0.5 rounded">
+                Klarna.
+              </span>
+              <span className="text-slate-800">
+                <strong>3 payments of £{klarnaInstallment}</strong> (No fees)
+              </span>
+            </div>
+            <div className="bg-white/80 p-2.5 rounded-lg border border-emerald-100 flex items-center gap-2">
+              <span className="bg-[#B2FCE4] text-black font-black text-[10px] px-1.5 py-0.5 rounded">
+                clearpay
+              </span>
+              <span className="text-slate-800">
+                <strong>4 payments of £{clearpayInstallment}</strong> (Bi-weekly)
+              </span>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-600 mt-2">
+            Select Card, Klarna, or Clearpay in the secure Stripe portal below. Funds remain safely vaulted in escrow until you verify your device.
+          </p>
+        </div>
+
         {/* Name on Card Input */}
         <div>
           <div className="flex items-baseline justify-between mb-1">
             <label htmlFor="cardholder-name" className="block text-sm font-medium text-[var(--color-text)]">
-              Name on Card <span className="text-[var(--color-danger)]">*</span>
+              Cardholder / Payer Name <span className="text-[var(--color-danger)]">*</span>
             </label>
-            <span className="text-xs text-[var(--color-text-muted)]">Exact name on card</span>
+            <span className="text-xs text-[var(--color-text-muted)]">Exact name on payment method</span>
           </div>
           <input
             id="cardholder-name"
@@ -568,15 +868,15 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
           ) : (
             <p id="cardholder-hint" className="mt-1.5 text-xs text-[var(--color-text-muted)] flex items-start gap-1.5">
               <ShieldCheck className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
-              <span>Please ensure the name on the card matches what you enter here for anti-fraud verification and 3D Secure bank approval.</span>
+              <span>Please ensure the name matches your payment method for 3D Secure fraud prevention.</span>
             </p>
           )}
         </div>
 
-        {/* Card Details Element */}
+        {/* Stripe Payment Element (Supports Card, Klarna, Clearpay) */}
         <div>
           <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
-            Card Details
+            Secure Payment Details
           </label>
           <div className="border border-[var(--color-border)] rounded-lg p-4 bg-white shadow-xs">
             <PaymentElement
@@ -596,8 +896,33 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
 
         <div className="flex items-center gap-2 pt-1 text-xs text-[var(--color-text-muted)]">
           <Lock className="w-3.5 h-3.5 text-[var(--color-green)] shrink-0" aria-hidden="true" />
-          <span>Processed securely via Stripe Payments UK. Your full card details are encrypted and never stored on VeriBuy servers.</span>
+          <span>Processed securely via Stripe Payments UK. Escrow funds are held safely under hold authorization until delivery.</span>
         </div>
+      </div>
+
+      {/* Charity Donation Toggle (Good Things Foundation / Digital Inclusion) */}
+      <div className="bg-rose-50/60 border border-rose-200/80 rounded-xl p-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={donateToCharity}
+            onChange={(e) => onDonateToCharityChange(e.target.checked)}
+            className="mt-1 w-4 h-4 text-rose-600 rounded border-rose-300 focus:ring-rose-500 accent-rose-600"
+          />
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <Heart className="w-4 h-4 text-rose-600 fill-rose-600" />
+              <span className="font-bold text-sm text-slate-900">
+                Donate £1.00 to Good Things Foundation (Digital Inclusion UK)
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+              Help bridge the UK digital divide. 100% of collected donations supply refurbished devices, free connectivity, and vital digital skills to low-income families and pensioners.
+              <span className="block text-[11px] text-slate-500 mt-0.5">Registered Charity No. 1165209.</span>
+            </p>
+          </div>
+          <span className="font-bold text-sm text-rose-700 shrink-0">+£1.00</span>
+        </label>
       </div>
 
       {/* Error Display */}
@@ -610,19 +935,19 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
       {/* Submit Button */}
       <button
         type="submit"
-        disabled={!stripe || processing || !shippingQuote}
+        disabled={!stripe || processing || (!shippingQuote && !listing.freeShipping)}
         className={`w-full px-6 py-3.5 rounded-xl font-bold text-white transition-all text-base shadow-sm ${
-          !stripe || processing || !shippingQuote
+          !stripe || processing || (!shippingQuote && !listing.freeShipping)
             ? 'bg-[var(--color-border)] cursor-not-allowed'
             : 'bg-[var(--color-accent)] hover:opacity-95 cursor-pointer hover:shadow'
         }`}
       >
         {processing
-          ? 'Processing Secure Escrow Payment...'
-          : `Pay ${formatPrice(totalPrice, listing.currency)} & Protect Order`
+          ? 'Authorizing Secure Escrow Hold...'
+          : `Authorize ${formatPrice(totalPrice, listing.currency)} & Protect Order`
         }
       </button>
-      {!shippingQuote && (
+      {!shippingQuote && !listing.freeShipping && (
         <p className="text-xs text-center text-[var(--color-text-muted)]">
           Enter a valid UK postcode above to calculate shipping and enable payment.
         </p>
@@ -653,7 +978,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
             <Truck className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
             <div>
               <strong className="text-[var(--color-text)] block">Tracked Dispatch</strong>
-              Tracked Royal Mail delivery with milestone notifications.
+              Tracked Royal Mail delivery or Click &amp; Collect pickup with PIN.
             </div>
           </div>
         </div>
@@ -661,6 +986,7 @@ function CheckoutForm({ listing, pendingOrder, selectedService, shippingQuote, f
     </form>
   );
 }
+
 
 function CheckoutPageContent() {
   const searchParams = useSearchParams();
@@ -685,6 +1011,9 @@ function CheckoutPageContent() {
   const [selectedService, setSelectedService] = useState<ShippingService>('TRACKED_48');
   const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
   const [postcode, setPostcode] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState<'HOME' | 'CLICK_AND_COLLECT'>('HOME');
+  const [selectedCollectionPoint, setSelectedCollectionPoint] = useState<CollectionPoint | null>(null);
+  const [donateToCharity, setDonateToCharity] = useState(false);
 
   const listingId = searchParams.get('listingId');
 
@@ -828,7 +1157,8 @@ function CheckoutPageContent() {
   const effectiveShippingFee = listing?.freeShipping
     ? 0
     : (shippingQuote ? shippingQuote.totalFee : 0);
-  const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee) * 100) / 100;
+  const donationAmount = donateToCharity ? 1.00 : 0;
+  const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee + donationAmount) * 100) / 100;
 
   if (loading) {
     return (
@@ -892,6 +1222,12 @@ function CheckoutPageContent() {
                 selectedService={selectedService}
                 shippingQuote={shippingQuote}
                 feePercentFallback={serverFeePercent}
+                deliveryMethod={deliveryMethod}
+                onDeliveryMethodChange={setDeliveryMethod}
+                selectedCollectionPoint={selectedCollectionPoint}
+                onCollectionPointChange={setSelectedCollectionPoint}
+                donateToCharity={donateToCharity}
+                onDonateToCharityChange={setDonateToCharity}
                 onServiceChange={handleServiceChange}
                 onPostcodeChange={handlePostcodeChange}
               />
@@ -961,6 +1297,36 @@ function CheckoutPageContent() {
                     </span>
                   </div>
                 )}
+
+                {/* Delivery Option row */}
+                <div className="flex justify-between text-xs pt-1 border-t border-slate-100">
+                  <span className="text-[var(--color-text-muted)]">Delivery Option:</span>
+                  <span className="font-medium text-[var(--color-text)]">
+                    {deliveryMethod === 'CLICK_AND_COLLECT' ? '🏪 Click & Collect' : '🚚 Home Delivery'}
+                  </span>
+                </div>
+
+                {deliveryMethod === 'CLICK_AND_COLLECT' && selectedCollectionPoint && (
+                  <div className="bg-slate-50 border border-slate-200 p-2 rounded-lg text-xs space-y-0.5">
+                    <span className="font-bold text-slate-900 block">{selectedCollectionPoint.name}</span>
+                    <span className="text-slate-600 block">{selectedCollectionPoint.addressLine1}, {selectedCollectionPoint.postcode}</span>
+                    <span className="text-[11px] text-emerald-700 font-medium block">
+                      📍 {selectedCollectionPoint.distanceMiles} miles away
+                    </span>
+                  </div>
+                )}
+
+                {/* Charity donation row */}
+                {donateToCharity && (
+                  <div className="flex justify-between items-center text-xs bg-rose-50/80 border border-rose-200/70 p-2 rounded-lg">
+                    <div className="flex items-center gap-1.5">
+                      <Heart className="w-3.5 h-3.5 text-rose-600 fill-rose-600" />
+                      <span className="font-semibold text-rose-900">Digital Inclusion UK</span>
+                    </div>
+                    <span className="font-bold text-rose-800">+£1.00</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
                   <span>Total:</span>
                   <span className="text-[var(--color-text)]">

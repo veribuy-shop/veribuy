@@ -38,7 +38,19 @@ export async function POST(req: NextRequest) {
     // via the Royal Mail rate engine, rejecting the order if the client's
     // figure is stale. They are forwarded solely so the backend can detect and
     // surface a stale-price mismatch to the buyer.
-    const { sellerId, listingId, amount, currency, shippingAddress, shippingFee, shippingService } = body;
+    const {
+      sellerId,
+      listingId,
+      amount,
+      currency,
+      shippingAddress,
+      shippingFee,
+      shippingService,
+      deliveryMethod,
+      collectionPoint,
+      donationAmount,
+      charityName,
+    } = body;
 
     if (!sellerId || !listingId || !currency) {
       return NextResponse.json(
@@ -107,6 +119,10 @@ export async function POST(req: NextRequest) {
         shippingAddress,
         shippingFee: shippingFee ?? undefined,
         shippingService: shippingService ?? undefined,
+        deliveryMethod: deliveryMethod ?? undefined,
+        collectionPoint: collectionPoint ?? undefined,
+        donationAmount: donationAmount ?? undefined,
+        charityName: charityName ?? undefined,
       }),
     });
 

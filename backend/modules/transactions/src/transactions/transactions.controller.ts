@@ -256,6 +256,12 @@ export class TransactionsController {
     return res.end(pdfBuffer);
   }
 
+  @Get('shipping/collection-points')
+  @Public()
+  async getCollectionPoints(@Query('postcode') postcode: string = 'SW1A 1AA') {
+    return this.transactionsService.getCollectionPoints(postcode);
+  }
+
   @Get('orders/:orderId/dropoff-locations')
   @Roles('BUYER', 'SELLER', 'ADMIN')
   async getDropoffLocations(

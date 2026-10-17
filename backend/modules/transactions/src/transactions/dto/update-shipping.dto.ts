@@ -14,4 +14,20 @@ export class UpdateShippingDto {
   @IsString()
   @IsIn(['TRACKED_24', 'TRACKED_48', 'SPECIAL_DELIVERY_1PM'])
   shippingService: string;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  donationAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['HOME', 'CLICK_AND_COLLECT'])
+  deliveryMethod?: string;
+
+  @IsOptional()
+  collectionPoint?: Record<string, any>;
+
+  @IsOptional()
+  shippingAddress?: Record<string, any>;
 }

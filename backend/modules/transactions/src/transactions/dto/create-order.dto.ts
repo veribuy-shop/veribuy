@@ -93,4 +93,22 @@ export class CreateOrderDto {
   @Type(() => ShippingAddressDto)
   @IsOptional()
   shippingAddress?: ShippingAddressDto;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['HOME', 'CLICK_AND_COLLECT'])
+  deliveryMethod?: 'HOME' | 'CLICK_AND_COLLECT';
+
+  @IsOptional()
+  collectionPoint?: Record<string, any>;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  donationAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  @Length(0, 100)
+  charityName?: string;
 }

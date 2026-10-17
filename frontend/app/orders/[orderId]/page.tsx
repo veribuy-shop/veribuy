@@ -22,6 +22,8 @@ import {
   Box,
   Info,
   CheckCircle2,
+  Store,
+  Heart,
 } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
 import { formatShippingService } from '@/lib/shipping';
@@ -44,6 +46,33 @@ interface Order {
   dropoffPointName?: string | null;
   totalAmount?: number | null;
   trackingNumber?: string | null;
+  shippingAddress?: {
+    name?: string;
+    line1?: string;
+    line2?: string;
+    city?: string;
+    state?: string;
+    postal_code?: string;
+    country?: string;
+    deliveryMethod?: 'HOME' | 'CLICK_AND_COLLECT';
+    collectionPoint?: {
+      id?: string;
+      name: string;
+      type?: string;
+      addressLine1?: string;
+      address?: string;
+      town?: string;
+      city?: string;
+      postcode: string;
+      distanceMiles?: number;
+      openingHours?: Record<string, string>;
+    };
+    collectionPin?: string;
+    donation?: {
+      amount: number;
+      charity: string;
+    };
+  } | null;
   paidAt?: string;
   shippedAt?: string;
   deliveredAt?: string;
@@ -569,89 +598,159 @@ export default function OrderConfirmationPage() {
             </div>
           )}
 
-          {/* Buyer Tracking Link */}
-          {isBuyer && order.trackingNumber && (
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-blue-50/70 border border-blue-100 rounded-xl p-3.5">
-              <div className="flex items-center gap-2">
-                <Truck className="w-4 h-4 text-blue-600" />
-                <span className="text-xs text-blue-900">
-                  Track live updates directly on Royal Mail Track & Trace.
-                </span>
-              </div>
-              <a
-                href={`https://www.royalmail.com/track-your-item#/tracking-results/${order.trackingNumber}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 underline"
-              >
-                Track on Royal Mail Portal <ExternalLink className="w-3 h-3" />
-              </a>
+        {/* Buyer Tracking Link */}
+        {isBuyer && order.trackingNumber && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-blue-50/70 border border-blue-100 rounded-xl p-3.5 mb-6">
+            <div className="flex items-center gap-2">
+              <Truck className="w-4 h-4 text-blue-600" />
+              <span className="text-xs text-blue-900">
+                Track live updates directly on Royal Mail Track & Trace.
+              </span>
             </div>
-          )}
+            <a
+              href={`https://www.royalmail.com/track-your-item#/tracking-results/${order.trackingNumber}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 hover:text-blue-900 underline"
+            >
+              Track on Royal Mail Portal <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        )}
+
+        {/* Click & Collect Pickup Pass (When Click & Collect selected) */}
+        {order.shippingAddress?.deliveryMethod === 'CLICK_AND_COLLECT' && (
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border-2 border-emerald-500/50 rounded-2xl p-6 mb-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <Store className="w-5 h-5 text-emerald-700" />
+                <h2 className="text-base font-bold text-slate-900">Click &amp; Collect Collection Pass</h2>
+              </div>
+              <span className="bg-emerald-600 text-white font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-xs">
+                <Check className="w-3.5 h-3.5" />
+                Pickup at Counter
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white/90 p-4 rounded-xl border border-emerald-100">
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                  Collection Point Location
+                </span>
+                <p className="font-bold text-slate-900 text-sm">
+                  {order.shippingAddress.collectionPoint?.name || 'Local Collection Point'}
+                </p>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {order.shippingAddress.collectionPoint?.addressLine1 || order.shippingAddress.collectionPoint?.address || order.shippingAddress.line1}
+                  {order.shippingAddress.collectionPoint?.town ? `, ${order.shippingAddress.collectionPoint.town}` : ''}
+                  {' '}{order.shippingAddress.collectionPoint?.postcode || order.shippingAddress.postal_code}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-2">
+                  <strong>Collector:</strong> {order.shippingAddress.name || 'Account Holder'} (Must present photo ID)
+                </p>
+              </div>
+
+              <div className="flex flex-col items-center justify-center p-3 bg-slate-50 rounded-lg border border-slate-200 text-center">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Your 6-Digit Collection PIN
+                </span>
+                <div className="text-2xl font-black font-mono tracking-widest text-emerald-700 bg-white px-4 py-1.5 rounded-lg border border-emerald-200 shadow-xs mb-1">
+                  {order.shippingAddress.collectionPin || '849 204'}
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Quote this PIN or show your order barcode at the collection point.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Order Details & Summary Card */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+          <h2 className="text-lg font-bold text-slate-900">Order Summary</h2>
+          <span className="text-xs font-mono text-slate-500">Placed on {formatDate(order.createdAt)}</span>
         </div>
 
-        {/* Order Details & Summary Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
-          <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
-            <h2 className="text-lg font-bold text-slate-900">Order Summary</h2>
-            <span className="text-xs font-mono text-slate-500">Placed on {formatDate(order.createdAt)}</span>
-          </div>
-
-          {listing && (
-            <div className="flex gap-4 mb-6 pb-6 border-b border-slate-100">
-              {listing.imageUrls && listing.imageUrls.length > 0 && (
-                <img
-                  src={listing.imageUrls[0]}
-                  alt={listing.title}
-                  className="w-20 h-20 object-cover rounded-xl border border-slate-100 shadow-sm"
-                />
-              )}
-              <div className="flex-1">
-                <h3 className="font-semibold text-slate-900 text-base mb-1">{listing.title}</h3>
-                <p className="text-xs text-slate-500 mb-2">{listing.brand} {listing.model}</p>
-                <div className="text-lg font-bold text-slate-900">
-                  {formatPrice(order.amount, order.currency)}
-                </div>
+        {listing && (
+          <div className="flex gap-4 mb-6 pb-6 border-b border-slate-100">
+            {listing.imageUrls && listing.imageUrls.length > 0 && (
+              <img
+                src={listing.imageUrls[0]}
+                alt={listing.title}
+                className="w-20 h-20 object-cover rounded-xl border border-slate-100 shadow-sm"
+              />
+            )}
+            <div className="flex-1">
+              <h3 className="font-semibold text-slate-900 text-base mb-1">{listing.title}</h3>
+              <p className="text-xs text-slate-500 mb-2">{listing.brand} {listing.model}</p>
+              <div className="text-lg font-bold text-slate-900">
+                {formatPrice(order.amount, order.currency)}
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Pricing breakdown */}
-          {(() => {
-            const feePercent = getBuyerProtectionFeePercent();
-            const protectionFee =
-              order.protectionFee != null
-                ? Number(order.protectionFee)
-                : calculateProtectionFee(Number(order.amount));
-            const shipping = order.shippingFee ? Number(order.shippingFee) : 0;
-            const total =
-              order.totalAmount != null
-                ? Number(order.totalAmount)
-                : Math.round((Number(order.amount) + protectionFee + shipping) * 100) / 100;
+        {/* Pricing breakdown */}
+        {(() => {
+          const feePercent = getBuyerProtectionFeePercent();
+          const protectionFee =
+            order.protectionFee != null
+              ? Number(order.protectionFee)
+              : calculateProtectionFee(Number(order.amount));
+          const shipping = order.shippingFee ? Number(order.shippingFee) : 0;
+          const donation = order.shippingAddress?.donation ? Number(order.shippingAddress.donation.amount || 1.0) : 0;
+          const total =
+            order.totalAmount != null
+              ? Number(order.totalAmount)
+              : Math.round((Number(order.amount) + protectionFee + shipping + donation) * 100) / 100;
 
-            return (
-              <div className="space-y-2 text-xs text-slate-700">
-                <div className="flex justify-between">
-                  <span>Device Item Subtotal</span>
-                  <span className="font-medium text-slate-900">{formatPrice(order.amount, order.currency)}</span>
+          return (
+            <div className="space-y-2 text-xs text-slate-700">
+              <div className="flex justify-between">
+                <span>Device Item Subtotal</span>
+                <span className="font-medium text-slate-900">{formatPrice(order.amount, order.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Buyer Protection Fee ({feePercent}%)</span>
+                <span className="font-medium text-slate-900">{formatPrice(protectionFee, order.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Royal Mail Shipping</span>
+                {shipping > 0 ? (
+                  <span className="font-medium text-slate-900">{formatPrice(shipping, order.currency)}</span>
+                ) : (
+                  <span className="font-semibold text-emerald-600">Free (Covered by Seller)</span>
+                )}
+              </div>
+
+              {/* Delivery method line */}
+              <div className="flex justify-between text-slate-500">
+                <span>Delivery Option</span>
+                <span className="font-medium text-slate-800">
+                  {order.shippingAddress?.deliveryMethod === 'CLICK_AND_COLLECT' ? '🏪 Click & Collect' : '🚚 Home Delivery'}
+                </span>
+              </div>
+
+              {/* Charity donation line */}
+              {order.shippingAddress?.donation && (
+                <div className="flex justify-between items-center text-xs bg-rose-50/80 border border-rose-200/70 p-2 rounded-lg text-rose-900">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Heart className="w-3.5 h-3.5 text-rose-600 fill-rose-600" />
+                    Digital Inclusion Charity ({order.shippingAddress.donation.charity || 'Good Things Foundation'})
+                  </span>
+                  <span className="font-bold text-rose-800">
+                    +{formatPrice(order.shippingAddress.donation.amount || 1.0, order.currency)}
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Buyer Protection Fee ({feePercent}%)</span>
-                  <span className="font-medium text-slate-900">{formatPrice(protectionFee, order.currency)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Royal Mail Shipping</span>
-                  {shipping > 0 ? (
-                    <span className="font-medium text-slate-900">{formatPrice(shipping, order.currency)}</span>
-                  ) : (
-                    <span className="font-semibold text-emerald-600">Free (Covered by Seller)</span>
-                  )}
-                </div>
-                <div className="border-t border-slate-200 pt-3 mt-3 flex justify-between text-base font-bold text-slate-900">
-                  <span>Total Paid</span>
-                  <span>{formatPrice(total, order.currency)}</span>
-                </div>
-                {isSeller && (
+              )}
+
+              <div className="border-t border-slate-200 pt-3 mt-3 flex justify-between text-base font-bold text-slate-900">
+                <span>Total Paid</span>
+                <span>{formatPrice(total, order.currency)}</span>
+              </div>
+              {isSeller && (
                   <div className="mt-3 pt-3 border-t border-dashed border-slate-200 flex justify-between text-xs font-semibold text-emerald-700 bg-emerald-50/50 p-2.5 rounded-lg">
                     <span>Seller Escrow Payout:</span>
                     <span>{formatPrice(order.amount, order.currency)} (100% — £0 selling fees)</span>
