@@ -40,12 +40,12 @@ export function Header() {
   }, [mobileMenuOpen]);
 
   return (
-    <header className="bg-white border-b border-[var(--color-border)] sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-4">
+    <header className="bg-white border-b border-[var(--color-border)] sticky top-0 z-50 shadow-xs">
+      <div className="max-w-7xl mx-auto px-4 h-16 sm:h-20 flex items-center gap-4 sm:gap-6">
 
         {/* Logo */}
-        <Link href="/" aria-label="VeriBuy home" className="shrink-0">
-          <BrandLogo priority className="h-12 w-auto" />
+        <Link href="/" aria-label="VeriBuy home" className="shrink-0 flex items-center py-1">
+          <BrandLogo priority className="h-12 sm:h-16 w-auto" />
         </Link>
 
         {/* Desktop Search */}

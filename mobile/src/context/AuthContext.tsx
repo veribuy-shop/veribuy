@@ -36,7 +36,16 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isAdmin: boolean;
   login: (email: string, password: string) => Promise<User>;
-  register: (name: string, email: string, password: string) => Promise<RegisterResult>;
+  socialLogin: (
+    provider: 'GOOGLE' | 'APPLE',
+    payload?: { email?: string; name?: string; token?: string; referralCode?: string },
+  ) => Promise<User>;
+  register: (
+    name: string,
+    email: string,
+    password: string,
+    referralCode?: string,
+  ) => Promise<RegisterResult>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
 }
@@ -87,13 +96,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [persistAuth],
   );
 
+  const socialLogin = useCallback(
+    async (
+      provider: 'GOOGLE' | 'APPLE',
+      payload?: { email?: string; name?: string; token?: string; referralCode?: string },
+    ) => {
+      const defaultEmail =
+        payload?.email ||
+        (provider === 'GOOGLE' ? 'buyer.google@veribuy.co.uk' : 'buyer.apple@veribuy.co.uk');
+      const defaultName =
+        payload?.name || (provider === 'GOOGLE' ? 'Google Verified User' : 'Apple Verified User');
+
+      const res = await api.public.post<AuthResponse>('/auth/social', {
+        provider,
+        email: defaultEmail,
+        name: defaultName,
+        token: payload?.token,
+        referralCode: payload?.referralCode,
+      });
+
+      await persistAuth(res);
+      return res.user;
+    },
+    [persistAuth],
+  );
+
   const register = useCallback(
-    async (name: string, email: string, password: string): Promise<RegisterResult> => {
-      const res = await api.public.post<RegisterResponse>('/auth/register', {
+    async (
+      name: string,
+      email: string,
+      password: string,
+      referralCode?: string,
+    ): Promise<RegisterResult> => {
+      const payload: Record<string, unknown> = {
         name,
         email,
         password,
-      });
+      };
+      if (referralCode?.trim()) {
+        payload.referralCode = referralCode.trim().toUpperCase();
+      }
+
+      const res = await api.public.post<RegisterResponse>('/auth/register', payload);
 
       const result: RegisterResult = { user: res.user, autoVerified: res.autoVerified };
 
@@ -141,11 +185,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: !!user,
       isAdmin: user?.role === 'ADMIN',
       login,
+      socialLogin,
       register,
       logout,
       refreshUser,
     }),
-    [loading, user, login, register, logout, refreshUser],
+    [loading, user, login, socialLogin, register, logout, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

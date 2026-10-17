@@ -12,22 +12,50 @@ import {
 
 type PropsWithChildren<T = unknown> = T & { children?: React.ReactNode };
 
-interface ButtonProps extends PropsWithChildren<{ onPress: () => void; variant?: 'primary' | 'secondary' | 'outline' | 'danger'; loading?: boolean; disabled?: boolean; style?: ViewStyle }> {}
+interface ButtonProps extends PropsWithChildren<{
+  onPress: () => void;
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'accent' | 'green';
+  loading?: boolean;
+  disabled?: boolean;
+  style?: ViewStyle;
+}> {}
 
 export function Button({ onPress, variant = 'primary', loading, disabled, style, children }: ButtonProps) {
   const isDisabled = disabled || loading;
-  const bg = variant === 'primary' ? 'bg-primary' : variant === 'secondary' ? 'bg-surface-alt' : variant === 'danger' ? 'bg-danger' : 'bg-transparent';
-  const textColor = variant === 'outline' ? 'text-primary' : variant === 'secondary' ? 'text-text' : 'text-white';
+  const bg =
+    variant === 'primary'
+      ? 'bg-primary'
+      : variant === 'accent'
+      ? 'bg-accent'
+      : variant === 'green'
+      ? 'bg-green'
+      : variant === 'secondary'
+      ? 'bg-surface-alt'
+      : variant === 'danger'
+      ? 'bg-danger'
+      : 'bg-transparent';
+  const textColor =
+    variant === 'outline'
+      ? 'text-primary'
+      : variant === 'accent'
+      ? 'text-primary-dark font-black'
+      : variant === 'secondary'
+      ? 'text-text'
+      : 'text-white';
   const border = variant === 'outline' ? 'border border-borderc' : '';
 
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      className={`${bg} ${border} py-3 px-4 rounded-lg items-center justify-center ${isDisabled ? 'opacity-50' : ''}`}
+      className={`${bg} ${border} py-3 px-4 rounded-xl items-center justify-center ${isDisabled ? 'opacity-50' : 'active:opacity-90'}`}
       style={style}
     >
-      {loading ? <ActivityIndicator color={variant === 'outline' ? '#232F3E' : '#fff'} /> : <Text className={`${textColor} font-semibold`}>{children}</Text>}
+      {loading ? (
+        <ActivityIndicator color={variant === 'outline' || variant === 'accent' ? '#232F3E' : '#fff'} />
+      ) : (
+        <Text className={`${textColor} font-bold text-sm`}>{children}</Text>
+      )}
     </Pressable>
   );
 }
@@ -53,7 +81,7 @@ export function Input({ label, error, ...props }: InputProps) {
 
 export function Screen({ children, style }: PropsWithChildren<{ style?: ViewStyle }>) {
   return (
-    <View className="flex-1 bg-warm-beige px-4 pt-4" style={style}>
+    <View className="flex-1 bg-surface-canvas px-4 pt-4" style={style}>
       {children}
     </View>
   );
@@ -61,7 +89,7 @@ export function Screen({ children, style }: PropsWithChildren<{ style?: ViewStyl
 
 export function Card({ children, style }: PropsWithChildren<{ style?: ViewStyle }>) {
   return (
-    <View className="bg-surface rounded-xl border border-borderc p-4 mb-3" style={style}>
+    <View className="bg-surface rounded-2xl border border-borderc p-4 mb-3 shadow-sm" style={style}>
       {children}
     </View>
   );
@@ -69,8 +97,8 @@ export function Card({ children, style }: PropsWithChildren<{ style?: ViewStyle 
 
 export function Tag({ children, className }: PropsWithChildren<{ className?: string }>) {
   return (
-    <View className={`rounded-full px-2 py-0.5 ${className || 'bg-warm-beige'}`}>
-      <Text className="text-xs">{children}</Text>
+    <View className={`rounded-full px-2.5 py-0.5 ${className || 'bg-surface-alt border border-borderc'}`}>
+      <Text className="text-xs font-semibold">{children}</Text>
     </View>
   );
 }
@@ -78,8 +106,8 @@ export function Tag({ children, className }: PropsWithChildren<{ className?: str
 export function EmptyState({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <View className="py-16 items-center">
-      <Text className="text-text-muted text-lg">{title}</Text>
-      {subtitle ? <Text className="text-sm text-warm-tan mt-1">{subtitle}</Text> : null}
+      <Text className="text-text font-bold text-lg">{title}</Text>
+      {subtitle ? <Text className="text-sm text-text-muted mt-1 text-center px-4">{subtitle}</Text> : null}
     </View>
   );
 }
@@ -87,40 +115,36 @@ export function EmptyState({ title, subtitle }: { title: string; subtitle?: stri
 export function LoadingState() {
   return (
     <View className="flex-1 items-center justify-center py-20">
-      <ActivityIndicator size="large" color="#232F3E" />
+      <ActivityIndicator size="large" color="#059669" />
     </View>
   );
 }
 
 export function StatusPill({ status }: { status: string }) {
   const normalized = status?.toUpperCase() || '';
-  let color = 'bg-warm-beige text-text';
+  let color = 'bg-surface-alt text-text';
   let label = normalized.replace('_', ' ');
 
   if (normalized === 'ACTIVE' || normalized === 'COMPLETED' || normalized === 'PASSED') {
-    color = 'bg-emerald-100 text-emerald-800';
+    color = 'bg-grade-a-bg text-grade-a-text border border-emerald-200';
     if (normalized === 'PASSED') label = 'Trust Lens: Verified';
   } else if (normalized === 'ESCROW_HELD' || normalized === 'PAID' || normalized === 'PAYMENT_RECEIVED') {
-    color = 'bg-amber-100 text-amber-800';
+    color = 'bg-amber-50 text-amber-800 border border-amber-200';
     label = 'In Escrow';
   } else if (normalized === 'SHIPPED') {
-    color = 'bg-blue-100 text-blue-800';
+    color = 'bg-grade-b-bg text-grade-b-text border border-blue-200';
     label = 'Dispatched';
   } else if (normalized === 'DELIVERED') {
-    color = 'bg-indigo-100 text-indigo-800';
+    color = 'bg-indigo-50 text-indigo-800 border border-indigo-200';
     label = 'Delivered (48h Check)';
   } else if (normalized === 'DISPUTED' || normalized === 'FAILED' || normalized === 'REJECTED' || normalized === 'CANCELLED') {
-    color = 'bg-red-100 text-red-800';
-  } else if (normalized === 'REQUIRES_REVIEW' || normalized === 'PENDING') {
-    color = 'bg-amber-50 text-amber-700';
-    if (normalized === 'REQUIRES_REVIEW') label = 'Under Review';
-  } else if (normalized === 'SOLD') {
-    color = 'bg-slate-200 text-slate-800';
+    color = 'bg-discount-crimson-bg text-discount-crimson border border-rose-200';
+    label = normalized === 'DISPUTED' ? 'Under Review' : 'Cancelled';
   }
 
   return (
-    <View className={`rounded-full px-2.5 py-1 ${color.split(' ')[0]}`}>
-      <Text className={`text-[11px] font-semibold ${color.split(' ')[1]}`}>{label || status}</Text>
+    <View className={`px-2.5 py-0.5 rounded-full ${color}`}>
+      <Text className="text-[10px] font-bold">{label}</Text>
     </View>
   );
 }

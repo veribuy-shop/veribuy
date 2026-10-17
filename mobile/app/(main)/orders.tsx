@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, View, Pressable } from 'react-native';
 
+import { GuestGate } from '@/src/components/GuestGate';
 import { Card, EmptyState, Screen, StatusPill } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { ordersService } from '@/src/services';
@@ -9,7 +10,7 @@ import { Order } from '@/src/types/entities';
 import { formatPrice } from '@/src/lib/currency';
 
 export default function OrdersScreen() {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [view, setView] = useState<'BUYER' | 'SELLER'>('BUYER');
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +33,16 @@ export default function OrdersScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  if (!isAuthenticated) {
+    return (
+      <GuestGate
+        title="Track Your Orders & Escrow"
+        subtitle="Sign in to view active purchases, Royal Mail tracking numbers, and seller fulfillment labels."
+        icon="📦"
+      />
+    );
+  }
 
   return (
     <Screen style={{ paddingTop: 64 }}>

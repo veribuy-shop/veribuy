@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, View, Pressable } from 'react-native';
 
+import { GuestGate } from '@/src/components/GuestGate';
 import { EmptyState, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { messagesService } from '@/src/services';
@@ -15,7 +16,7 @@ interface Thread {
 }
 
 export default function MessagesScreen() {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,6 +55,16 @@ export default function MessagesScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  if (!isAuthenticated) {
+    return (
+      <GuestGate
+        title="Direct Buyer-Seller Messages"
+        subtitle="Sign in to chat with sellers, ask device condition questions, and track live offer negotiations."
+        icon="💬"
+      />
+    );
+  }
 
   return (
     <Screen style={{ paddingTop: 64 }}>

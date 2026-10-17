@@ -3,7 +3,7 @@ import '../global.css';
 
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { StripeProvider } from '@stripe/stripe-react-native';
+import { StripeProvider } from '@/src/lib/stripe';
 
 import { AuthProvider } from '@/src/context/AuthContext';
 import { useAuth } from '@/src/context/AuthContext';
@@ -11,33 +11,72 @@ import { useAuth } from '@/src/context/AuthContext';
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
 
 function RootNavigator() {
-  const { loading, isAuthenticated } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) {
     return null;
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      {/* Public routes — always mounted (mirror web's check-email / verify-email pages) */}
-      <Stack.Screen name="check-email" />
+    <Stack screenOptions={{ headerShown: false }} initialRouteName="(main)">
+      <Stack.Screen name="(main)" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="listing/[id]"
+        options={{
+          headerShown: true,
+          title: 'Device Details',
+          headerBackTitle: 'Back',
+          headerTintColor: '#232F3E',
+        }}
+      />
+      <Stack.Screen
+        name="checkout"
+        options={{
+          headerShown: true,
+          title: 'Escrow Checkout',
+          headerBackTitle: 'Back',
+          headerTintColor: '#232F3E',
+        }}
+      />
+      <Stack.Screen
+        name="order/[id]"
+        options={{
+          headerShown: true,
+          title: 'Order Fulfillment',
+          headerBackTitle: 'Orders',
+          headerTintColor: '#232F3E',
+        }}
+      />
+      <Stack.Screen
+        name="conversation/[otherUserId]"
+        options={{
+          headerShown: true,
+          title: 'Messages',
+          headerBackTitle: 'Back',
+          headerTintColor: '#232F3E',
+        }}
+      />
+      <Stack.Screen
+        name="profile-edit"
+        options={{
+          headerShown: true,
+          title: 'Edit Profile',
+          headerBackTitle: 'Profile',
+          headerTintColor: '#232F3E',
+        }}
+      />
+      <Stack.Screen
+        name="admin"
+        options={{
+          headerShown: true,
+          title: 'Admin Dashboard',
+          headerBackTitle: 'Back',
+          headerTintColor: '#232F3E',
+        }}
+      />
+      <Stack.Screen name="check-email" options={{ headerShown: false }} />
       <Stack.Screen name="verify-email" options={{ headerShown: false }} />
-      {isAuthenticated ? (
-        <>
-          <Stack.Screen name="(main)" />
-          <Stack.Screen name="listing/[id]" options={{ headerShown: true, title: 'Listing' }} />
-          <Stack.Screen
-            name="conversation/[otherUserId]"
-            options={{ headerShown: true, title: 'Conversation' }}
-          />
-          <Stack.Screen name="admin" options={{ headerShown: true, title: 'Admin' }} />
-          <Stack.Screen name="checkout" options={{ headerShown: true, title: 'Checkout' }} />
-          <Stack.Screen name="profile-edit" options={{ headerShown: true, title: 'Edit profile' }} />
-          <Stack.Screen name="order/[id]" options={{ headerShown: true, title: 'Order' }} />
-        </>
-      ) : (
-        <Stack.Screen name="(auth)" />
-      )}
     </Stack>
   );
 }
