@@ -1,3 +1,4 @@
+import { API_URL } from '../env';
 import { api } from '../lib/api';
 import { Paginated, ShippingAddressDto } from '../types/api';
 import {
@@ -122,6 +123,16 @@ export const ordersService = {
   updateStatus: (orderId: string, data: Record<string, unknown>) =>
     api.patch<Order>(`/transactions/orders/${orderId}/status`, data),
   refund: (orderId: string) => api.post<Order>(`/transactions/orders/${orderId}/refund`, {}),
+  getCollectionPoints: (postcode: string) =>
+    api.public.get<{ locations: any[] }>(
+      `/transactions/shipping/collection-points?postcode=${encodeURIComponent(postcode)}`,
+    ),
+  getDropoffLocations: (orderId: string, postcode?: string) =>
+    api.get<{ locations: any[] }>(
+      `/transactions/orders/${orderId}/dropoff-locations${postcode ? `?postcode=${encodeURIComponent(postcode)}` : ''}`,
+    ),
+  getShippingLabelUrl: (orderId: string) =>
+    `${API_URL}/transactions/orders/${orderId}/shipping-label`,
 };
 
 // ── Messaging ─────────────────────────────────────────────────────────────

@@ -205,8 +205,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const email = payload.email.toLowerCase().trim();
+    const cleanNameFromEmail = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     const defaultName =
-      payload?.name?.trim() || (provider === 'GOOGLE' ? 'Google Verified User' : 'Apple Verified User');
+      payload?.name?.trim() || cleanNameFromEmail || (provider === 'GOOGLE' ? 'Google User' : 'Apple User');
 
     const response = await fetch('/api/auth/social', {
       method: 'POST',

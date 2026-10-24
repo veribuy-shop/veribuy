@@ -87,9 +87,9 @@ export function Screen({ children, style }: PropsWithChildren<{ style?: ViewStyl
   );
 }
 
-export function Card({ children, style }: PropsWithChildren<{ style?: ViewStyle }>) {
+export function Card({ children, style, className }: PropsWithChildren<{ style?: ViewStyle; className?: string }>) {
   return (
-    <View className="bg-surface rounded-2xl border border-borderc p-4 mb-3 shadow-sm" style={style}>
+    <View className={`bg-surface rounded-2xl border border-borderc p-4 mb-3 shadow-sm ${className || ''}`} style={style}>
       {children}
     </View>
   );

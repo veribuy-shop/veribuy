@@ -76,6 +76,26 @@ export default function OrdersScreen() {
                   {item.listing.title}
                 </Text>
               ) : null}
+              <View className="flex-row items-center gap-2 mt-2">
+                <View className="bg-slate-100 px-2 py-0.5 rounded">
+                  <Text className="text-[10px] font-bold text-slate-700">
+                    {item.shippingAddress?.deliveryMethod === 'CLICK_AND_COLLECT' ? '🏪 Click & Collect' : '🚚 Royal Mail'}
+                  </Text>
+                </View>
+                {item.trackingNumber ? (
+                  <View className="bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                    <Text className="text-[10px] font-mono font-bold text-emerald-800">
+                      {item.trackingNumber}
+                    </Text>
+                  </View>
+                ) : view === 'SELLER' && item.status !== 'CANCELLED' && item.status !== 'REFUNDED' ? (
+                  <View className="bg-amber-100 px-2 py-0.5 rounded">
+                    <Text className="text-[10px] font-bold text-amber-900">
+                      Print 4x6&quot; Label / QR
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
               <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-borderc/40">
                 <Text className="text-text-muted text-xs">
                   Order #{item.orderNumber || item.id.slice(0, 8)}
