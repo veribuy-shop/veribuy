@@ -69,6 +69,7 @@ export default function RegisterPage() {
   const [socialLoading, setSocialLoading] = useState<'GOOGLE' | 'APPLE' | null>(null);
   const [socialModalProvider, setSocialModalProvider] = useState<'GOOGLE' | 'APPLE' | null>(null);
   const [socialModalEmail, setSocialModalEmail] = useState('');
+  const [socialModalName, setSocialModalName] = useState('');
 
   const [step, setStep]                   = useState<1 | 2>(1);
   const [accountType, setAccountType]     = useState<'INDIVIDUAL' | 'BUSINESS'>('INDIVIDUAL');
@@ -88,13 +89,13 @@ export default function RegisterPage() {
   const [error, setError]                 = useState('');
   const [loading, setLoading]             = useState(false);
 
-  const triggerSocialSignUp = async (provider: 'GOOGLE' | 'APPLE', targetEmail: string) => {
+  const triggerSocialSignUp = async (provider: 'GOOGLE' | 'APPLE', targetEmail: string, targetName?: string) => {
     setError('');
     setSocialLoading(provider);
     try {
       await socialLogin(provider, {
         email: targetEmail.trim(),
-        name: name.trim() || undefined,
+        name: (targetName || name).trim() || undefined,
         referralCode: referralStatus === 'valid' ? referralCode : undefined,
         action: 'register',
       });
@@ -1009,11 +1010,24 @@ export default function RegisterPage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (socialModalEmail.trim()) {
-                  triggerSocialSignUp(socialModalProvider, socialModalEmail.trim());
+                  triggerSocialSignUp(socialModalProvider, socialModalEmail.trim(), socialModalName.trim());
                 }
               }}
               className="space-y-4"
             >
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">
+                  Full Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={socialModalName}
+                  onChange={(e) => setSocialModalName(e.target.value)}
+                  placeholder="e.g. Alex Jenkins"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:bg-white"
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-gray-700 mb-1.5">
                   Email Address *

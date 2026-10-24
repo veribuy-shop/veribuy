@@ -1,23 +1,38 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
 import { BrandLogo } from '@/src/components/BrandLogo';
-import { Screen, StatusPill } from '@/src/components/ui';
+import { Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
+import { formatShippingService, resolveDeviceWeightProfile } from '@/src/lib/shipping';
 import { ordersService } from '@/src/services';
 import { Order } from '@/src/types/entities';
+
+interface DropoffLocation {
+  id: string;
+  name: string;
+  type: string;
+  addressLine1: string;
+  town: string;
+  postcode: string;
+  distanceMiles: number;
+  openingHours: Record<string, string>;
+  features: string[];
+}
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -27,13 +42,27 @@ export default function OrderDetailScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const load = async () => {
+  // Seller role view & fulfillment
+  const [activeTab, setActiveTab] = useState<'BUYER' | 'SELLER'>('BUYER');
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [trackingInput, setTrackingInput] = useState('');
+  const [dropoffLocations, setDropoffLocations] = useState<DropoffLocation[]>([]);
+  const [dropoffPostcode, setDropoffPostcode] = useState('');
+  const [searchingDropoff, setSearchingDropoff] = useState(false);
+
+  const load = useCallback(async () => {
     try {
       const o = await ordersService.get(id);
       setOrder(o);
+      if (o?.trackingNumber) {
+        setTrackingInput(o.trackingNumber);
+      }
+      if (user && o && o.sellerId === user.id) {
+        setActiveTab('SELLER');
+      }
     } catch {
-      // Demo order matching screen5.png if order not found in mock/local dev
-      setOrder({
+      // Demo order matching showcase
+      const fallbackOrder: Order = {
         id: id || 'ord-89204-uk',
         buyerId: user?.id || 'demo-buyer',
         sellerId: 'demo-seller-1',
@@ -42,6 +71,9 @@ export default function OrderDetailScreen() {
         currency: 'GBP',
         status: 'ESCROW_HELD',
         trackingNumber: 'RM892041284GB',
+        shippingService: 'SPECIAL_DELIVERY_1PM',
+        parcelWeightGrams: 420,
+        parcelFormat: 'SMALL_PARCEL',
         shippingAddress: {
           name: 'Alex Jenkins',
           line1: 'Flat 4B, 18 Kensington Church Street',
@@ -73,19 +105,23 @@ export default function OrderDetailScreen() {
           price: 799,
           currency: 'GBP',
           condition: 'Grade A Pristine',
-          images: ['https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=800&q=80'],
+          images: [
+            'https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=800&q=80',
+          ],
         },
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
+      setOrder(fallbackOrder);
+      setTrackingInput(fallbackOrder.trackingNumber || '');
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, user]);
 
   useEffect(() => {
     load();
-  }, [id]);
+  }, [load]);
 
   const onConfirmDelivery = async () => {
     setBusy(true);
@@ -125,10 +161,84 @@ export default function OrderDetailScreen() {
     );
   };
 
+  const onMarkAsDispatched = async () => {
+    if (!trackingInput.trim()) {
+      Alert.alert('Tracking Required', 'Please enter a Royal Mail tracking number (or use generated drop-off tracking).');
+      return;
+    }
+    setBusy(true);
+    try {
+      await ordersService.updateStatus(id, {
+        status: 'SHIPPED',
+        trackingNumber: trackingInput.trim(),
+      });
+      Alert.alert('Dispatched!', 'Order marked as shipped. Live Royal Mail tracking link has been sent to the buyer.');
+      await load();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not update dispatch status.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const searchDropoff = async () => {
+    const pc = dropoffPostcode.trim() || order?.shippingAddress?.postal_code || 'SW1A 1AA';
+    setSearchingDropoff(true);
+    try {
+      const res = await ordersService.getDropoffLocations(id, pc);
+      if (res?.locations && res.locations.length > 0) {
+        setDropoffLocations(res.locations);
+      } else {
+        // Fallback default points
+        setDropoffLocations([
+          {
+            id: 'po-1',
+            name: 'Kensington High Street Post Office',
+            type: 'POST_OFFICE',
+            addressLine1: '208-212 Kensington High St',
+            town: 'London',
+            postcode: 'W8 7RG',
+            distanceMiles: 0.3,
+            openingHours: { monday: '08:30 - 18:00' },
+            features: ['Free QR Label Printing', 'Special Delivery Guaranteed'],
+          },
+          {
+            id: 'po-2',
+            name: 'Royal Mail Kensington Customer Service Point',
+            type: 'CUSTOMER_SERVICE_POINT',
+            addressLine1: '42 Earls Court Road',
+            town: 'London',
+            postcode: 'W8 6EJ',
+            distanceMiles: 0.6,
+            openingHours: { monday: '08:00 - 14:00' },
+            features: ['Parcel Drop-off', 'Late Acceptance'],
+          },
+        ]);
+      }
+    } catch {
+      setDropoffLocations([
+        {
+          id: 'po-1',
+          name: 'Kensington High Street Post Office',
+          type: 'POST_OFFICE',
+          addressLine1: '208-212 Kensington High St',
+          town: 'London',
+          postcode: 'W8 7RG',
+          distanceMiles: 0.3,
+          openingHours: { monday: '08:30 - 18:00' },
+          features: ['Free QR Label Printing', 'Special Delivery Guaranteed'],
+        },
+      ]);
+    } finally {
+      setSearchingDropoff(false);
+    }
+  };
+
   if (loading) {
     return (
-      <Screen>
-        <ActivityIndicator size="large" color="#059669" style={{ marginTop: 60 }} />
+      <Screen style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#059669" />
+        <Text className="text-text-muted text-xs mt-3">Loading Order Details...</Text>
       </Screen>
     );
   }
@@ -143,12 +253,15 @@ export default function OrderDetailScreen() {
 
   const orderRef = `#VB-${order.id.slice(-5).toUpperCase()}`;
   const amountFormatted = formatPrice(order.amount, order.currency || 'GBP');
-  const isDispatched = order.status === 'SHIPPED' || order.status === 'DELIVERED' || order.status === 'COMPLETED';
+  const isDispatched =
+    order.status === 'SHIPPED' || order.status === 'DELIVERED' || order.status === 'COMPLETED';
   const isDelivered = order.status === 'DELIVERED' || order.status === 'COMPLETED';
+  const weightGrams = order.parcelWeightGrams || 420;
+  const isSpecialDelivery = order.shippingService === 'SPECIAL_DELIVERY_1PM';
 
   return (
     <Screen style={{ backgroundColor: '#F8F9FF', paddingTop: Platform.OS === 'web' ? 16 : 44 }}>
-      {/* ── Top Header Bar (Matching screen5.png) ─────────────────────────── */}
+      {/* ── Top Header Bar ──────────────────────────────────────────────── */}
       <View className="flex-row items-center justify-between mb-3 px-1">
         <TouchableOpacity
           onPress={() => router.back()}
@@ -159,7 +272,7 @@ export default function OrderDetailScreen() {
 
         <View className="flex-row items-center gap-2">
           <BrandLogo height={38} />
-          <Text className="text-xs font-black text-text">Order Tracker</Text>
+          <Text className="text-xs font-black text-text">Order Hub</Text>
         </View>
 
         <TouchableOpacity
@@ -170,8 +283,32 @@ export default function OrderDetailScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Role View Toggle (Buyer Tracking vs Seller Fulfillment) */}
+      <View className="flex-row bg-slate-200/80 p-1 rounded-xl mb-3">
+        <TouchableOpacity
+          onPress={() => setActiveTab('BUYER')}
+          className={`flex-1 py-1.5 rounded-lg items-center ${
+            activeTab === 'BUYER' ? 'bg-white shadow-xs' : ''
+          }`}
+        >
+          <Text className={`text-xs font-bold ${activeTab === 'BUYER' ? 'text-slate-900' : 'text-slate-600'}`}>
+            🛡️ Buyer Tracking
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setActiveTab('SELLER')}
+          className={`flex-1 py-1.5 rounded-lg items-center ${
+            activeTab === 'SELLER' ? 'bg-white shadow-xs' : ''
+          }`}
+        >
+          <Text className={`text-xs font-bold ${activeTab === 'SELLER' ? 'text-slate-900' : 'text-slate-600'}`}>
+            📦 Seller Shipping &amp; Labels
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
-        {/* ── Central Hero Icon & Escrow Status (Matching screen5.png) ──────── */}
+        {/* ── Central Hero Icon & Escrow Status ──────────────────────────── */}
         <View className="items-center my-3">
           <View className="w-16 h-16 rounded-2xl bg-emerald-600 items-center justify-center shadow-md mb-3">
             <Text className="text-white text-3xl font-black">🛡️</Text>
@@ -183,9 +320,13 @@ export default function OrderDetailScreen() {
             </Text>
           </View>
 
-          <Text className="text-text font-black text-2xl mb-1">Funds Locked in Escrow</Text>
+          <Text className="text-text font-black text-2xl mb-1">
+            {activeTab === 'SELLER' ? 'Fulfill & Dispatch Order' : 'Funds Locked in Escrow'}
+          </Text>
           <Text className="text-text-muted text-xs text-center px-6 leading-relaxed mb-4">
-            Your payment is safely vaulted. Seller gets paid only after you inspect and approve the device.
+            {activeTab === 'SELLER'
+              ? 'Buyer payment is safely held in escrow. Print your 4x6" Royal Mail label or show the digital Post Office drop-off QR code.'
+              : 'Your payment is safely vaulted. Seller gets paid only after you inspect and approve the device.'}
           </Text>
 
           {/* Reference & Amount Split Card */}
@@ -201,9 +342,184 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
-        {/* ── Click & Collect Collection Pass (If Click & Collect) ───────────── */}
+        {/* ────────────────────────────────────────────────────────────────── */}
+        {/* ── SELLER FULFILLMENT SECTION (If SELLER Tab) ─────────────────── */}
+        {/* ────────────────────────────────────────────────────────────────── */}
+        {activeTab === 'SELLER' && (
+          <View className="space-y-3.5 mb-3.5">
+            {/* Royal Mail Shipping Specifications */}
+            <View className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+              <View className="flex-row items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-base">📮</Text>
+                  <Text className="text-xs font-black text-slate-900">
+                    Royal Mail Automated Shipping
+                  </Text>
+                </View>
+                <View className="bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                  <Text className="text-[10px] font-bold text-[#D81E05]">
+                    {formatShippingService(order.shippingService)}
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 mb-3">
+                <View className="flex-1">
+                  <Text className="text-[10px] text-slate-400">Packaged Weight</Text>
+                  <Text className="text-xs font-bold text-slate-800">{weightGrams}g (Auto-mapped)</Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[10px] text-slate-400">Parcel Format</Text>
+                  <Text className="text-xs font-bold text-slate-800">
+                    {order.parcelFormat === 'MEDIUM_PARCEL' ? 'Medium Parcel' : 'Small Parcel'}
+                  </Text>
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[10px] text-slate-400">Transit Cover</Text>
+                  <Text className="text-xs font-bold text-slate-800">
+                    {isSpecialDelivery ? 'Up to £750' : 'Up to £150'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 2 Drop-off Pathways */}
+              <Text className="text-[11px] font-bold text-slate-800 mb-2">
+                Choose Drop-off Method:
+              </Text>
+
+              {/* Pathway 1: Post Office Digital QR Code */}
+              <TouchableOpacity
+                onPress={() => setShowQrModal(true)}
+                className="bg-emerald-50 border border-emerald-400 p-3.5 rounded-xl mb-2.5 active:opacity-90"
+              >
+                <View className="flex-row items-center justify-between mb-1">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-base">📱</Text>
+                    <Text className="text-xs font-black text-emerald-900">
+                      Post Office Counter QR Drop-off
+                    </Text>
+                  </View>
+                  <View className="bg-emerald-600 px-2 py-0.5 rounded-full">
+                    <Text className="text-[9px] font-bold text-white">No Printer Needed</Text>
+                  </View>
+                </View>
+                <Text className="text-[11px] text-emerald-800 leading-snug">
+                  Show your digital QR code at any Post Office counter. They scan it and print the shipping label for you free of charge.
+                </Text>
+              </TouchableOpacity>
+
+              {/* Pathway 2: Download 4x6" PDF Shipping Label */}
+              <TouchableOpacity
+                onPress={() => {
+                  const url = ordersService.getShippingLabelUrl(order.id);
+                  Linking.openURL(url).catch(() => {
+                    Alert.alert(
+                      'PDF Label',
+                      `Shipping label generated for Order #${order.id.slice(0, 8)}.\nFormat: Standard 4x6" Royal Mail Tracked DataMatrix.`,
+                    );
+                  });
+                }}
+                className="bg-slate-900 p-3.5 rounded-xl flex-row items-center justify-between active:opacity-90"
+              >
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-base">🖨️</Text>
+                  <View>
+                    <Text className="text-xs font-black text-white">
+                      Print 4x6&quot; PDF Shipping Label
+                    </Text>
+                    <Text className="text-[10px] text-slate-300">
+                      Pre-paid Royal Mail barcode label with return address
+                    </Text>
+                  </View>
+                </View>
+                <Text className="text-white text-xs font-bold">Download 📥</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Nearby Royal Mail Drop-off Point Finder */}
+            <View className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+              <View className="flex-row items-center justify-between mb-2.5">
+                <View className="flex-row items-center gap-1.5">
+                  <Text className="text-sm">📍</Text>
+                  <Text className="text-xs font-black text-slate-900">
+                    Find Royal Mail Drop-off Points
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={searchDropoff}
+                  disabled={searchingDropoff}
+                  className="bg-slate-800 px-3 py-1 rounded-lg"
+                >
+                  <Text className="text-white text-[10px] font-bold">
+                    {searchingDropoff ? 'Searching...' : 'Search Nearby'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                value={dropoffPostcode}
+                onChangeText={setDropoffPostcode}
+                placeholder="Enter UK Postcode (e.g. W8 7RG)"
+                autoCapitalize="characters"
+                className="bg-slate-50 border border-slate-300 p-2 rounded-lg text-xs font-mono uppercase mb-2.5"
+              />
+
+              {dropoffLocations.length > 0 && (
+                <View className="space-y-2">
+                  {dropoffLocations.map((loc) => (
+                    <View key={loc.id} className="bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
+                      <View className="flex-row justify-between mb-0.5">
+                        <Text className="text-xs font-bold text-slate-900">{loc.name}</Text>
+                        <Text className="text-[10px] font-bold text-slate-500">
+                          {loc.distanceMiles} mi
+                        </Text>
+                      </View>
+                      <Text className="text-[11px] text-slate-600">{loc.addressLine1}, {loc.postcode}</Text>
+                      <Text className="text-[10px] text-emerald-700 font-bold mt-1">
+                        🕒 {loc.openingHours?.monday ? `Mon-Fri: ${loc.openingHours.monday}` : 'Open Mon-Sat'}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Seller Mark As Dispatched Box */}
+            <View className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs">
+              <Text className="text-xs font-black text-slate-900 mb-1">
+                Dispatch Confirmation
+              </Text>
+              <Text className="text-[11px] text-slate-500 mb-2.5">
+                Once handed to Royal Mail, confirm tracking below to notify the buyer and update the escrow pipeline.
+              </Text>
+
+              <TextInput
+                value={trackingInput}
+                onChangeText={setTrackingInput}
+                placeholder="Royal Mail Tracking # (e.g. RM892041284GB)"
+                autoCapitalize="characters"
+                className="bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-xs font-mono mb-3 uppercase"
+              />
+
+              <TouchableOpacity
+                onPress={onMarkAsDispatched}
+                disabled={busy}
+                className="bg-emerald-600 py-3.5 rounded-xl items-center flex-row justify-center gap-2 active:opacity-90 shadow-sm"
+              >
+                <Text className="text-white text-xs">🚀</Text>
+                <Text className="text-white font-black text-xs">
+                  {busy ? 'Updating...' : 'Confirm Parcel Handed to Courier'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* ────────────────────────────────────────────────────────────────── */}
+        {/* ── BUYER PROTOCOL & ESCROW TRACKING ──────────────────────────── */}
+        {/* ────────────────────────────────────────────────────────────────── */}
         {order.shippingAddress?.deliveryMethod === 'CLICK_AND_COLLECT' && (
-          <View className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-500/40 rounded-2xl p-4 mb-3.5 shadow-xs">
+          <View className="bg-emerald-50/70 border-2 border-emerald-500/40 rounded-2xl p-4 mb-3.5 shadow-xs">
             <View className="flex-row items-center justify-between mb-2.5">
               <View className="flex-row items-center gap-1.5">
                 <Text className="text-base">🏪</Text>
@@ -222,7 +538,8 @@ export default function OrderDetailScreen() {
                 {order.shippingAddress.collectionPoint?.name || 'Kensington High Street Post Office'}
               </Text>
               <Text className="text-[11px] text-text-muted mt-0.5">
-                {order.shippingAddress.collectionPoint?.address || order.shippingAddress.line1}, {order.shippingAddress.collectionPoint?.postcode || order.shippingAddress.postal_code}
+                {order.shippingAddress.collectionPoint?.address || order.shippingAddress.line1},{' '}
+                {order.shippingAddress.collectionPoint?.postcode || order.shippingAddress.postal_code}
               </Text>
             </View>
 
@@ -238,16 +555,13 @@ export default function OrderDetailScreen() {
                 <Text className="text-[7px] text-emerald-400 font-bold">SCAN</Text>
               </View>
             </View>
-            <Text className="text-[10px] text-emerald-800 mt-2 text-center">
-              Present this PIN or QR code with your photo ID at the counter.
-            </Text>
           </View>
         )}
 
-        {/* ── Charity Donation Acknowledgment (If donated) ───────────────── */}
+        {/* Charity Donation Acknowledgment */}
         {order.shippingAddress?.donation && (
           <View className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 mb-3.5 flex-row items-center justify-between shadow-xs">
-            <View className="flex-row items-center gap-2 flex-1">
+            <View className="flex-row items-center gap-2 flex-1 mr-2">
               <Text className="text-base">❤️</Text>
               <View className="flex-1">
                 <Text className="text-xs font-black text-rose-900">Digital Inclusion Charity Donation</Text>
@@ -262,10 +576,9 @@ export default function OrderDetailScreen() {
           </View>
         )}
 
-        {/* ── Live Escrow Pipeline (Step 2 of 4) (Matching screen5.png) ─────── */}
+        {/* Live Escrow Pipeline */}
         <View className="bg-white rounded-2xl border border-borderc p-4 mb-3.5 shadow-xs">
           <View className="flex-row items-center justify-between mb-3.5 pb-2.5 border-b border-borderc">
-
             <View className="flex-row items-center gap-2">
               <Text className="text-emerald-700 text-sm">⏱</Text>
               <Text className="text-xs font-black text-text">Live Escrow Pipeline</Text>
@@ -278,7 +591,7 @@ export default function OrderDetailScreen() {
           </View>
 
           <View className="space-y-3.5">
-            {/* Step 1: Payment Vaulted */}
+            {/* Step 1 */}
             <View className="flex-row gap-3">
               <View className="w-7 h-7 rounded-full bg-emerald-600 items-center justify-center">
                 <Text className="text-white text-xs font-bold">✓</Text>
@@ -286,15 +599,15 @@ export default function OrderDetailScreen() {
               <View className="flex-1">
                 <View className="flex-row items-center justify-between">
                   <Text className="text-xs font-black text-text">1. Payment Vaulted</Text>
-                  <Text className="text-[10px] font-bold text-emerald-700">Today, 14:32</Text>
+                  <Text className="text-[10px] font-bold text-emerald-700">Protected</Text>
                 </View>
                 <Text className="text-[11px] text-text-muted leading-tight mt-0.5">
-                  {amountFormatted} immobilized in sovereign VeriBuy custody. Bank-grade hold active.
+                  {amountFormatted} locked in sovereign Stripe escrow vault.
                 </Text>
               </View>
             </View>
 
-            {/* Step 2: Seller Dispatch */}
+            {/* Step 2 */}
             <View className="bg-[#eff4ff] p-3 rounded-xl border border-borderc">
               <View className="flex-row gap-3 items-start">
                 <View className="w-7 h-7 rounded-full bg-[#0B192C] items-center justify-center">
@@ -303,46 +616,36 @@ export default function OrderDetailScreen() {
                 <View className="flex-1">
                   <View className="flex-row items-center justify-between mb-0.5">
                     <Text className="text-xs font-black text-text">2. Seller Dispatch</Text>
-                    <View className="flex-row items-center gap-1 bg-blue-100 px-2 py-0.2 rounded-full">
-                      <View className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                    <View className="bg-blue-100 px-2 py-0.2 rounded-full">
                       <Text className="text-[9px] font-bold text-blue-900">
                         {isDispatched ? 'COMPLETED' : 'IN PROGRESS'}
                       </Text>
                     </View>
                   </View>
                   <Text className="text-[11px] text-text-muted leading-tight">
-                    Seller LondonTech_UK notified. Must seal with tamper-evident band within SLA.
+                    Seller packaging device. Handover SLA requires Royal Mail scan within 24h.
                   </Text>
-
-                  {/* Dispatch Deadline Box */}
-                  <View className="bg-white p-2.5 rounded-xl border border-borderc mt-2 flex-row items-center justify-between">
-                    <View className="flex-row items-center gap-1.5">
-                      <Text className="text-rose-500 text-xs">⏱</Text>
-                      <Text className="text-[10px] font-bold text-text">Dispatch Deadline:</Text>
-                    </View>
-                    <Text className="text-xs font-black text-rose-600">23h 48m 28s remaining</Text>
-                  </View>
                 </View>
               </View>
             </View>
 
-            {/* Step 3: Tracked Delivery */}
+            {/* Step 3 */}
             <View className="flex-row gap-3 opacity-90">
               <View className="w-7 h-7 rounded-full bg-[#eff4ff] border border-borderc items-center justify-center">
                 <Text className="text-text-muted text-xs">🚚</Text>
               </View>
               <View className="flex-1">
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-xs font-black text-text">3. Tracked Delivery</Text>
-                  <Text className="text-[10px] text-text-muted">Royal Mail Special</Text>
+                  <Text className="text-xs font-black text-text">3. Tracked Transit</Text>
+                  <Text className="text-[10px] text-text-muted">Royal Mail Live</Text>
                 </View>
                 <Text className="text-[11px] text-text-muted leading-tight mt-0.5">
-                  Guaranteed next-day delivery by 1PM with photo signature on handoff.
+                  Insured courier transit with signature on handoff.
                 </Text>
               </View>
             </View>
 
-            {/* Step 4: 48-Hour Inspection Window */}
+            {/* Step 4 */}
             <View className="flex-row gap-3 opacity-90">
               <View className="w-7 h-7 rounded-full bg-[#eff4ff] border border-borderc items-center justify-center">
                 <Text className="text-text-muted text-xs">🛡️</Text>
@@ -353,112 +656,14 @@ export default function OrderDetailScreen() {
                   <Text className="text-[10px] font-bold text-emerald-700">Buyer Protection</Text>
                 </View>
                 <Text className="text-[11px] text-text-muted leading-tight mt-0.5">
-                  Countdown activates at doorstep. Verify condition before payout is released.
+                  Verify diagnostics and hardware condition before payout is released.
                 </Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* ── Secured Hardware Spec (Matching screen5.png) ─────────────────── */}
-        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3.5 shadow-xs">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-[11px] font-black text-text uppercase tracking-wider">
-              Secured Hardware Spec
-            </Text>
-            <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-              <Text className="text-[10px] font-bold text-emerald-800">✓ GSMA Passed</Text>
-            </View>
-          </View>
-
-          <View className="flex-row gap-3 mb-3">
-            <View className="w-16 h-16 rounded-xl bg-surface-canvas overflow-hidden items-center justify-center border border-borderc relative">
-              {order.listing?.images?.[0] ? (
-                <Image
-                  source={{ uri: order.listing.images[0] }}
-                  className="w-full h-full"
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text className="text-xl">📱</Text>
-              )}
-              <View className="absolute bottom-1 bg-black/80 px-1 rounded">
-                <Text className="text-[7px] text-white font-bold">256GB</Text>
-              </View>
-            </View>
-
-            <View className="flex-1">
-              <Text className="text-xs font-black text-text">
-                {order.listing?.title || 'iPhone 14 Pro Max'}
-              </Text>
-              <Text className="text-[10px] text-text-muted mb-1">Space Black • Unlocked SIM</Text>
-              <View className="flex-row gap-1.5">
-                <View className="bg-emerald-50 px-2 py-0.2 rounded border border-emerald-200">
-                  <Text className="text-[9px] font-bold text-emerald-800">Grade A Pristine</Text>
-                </View>
-                <View className="bg-[#eff4ff] px-2 py-0.2 rounded border border-borderc">
-                  <Text className="text-[9px] font-bold text-text-muted">🔋 94% Health</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View className="bg-[#eff4ff] p-2.5 rounded-xl border border-borderc flex-row items-center justify-between">
-            <View className="flex-row items-center gap-1.5">
-              <Text className="text-xs">🪪</Text>
-              <Text className="text-[10px] font-bold text-text-muted font-mono">
-                IMEI Hash: 358920••••••812
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => router.push(`/listing/${order.listingId}`)}>
-              <Text className="text-[10px] font-bold text-emerald-700">View Report ›</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ── 24h Hand-off SLA Guarantee (Matching screen5.png) ─────────────── */}
-        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3.5 shadow-xs flex-row items-start gap-3">
-          <View className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-200 items-center justify-center">
-            <Text className="text-emerald-700 text-sm">🛡️</Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-xs font-black text-text mb-0.5">24h Hand–off SLA Guarantee</Text>
-            <Text className="text-[11px] text-text-muted leading-relaxed">
-              Seller must hand over the parcel to Royal Mail within <Text className="font-bold text-text">24 hours</Text>. If tracking fails to generate, your full {amountFormatted} reverses automatically to your original payment card. Zero friction.
-            </Text>
-          </View>
-        </View>
-
-        {/* ── What happens when it arrives? (Matching screen5.png) ──────────── */}
-        <View className="bg-white rounded-2xl border border-borderc p-4 mb-4 shadow-xs">
-          <View className="flex-row items-center justify-between mb-3">
-            <View className="flex-row items-center gap-1.5">
-              <Text className="text-xs text-emerald-700 font-bold">✓</Text>
-              <Text className="text-xs font-black text-text">What happens when it arrives?</Text>
-            </View>
-            <Text className="text-[10px] font-bold text-text-muted uppercase">Buyer Protocol</Text>
-          </View>
-
-          <View className="flex-row gap-2">
-            <View className="flex-1 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc items-center text-center">
-              <Text className="text-base mb-1">📦</Text>
-              <Text className="text-[11px] font-bold text-text">1. Scan Seal</Text>
-              <Text className="text-[9px] text-text-muted mt-0.5">Verify box tamper tape</Text>
-            </View>
-            <View className="flex-1 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc items-center text-center">
-              <Text className="text-base mb-1">📷</Text>
-              <Text className="text-[11px] font-bold text-text">2. Test Core</Text>
-              <Text className="text-[9px] text-text-muted mt-0.5">Cameras, battery, display</Text>
-            </View>
-            <View className="flex-1 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc items-center text-center">
-              <Text className="text-base mb-1">🔑</Text>
-              <Text className="text-[11px] font-bold text-text">3. Release</Text>
-              <Text className="text-[9px] text-text-muted mt-0.5">Authorize payout tap</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Action Buttons (Matching screen5.png) ─────────────────────────── */}
+        {/* Action Buttons */}
         <View className="space-y-2 mb-4">
           <TouchableOpacity
             onPress={() => {
@@ -471,48 +676,29 @@ export default function OrderDetailScreen() {
             className="bg-[#059669] py-3.5 rounded-xl items-center flex-row justify-center gap-2 active:opacity-90 shadow-sm"
           >
             <Text className="text-white text-xs">🎯</Text>
-            <Text className="text-white font-black text-xs">Track Live Dispatch Status</Text>
+            <Text className="text-white font-black text-xs">Track Live Royal Mail Status</Text>
           </TouchableOpacity>
 
-          <View className="flex-row gap-2">
+          {!isDelivered ? (
             <TouchableOpacity
-              onPress={() => Alert.alert('Escrow Receipt', `Receipt #${order.id}\nAmount: ${amountFormatted}\nEscrow Status: Protected via Stripe Connect (UK) Ltd.`)}
-              className="flex-1 bg-white border border-borderc py-3 rounded-xl items-center flex-row justify-center gap-1.5 active:bg-slate-50 shadow-xs"
+              onPress={onConfirmDelivery}
+              disabled={busy}
+              className="bg-[#0B192C] py-3 rounded-xl items-center active:opacity-90"
             >
-              <Text className="text-xs">🧾</Text>
-              <Text className="text-text font-bold text-xs">Escrow Receipt</Text>
+              <Text className="text-white font-bold text-xs">📦 Mark as Delivered at Doorstep</Text>
             </TouchableOpacity>
-
+          ) : order.status !== 'COMPLETED' ? (
             <TouchableOpacity
-              onPress={() => router.push('/(main)')}
-              className="flex-1 bg-white border border-borderc py-3 rounded-xl items-center flex-row justify-center gap-1.5 active:bg-slate-50 shadow-xs"
+              onPress={onReleaseEscrow}
+              disabled={busy}
+              className="bg-emerald-600 py-3 rounded-xl items-center active:opacity-90"
             >
-              <Text className="text-xs">🏪</Text>
-              <Text className="text-text font-bold text-xs">Marketplace</Text>
+              <Text className="text-white font-black text-xs">✓ Approve &amp; Release Escrow Payout</Text>
             </TouchableOpacity>
-          </View>
+          ) : null}
         </View>
 
-        {/* Buyer Order Management (Confirm Delivery or Release Escrow) */}
-        {!isDelivered ? (
-          <TouchableOpacity
-            onPress={onConfirmDelivery}
-            disabled={busy}
-            className="bg-[#0B192C] py-3 rounded-xl items-center mb-4 active:opacity-90"
-          >
-            <Text className="text-white font-bold text-xs">📦 Mark as Received at Doorstep</Text>
-          </TouchableOpacity>
-        ) : order.status !== 'COMPLETED' ? (
-          <TouchableOpacity
-            onPress={onReleaseEscrow}
-            disabled={busy}
-            className="bg-emerald-600 py-3 rounded-xl items-center mb-4 active:opacity-90"
-          >
-            <Text className="text-white font-black text-xs">✓ Approve &amp; Release Escrow Payout</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {/* ── Footer ───────────────────────────────────────────────────────── */}
+        {/* Footer */}
         <View className="items-center mt-2">
           <View className="bg-white/80 border border-borderc px-3 py-1 rounded-full flex-row items-center gap-1.5 mb-1.5 shadow-xs">
             <Text className="text-[10px] text-emerald-700 font-bold">🔒 Protected by VeriBuy 100% Escrow Guarantee</Text>
@@ -522,6 +708,47 @@ export default function OrderDetailScreen() {
           </Text>
         </View>
       </ScrollView>
+
+      {/* ── Post Office Counter QR Drop-off Modal ──────────────────────── */}
+      <Modal visible={showQrModal} transparent animationType="fade">
+        <View className="flex-1 bg-black/60 items-center justify-center p-4">
+          <View className="bg-white rounded-3xl p-6 w-full max-w-sm items-center shadow-xl">
+            <View className="w-12 h-12 rounded-full bg-emerald-100 items-center justify-center mb-3">
+              <Text className="text-2xl">📱</Text>
+            </View>
+
+            <Text className="text-lg font-black text-slate-900 text-center mb-1">
+              Post Office Counter Drop-off QR
+            </Text>
+            <Text className="text-xs text-slate-500 text-center mb-4">
+              Present this code at any UK Post Office counter. Staff will scan it and print your 4x6&quot; label free.
+            </Text>
+
+            {/* QR Mock Display */}
+            <View className="w-48 h-48 bg-slate-900 rounded-2xl items-center justify-center p-4 mb-4">
+              <Text className="text-white text-5xl font-mono mb-2">QR</Text>
+              <Text className="text-emerald-400 text-xs font-mono font-bold tracking-widest">
+                {order.trackingNumber || 'RM892041284GB'}
+              </Text>
+            </View>
+
+            <View className="bg-slate-50 border border-slate-200 rounded-xl p-3 w-full mb-4">
+              <Text className="text-[10px] font-bold text-slate-400 uppercase">Order Reference</Text>
+              <Text className="text-xs font-black text-slate-800">{orderRef}</Text>
+              <Text className="text-[10px] text-slate-500 mt-0.5">
+                Service: {formatShippingService(order.shippingService)}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setShowQrModal(false)}
+              className="w-full bg-slate-900 py-3 rounded-xl items-center"
+            >
+              <Text className="text-white text-xs font-bold">Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }

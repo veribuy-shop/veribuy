@@ -328,11 +328,24 @@ export default function SellScreen() {
           </View>
 
           {/* 0% Commission Guarantee */}
-          <View className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mb-4">
+          <View className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mb-2.5">
             <Text className="text-xs font-bold text-emerald-800 mb-0.5">💰 0% Seller Commission Guarantee</Text>
             <Text className="text-xs text-emerald-700 leading-snug">
               You keep 100% of your device sale price. Funds are vaulted securely in escrow and released automatically following the buyer&apos;s 48-hour inspection window.
             </Text>
+          </View>
+
+          {/* £5 First-Sale Referral Bounty */}
+          <View className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-4 flex-row items-center justify-between">
+            <View className="flex-1 mr-2">
+              <Text className="text-xs font-bold text-amber-900 mb-0.5">🎁 £5 First-Sale Referral Bounty</Text>
+              <Text className="text-xs text-amber-800 leading-snug">
+                Earn £5 cash bonus on your first sale! Share your referral link with fellow sellers to earn an additional £5 on each of their first sales.
+              </Text>
+            </View>
+            <View className="bg-amber-200/80 px-2 py-1 rounded-full">
+              <Text className="text-[10px] font-black text-amber-900">+£5 CASH</Text>
+            </View>
           </View>
 
           {error ? <Text className="text-danger text-sm mb-2">{error}</Text> : null}

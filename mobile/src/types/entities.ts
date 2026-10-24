@@ -45,9 +45,14 @@ export interface UserProfile {
   userId: string;
   firstName?: string;
   lastName?: string;
+  displayName?: string;
   phone?: string;
-  country?: string;
+  line1?: string;
+  line2?: string;
   city?: string;
+  state?: string;
+  postalCode?: string;
+  country?: string;
   bio?: string;
   avatarUrl?: string;
   trustScore?: number;
