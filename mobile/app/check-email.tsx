@@ -57,7 +57,7 @@ export default function CheckEmailScreen() {
 
         <Text className="mt-6 text-sm text-text-muted text-center">
           Already verified?{' '}
-          <Text className="text-primary font-medium" onPress={() => router.replace('/')}>
+          <Text className="text-primary font-medium" onPress={() => router.replace('/login')}>
             Sign in
           </Text>
         </Text>

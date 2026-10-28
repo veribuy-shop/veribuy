@@ -81,6 +81,7 @@ export const trustService = {
   updateStatus: (listingId: string, data: Record<string, unknown>) =>
     api.patch<TrustLensReport>(`/trust-lens/${listingId}/status`, data),
 };
+export const trustLensService = trustService;
 
 // ── Evidence ──────────────────────────────────────────────────────────────
 export const evidenceService = {

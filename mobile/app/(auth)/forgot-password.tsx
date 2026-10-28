@@ -51,7 +51,7 @@ export default function ForgotPasswordScreen() {
         </Button>
 
         <View className="mt-4">
-          <Link href="/" className="text-primary text-center">
+          <Link href="/login" className="text-primary text-center">
             Back to sign in
           </Link>
         </View>
