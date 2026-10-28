@@ -7,8 +7,8 @@ const LISTING_SERVICE_URL = getBackendUrl();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// PATCH /api/admin/listings/[listingId]/status - Update listing status (admin only)
-export async function PATCH(
+// PATCH or PUT /api/admin/listings/[listingId]/status - Update listing status (admin only)
+async function handleUpdateStatus(
   request: NextRequest,
   { params }: { params: Promise<{ listingId: string }> }
 ) {
@@ -27,14 +27,14 @@ export async function PATCH(
 
     const body = await request.json();
 
-    // Forward request to listing service
+    // Forward request to listing service (PUT /listings/:id/status is the authenticated role-gated endpoint)
     const response = await fetch(`${LISTING_SERVICE_URL}/listings/${listingId}/status`, {
-      method: 'PATCH',
+      method: 'PUT',
       headers: createAuthHeaders(authResult.token),
       body: JSON.stringify(body),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
       return NextResponse.json(
@@ -51,4 +51,18 @@ export async function PATCH(
       { status: 500 }
     );
   }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ listingId: string }> }
+) {
+  return handleUpdateStatus(request, context);
+}
+
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ listingId: string }> }
+) {
+  return handleUpdateStatus(request, context);
 }

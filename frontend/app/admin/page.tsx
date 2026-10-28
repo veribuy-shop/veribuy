@@ -422,7 +422,10 @@ function AdminDashboardContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) throw new Error('Failed to update listing status');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || data.message || 'Failed to update listing status');
+      }
       setActionMessage({ type: 'success', text: `Listing status updated to ${newStatus}` });
       await fetchAll();
       setTimeout(() => setActionMessage(null), 3000);

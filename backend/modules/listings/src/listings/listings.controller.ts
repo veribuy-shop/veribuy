@@ -26,7 +26,7 @@ import { UpdateTrustLensDto } from './dto/update-trust-lens.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto } from '@veribuy/common';
-import { DeviceType, ConditionGrade } from '.prisma/veribuy-client';
+import { DeviceType, ConditionGrade, ListingStatus } from '.prisma/veribuy-client';
 import * as crypto from 'crypto';
 
 interface AuthenticatedUser {
@@ -130,7 +130,7 @@ export class UlistingsController {
   }
 
   /**
-   * PUT :id/status — authenticated user-facing status update (SELLER transitions own listing)
+   * PUT :id/status — authenticated user-facing status update (SELLER transitions own listing, ADMIN can manage)
    */
   @Put(':id/status')
   @Roles('BUYER', 'SELLER', 'ADMIN')
@@ -146,12 +146,18 @@ export class UlistingsController {
       throw new ForbiddenException('You can only update your own listings');
     }
 
-    // Enforce state machine
-    const allowed = ALLOWED_TRANSITIONS[listing.status] ?? [];
-    if (!allowed.includes(dto.status)) {
-      throw new BadRequestException(
-        `Cannot transition listing from ${listing.status} to ${dto.status}`,
-      );
+    // Enforce state machine for non-admins; admins can transition any non-sold listing
+    if (user.role !== 'ADMIN') {
+      const allowed = ALLOWED_TRANSITIONS[listing.status] ?? [];
+      if (!allowed.includes(dto.status)) {
+        throw new BadRequestException(
+          `Cannot transition listing from ${listing.status} to ${dto.status}`,
+        );
+      }
+    } else {
+      if (listing.status === ListingStatus.SOLD) {
+        throw new BadRequestException('Cannot modify status of a SOLD listing');
+      }
     }
 
     return this.listingsService.updateStatus(id, dto.status, listing.status);

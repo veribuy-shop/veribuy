@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UlistingsService } from './listings.service';
 import { PrismaService } from '../../../../src/database/prisma.service';
@@ -17,6 +18,7 @@ describe('UlistingsService', () => {
         findUnique: jest.fn(),
         findMany: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       imeiRegistry: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -26,6 +28,9 @@ describe('UlistingsService', () => {
       },
       user: {
         findUnique: jest.fn(),
+      },
+      verificationRequest: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
 
@@ -37,6 +42,7 @@ describe('UlistingsService', () => {
 
     notifications = {
       emit: jest.fn(),
+      notifyListingStatusChanged: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -375,6 +381,53 @@ describe('UlistingsService', () => {
         }),
       );
       expect(result.status).toBe('SOLD');
+    });
+  });
+
+  describe('updateStatus', () => {
+    it('should update listing status to ACTIVE, set trustLensStatus to PASSED, and update verification request', async () => {
+      prisma.listing.updateMany.mockResolvedValue({ count: 1 });
+      prisma.listing.findUnique.mockResolvedValue({
+        id: 'lst-100',
+        sellerId: 'seller-1',
+        title: 'iPhone 14',
+        status: 'ACTIVE',
+        trustLensStatus: 'PASSED',
+      });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'seller-1',
+        email: 'seller@example.com',
+        name: 'Seller One',
+      });
+
+      const result = await service.updateStatus('lst-100', 'ACTIVE' as any, 'UNDER_REVIEW' as any);
+
+      expect(prisma.listing.updateMany).toHaveBeenCalledWith({
+        where: { id: 'lst-100', status: 'UNDER_REVIEW' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          trustLensStatus: 'PASSED',
+          publishedAt: expect.any(Date),
+        }),
+      });
+
+      expect(prisma.verificationRequest.updateMany).toHaveBeenCalledWith({
+        where: { listingId: 'lst-100', status: { not: 'PASSED' } },
+        data: expect.objectContaining({
+          status: 'PASSED',
+          reviewNotes: expect.stringContaining('Activated'),
+        }),
+      });
+
+      expect(result.status).toBe('ACTIVE');
+    });
+
+    it('should throw BadRequestException if concurrent status change occurs', async () => {
+      prisma.listing.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.updateStatus('lst-100', 'ACTIVE' as any, 'UNDER_REVIEW' as any),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

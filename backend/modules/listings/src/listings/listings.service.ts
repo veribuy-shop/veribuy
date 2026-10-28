@@ -9,7 +9,7 @@ import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { ALLOWED_TRANSITIONS } from './dto/update-status.dto';
-import { Listing, ListingStatus, TrustLensStatus, IntegrityFlag, ListingFormat } from '.prisma/veribuy-client';
+import { Listing, ListingStatus, TrustLensStatus, ReviewStatus, IntegrityFlag, ListingFormat } from '.prisma/veribuy-client';
 import {
   PaginationDto,
   PaginatedResponse,
@@ -622,18 +622,34 @@ export class UlistingsService {
   /** User-facing status update with state machine validation */
   async updateStatus(id: string, status: ListingStatus, currentStatus: ListingStatus): Promise<Listing> {
     // Atomic update: only update if current status hasn't changed concurrently
+    const updateData: Record<string, unknown> = {
+      status,
+      publishedAt: status === ListingStatus.ACTIVE ? new Date() : undefined,
+    };
+    if (status === ListingStatus.ACTIVE) {
+      updateData.trustLensStatus = TrustLensStatus.PASSED;
+    }
+
     const listing = await this.prisma.listing.updateMany({
       where: { id, status: currentStatus },
-      data: {
-        status,
-        publishedAt: status === ListingStatus.ACTIVE ? new Date() : undefined,
-      },
+      data: updateData as any,
     });
 
     if (listing.count === 0) {
       throw new BadRequestException(
         'Status update failed — listing status may have changed concurrently',
       );
+    }
+
+    if (status === ListingStatus.ACTIVE) {
+      await this.prisma.verificationRequest.updateMany({
+        where: { listingId: id, status: { not: ReviewStatus.PASSED } },
+        data: {
+          status: ReviewStatus.PASSED,
+          completedAt: new Date(),
+          reviewNotes: 'Activated by administrator',
+        },
+      }).catch(() => {});
     }
 
     await this.redis.del(`listing:${id}`).catch(() => {});
