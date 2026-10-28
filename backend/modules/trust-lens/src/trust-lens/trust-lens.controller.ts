@@ -91,6 +91,13 @@ export class TrustLensController {
     );
   }
 
+  @Post(':listingId/rerun')
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  rerunCheck(@Param('listingId', ParseUUIDPipe) listingId: string) {
+    return this.trustlensService.rerunImeiCheck(listingId);
+  }
+
   @Delete(':listingId')
   @Roles('ADMIN')
   @HttpCode(HttpStatus.OK)

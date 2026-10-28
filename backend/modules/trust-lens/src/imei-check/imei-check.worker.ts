@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { EvidenceType, IntegrityFlag } from '.prisma/veribuy-client';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { ImeiCheckService } from './imei-check.service';
 import { ListingSyncService } from '../trust-lens/listing-sync.service';
@@ -269,20 +270,68 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // Check if evidence photos exist for this listing
+    const evidenceItemCount = await this.prisma.evidenceItem.count({
+      where: {
+        pack: { listingId },
+        type: {
+          in: [
+            EvidenceType.DEVICE_IMAGE,
+            EvidenceType.SCREEN_IMAGE,
+            EvidenceType.BODY_IMAGE,
+          ],
+        },
+      },
+    });
+
     const isClean = result.flags.length === 1 && result.flags[0] === 'CLEAN';
     const isNotRun = result.flags.includes('NOT_RUN');
-    const newStatus = isClean ? 'PASSED' : isNotRun ? 'PENDING' : 'REQUIRES_REVIEW';
-    const integrityFlags = result.flags.filter((f) => f !== 'CLEAN' && f !== 'NOT_RUN');
+
+    let newStatus: 'PASSED' | 'REQUIRES_REVIEW' | 'FAILED';
+    let reviewNotes: string | undefined;
+
+    if (isNotRun) {
+      // 3rd-party check timed out or could not run — route to REQUIRES_REVIEW so it stops spinning
+      newStatus = 'REQUIRES_REVIEW';
+      reviewNotes = 'Automated IMEI check timed out or could not run. Routed for manual Trust & Safety review.';
+    } else if (isClean) {
+      if (evidenceItemCount === 0) {
+        // Clean IMEI, but seller has not uploaded required device photos
+        this.logger.warn(
+          `Listing ${listingId} IMEI verified clean but has 0 evidence images — routing to REQUIRES_REVIEW`,
+        );
+        newStatus = 'REQUIRES_REVIEW';
+        reviewNotes =
+          'IMEI verified clean on global databases, but no device images were uploaded. Manual inspection required before publishing.';
+      } else {
+        newStatus = 'PASSED';
+      }
+    } else {
+      newStatus = 'REQUIRES_REVIEW';
+      reviewNotes = `Telemetry flagged integrity issues: ${result.flags.join(', ')}`;
+    }
+
+    // Filter integrity flags against DB enum values
+    const VALID_INTEGRITY_FLAGS = new Set([
+      'CLEAN',
+      'IMEI_MISMATCH',
+      'ICLOUD_LOCKED',
+      'REPORTED_STOLEN',
+      'BLACKLISTED',
+      'SERIAL_MISMATCH',
+      'DUPLICATE_IMEI',
+    ]);
+    const integrityFlags: IntegrityFlag[] = result.flags.filter(
+      (f): f is IntegrityFlag => f !== 'CLEAN' && f !== 'NOT_RUN' && VALID_INTEGRITY_FLAGS.has(f),
+    );
 
     const updatedRequest = await this.prisma.verificationRequest.update({
       where: { id: verificationRequestId },
       data: {
         status: newStatus,
-        integrityFlags: { set: integrityFlags as any },
-        ...(isClean && !current?.completedAt ? { completedAt: new Date() } : {}),
-        // When the API key is missing and checks don't run, mark as FAILED
-        // so the listing isn't stuck in limbo forever.
-        ...(isNotRun ? { completedAt: new Date(), reviewNotes: 'IMEI check could not run — API key may be missing' } : {}),
+        integrityFlags: { set: integrityFlags },
+        completedAt: new Date(),
+        ...(reviewNotes ? { reviewNotes } : {}),
       },
       select: {
         listing: {
@@ -290,6 +339,13 @@ export class ImeiCheckWorker implements OnModuleInit, OnModuleDestroy {
         },
       },
     });
+
+    if (evidenceItemCount > 0) {
+      await this.prisma.evidenceChecklist.updateMany({
+        where: { verificationRequestId, type: 'IMAGE' },
+        data: { fulfilled: true, fulfilledAt: new Date() },
+      });
+    }
 
     if (result.imeiValid) {
       await this.prisma.evidenceChecklist.updateMany({

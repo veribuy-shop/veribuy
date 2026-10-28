@@ -90,6 +90,26 @@ export async function POST(request: NextRequest) {
       return authResult.error;
     }
 
+    const { searchParams } = new URL(request.url);
+    const listingId = searchParams.get('listingId');
+    const action = searchParams.get('action');
+
+    if (action === 'rerun' && listingId) {
+      const adminAuth = await requireRole(request, 'ADMIN');
+      if ('error' in adminAuth) {
+        return adminAuth.error;
+      }
+      const rerunRes = await fetch(`${TRUST_LENS_SERVICE_URL}/trust-lens/${listingId}/rerun`, {
+        method: 'POST',
+        headers: createAuthHeaders(adminAuth.token),
+      });
+      if (!rerunRes.ok) {
+        const error = await rerunRes.json().catch(() => ({ error: 'Failed to re-run verification check' }));
+        return NextResponse.json(error, { status: rerunRes.status });
+      }
+      return NextResponse.json(await rerunRes.json());
+    }
+
     const body = await request.json();
 
     const response = await fetch(`${TRUST_LENS_SERVICE_URL}/trust-lens`, {
