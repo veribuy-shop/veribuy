@@ -622,13 +622,55 @@ export class TrustLensService {
    * and clears previous terminal statuses.
    */
   async rerunImeiCheck(listingId: string) {
-    const vr = await this.prisma.verificationRequest.findUnique({
+    let vr = await this.prisma.verificationRequest.findUnique({
       where: { listingId },
       include: {
         identifierValidation: true,
         listing: { select: { imei: true, serialNumber: true, brand: true } },
       },
     });
+
+    let resultVr: any;
+
+    if (!vr) {
+      const listing = await this.prisma.listing.findUnique({
+        where: { id: listingId },
+        select: { id: true, imei: true, serialNumber: true, brand: true },
+      });
+      if (!listing) {
+        throw new NotFoundException('Listing not found');
+      }
+      vr = await this.prisma.verificationRequest.create({
+        data: {
+          listingId: listing.id,
+          status: 'IN_PROGRESS',
+          reviewNotes: 'Re-running automated IMEI telemetry check...',
+          identifierValidation: {
+            create: {
+              imei: listing.imei,
+              serialNumber: listing.serialNumber,
+              imeiProvided: !!listing.imei,
+              serialProvided: !!listing.serialNumber,
+            },
+          },
+        },
+        include: {
+          identifierValidation: true,
+          listing: { select: { imei: true, serialNumber: true, brand: true } },
+        },
+      });
+      resultVr = vr;
+    } else {
+      // Reset status to IN_PROGRESS
+      resultVr = await this.prisma.verificationRequest.update({
+        where: { id: vr.id },
+        data: {
+          status: 'IN_PROGRESS',
+          reviewNotes: 'Re-running automated IMEI telemetry check...',
+          completedAt: null,
+        },
+      });
+    }
 
     if (!vr) {
       throw new NotFoundException('Verification request not found for listing');
@@ -637,16 +679,6 @@ export class TrustLensService {
     const imei = vr.identifierValidation?.imei || vr.listing.imei || undefined;
     const serialNumber = vr.identifierValidation?.serialNumber || vr.listing.serialNumber || undefined;
     const brand = vr.listing.brand || undefined;
-
-    // Reset status to IN_PROGRESS
-    const updated = await this.prisma.verificationRequest.update({
-      where: { id: vr.id },
-      data: {
-        status: 'IN_PROGRESS',
-        reviewNotes: 'Re-running automated IMEI telemetry check...',
-        completedAt: null,
-      },
-    });
 
     await this.listingSync.syncTrustLensResult(listingId, 'IN_PROGRESS', undefined, []).catch(() => {});
 
@@ -658,7 +690,7 @@ export class TrustLensService {
       brand,
     });
 
-    return updated;
+    return resultVr;
   }
 }
 
