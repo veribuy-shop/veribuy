@@ -13,7 +13,24 @@ export async function POST(req: NextRequest) {
       return authResult.error;
     }
 
-    const formData = await req.formData();
+    const incomingFormData = await req.formData();
+    const file = incomingFormData.get('file');
+    const listingId = incomingFormData.get('listingId');
+    const type = incomingFormData.get('type') || 'DEVICE_IMAGE';
+    const description = incomingFormData.get('description');
+    const metadata = incomingFormData.get('metadata');
+
+    if (!file || typeof file === 'string') {
+      return NextResponse.json({ message: 'File is required' }, { status: 400 });
+    }
+
+    const forwardFormData = new FormData();
+    const filename = (file as File).name || 'upload.jpg';
+    forwardFormData.append('file', file, filename);
+    if (listingId) forwardFormData.append('listingId', String(listingId));
+    forwardFormData.append('type', String(type));
+    if (description) forwardFormData.append('description', String(description));
+    if (metadata) forwardFormData.append('metadata', String(metadata));
 
     // Forward the formData to evidence service with authorization
     const response = await fetch(`${EVIDENCE_SERVICE_URL}/evidence/upload`, {
@@ -21,13 +38,13 @@ export async function POST(req: NextRequest) {
       headers: {
         'Authorization': `Bearer ${authResult.token}`,
       },
-      body: formData,
+      body: forwardFormData,
     });
 
     if (!response.ok) {
-      const error = await response.json();
+      const error = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { message: error.message || 'Failed to upload evidence' },
+        { message: error.message || error.error || 'Failed to upload evidence' },
         { status: response.status }
       );
     }

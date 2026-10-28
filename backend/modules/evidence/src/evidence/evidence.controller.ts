@@ -22,7 +22,15 @@ import { UploadEvidenceDto } from './dto/upload-evidence.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto } from '@veribuy/common';
 
 /** Allowed MIME types — must also match magic bytes below. */
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+const ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/pjpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+];
 
 /** Maximum number of evidence items per pack. */
 const MAX_ITEMS_PER_PACK = 20;
@@ -35,12 +43,15 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
  * Prevents MIME-type spoofing attacks where a client lies about file type.
  */
 function validateMagicBytes(buffer: Buffer, mimetype: string): boolean {
-  // JPEG: FF D8 FF
-  if (mimetype === 'image/jpeg' || mimetype === 'image/jpg') {
-    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (!buffer || buffer.length < 4) return false;
+  const lowerMime = mimetype.toLowerCase();
+
+  // JPEG / PJPEG: FF D8
+  if (lowerMime === 'image/jpeg' || lowerMime === 'image/jpg' || lowerMime === 'image/pjpeg') {
+    return buffer[0] === 0xff && buffer[1] === 0xd8;
   }
   // PNG: 89 50 4E 47 0D 0A 1A 0A
-  if (mimetype === 'image/png') {
+  if (lowerMime === 'image/png') {
     return (
       buffer[0] === 0x89 &&
       buffer[1] === 0x50 &&
@@ -49,8 +60,9 @@ function validateMagicBytes(buffer: Buffer, mimetype: string): boolean {
     );
   }
   // WebP: 52 49 46 46 __ __ __ __ 57 45 42 50 (RIFF....WEBP)
-  if (mimetype === 'image/webp') {
+  if (lowerMime === 'image/webp') {
     return (
+      buffer.length >= 12 &&
       buffer[0] === 0x52 &&
       buffer[1] === 0x49 &&
       buffer[2] === 0x46 &&
@@ -60,6 +72,14 @@ function validateMagicBytes(buffer: Buffer, mimetype: string): boolean {
       buffer[10] === 0x42 &&
       buffer[11] === 0x50
     );
+  }
+  // HEIC / HEIF: bytes 4-8 are 'ftyp'
+  if (lowerMime === 'image/heic' || lowerMime === 'image/heif') {
+    if (buffer.length >= 12) {
+      const ftyp = buffer.toString('ascii', 4, 8);
+      return ftyp === 'ftyp';
+    }
+    return false;
   }
   return false;
 }

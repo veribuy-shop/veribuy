@@ -48,6 +48,7 @@ import {
   LayoutDashboard,
   Trash2,
   ImageIcon,
+  Camera,
   FileWarning,
   Truck,
   RotateCcw,
@@ -301,6 +302,53 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const [showGradeTooltip, setShowGradeTooltip] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
+  const [uploadPhotoError, setUploadPhotoError] = useState<string | null>(null);
+
+  const handleUploadPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !listing) return;
+    setUploadingPhotos(true);
+    setUploadPhotoError(null);
+
+    try {
+      const results = await Promise.allSettled(
+        Array.from(files).map(async (file) => {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('listingId', listing.id);
+          formData.append('type', 'DEVICE_IMAGE');
+          const res = await fetch('/api/evidence', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'Upload failed');
+          }
+          return res.json();
+        })
+      );
+
+      const successful = results
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+        .map((r) => r.value);
+
+      if (successful.length > 0) {
+        setEvidenceItems((prev) => [...prev, ...successful]);
+        setSelectedImageIndex(0);
+      } else {
+        const firstErr = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+        setUploadPhotoError(firstErr?.reason?.message || 'Failed to upload photos. Please try again.');
+      }
+    } catch (err: any) {
+      setUploadPhotoError(err.message || 'Error uploading photos');
+    } finally {
+      setUploadingPhotos(false);
+      e.target.value = '';
+    }
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -680,6 +728,30 @@ export default function ListingDetailContent({ id }: { id: string }) {
                 <div className="text-center p-6">
                   <ImageIcon className="w-16 h-16 text-[var(--color-border)] mx-auto mb-2" aria-hidden="true" />
                   <p className="text-sm text-[var(--color-text-muted)] font-medium">No verified photos uploaded yet</p>
+                  {(isSeller || user?.role === 'ADMIN') && (
+                    <div className="mt-4">
+                      <label
+                        className={cn(
+                          'inline-flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white text-xs font-semibold rounded-xl cursor-pointer hover:opacity-90 transition-opacity shadow-xs',
+                          uploadingPhotos && 'opacity-60 cursor-not-allowed pointer-events-none'
+                        )}
+                      >
+                        <Camera className="w-4 h-4" />
+                        <span>{uploadingPhotos ? 'Uploading photos...' : 'Upload Device Photos'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          disabled={uploadingPhotos}
+                          className="sr-only"
+                          onChange={handleUploadPhotos}
+                        />
+                      </label>
+                      {uploadPhotoError && (
+                        <p className="text-xs text-red-600 mt-2 font-medium">{uploadPhotoError}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

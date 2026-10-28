@@ -253,6 +253,50 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     }
   };
 
+  const handleAdminUploadPhotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !listing) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const results = await Promise.allSettled(
+        Array.from(files).map(async (file) => {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('listingId', listing.id);
+          formData.append('type', 'DEVICE_IMAGE');
+          const res = await fetch('/api/evidence', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || 'Upload failed');
+          }
+          return res.json();
+        })
+      );
+
+      const successful = results
+        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+        .map((r) => r.value);
+
+      if (successful.length > 0) {
+        setEvidence((prev) => [...prev, ...successful]);
+        if (!selectedImage) {
+          setSelectedImage(successful[0].fileUrl);
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error uploading photos');
+    } finally {
+      setSubmitting(false);
+      e.target.value = '';
+    }
+  };
+
   const toggleIntegrityFlag = (flag: string) => {
     setSelectedIntegrityFlags(prev => 
       prev.includes(flag) 
@@ -430,7 +474,19 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               </div>
 
               {evidence.length === 0 && (
-                <p className="text-[var(--color-text-muted)] text-center py-8">No evidence images uploaded</p>
+                <div className="text-center py-8">
+                  <p className="text-[var(--color-text-muted)] text-sm mb-3">No evidence images uploaded yet</p>
+                  <label className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--color-primary)] text-white text-xs font-semibold rounded-xl cursor-pointer hover:opacity-90 transition-opacity shadow-xs">
+                    <span>Upload Verification Photos</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="sr-only"
+                      onChange={handleAdminUploadPhotos}
+                    />
+                  </label>
+                </div>
               )}
             </div>
 
