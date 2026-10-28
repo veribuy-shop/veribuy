@@ -102,6 +102,12 @@ projects:
               # (GET /transactions/config/fees). Baked at build time.
               - key: NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT
                 value: '5'
+              - key: BACKEND_URL
+                value: 'https://api.veribuy.shop'
+              - key: EVIDENCE_SERVICE_URL
+                value: 'https://api.veribuy.shop'
+              - key: TRUST_LENS_SERVICE_URL
+                value: 'https://api.veribuy.shop'
               # Shared Redis access for the BFF (server-side only — reads
               # cached IMEI status). NOT a NEXT_PUBLIC_ var, never reaches the browser.
               - key: REDIS_URL
