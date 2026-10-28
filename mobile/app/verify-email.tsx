@@ -27,7 +27,7 @@ export default function VerifyEmailScreen() {
       try {
         await authService.verifyEmail(token);
         setStatus('success');
-        setTimeout(() => router.replace('/'), 3000);
+        setTimeout(() => router.replace('/login'), 3000);
       } catch (e: any) {
         setErrorMessage(e?.message || 'Verification failed. The link may have expired.');
         setStatus('error');
@@ -51,7 +51,7 @@ export default function VerifyEmailScreen() {
             <Text className="text-text-muted mb-6">
               Your account is now active. Redirecting you to sign in…
             </Text>
-            <Button onPress={() => router.replace('/')}>Sign in now</Button>
+            <Button onPress={() => router.replace('/login')}>Sign in now</Button>
           </>
         )}
 

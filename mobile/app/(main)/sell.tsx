@@ -3,7 +3,9 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View, Pressable, Image } from 'react-native';
 
+import { GuestGate } from '@/src/components/GuestGate';
 import { Button, Input, Screen, Tag } from '@/src/components/ui';
+import { useAuth } from '@/src/context/AuthContext';
 import { evidenceService, listingsService, trustLensService } from '@/src/services';
 import { Listing } from '@/src/types/entities';
 
@@ -32,9 +34,6 @@ function ChipRow<T extends string>({
     </View>
   );
 }
-
-import { GuestGate } from '@/src/components/GuestGate';
-import { useAuth } from '@/src/context/AuthContext';
 
 export default function SellScreen() {
   const { isAuthenticated } = useAuth();
