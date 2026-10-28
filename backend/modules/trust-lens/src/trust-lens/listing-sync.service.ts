@@ -39,7 +39,7 @@ export class ListingSyncService {
    */
   async syncTrustLensResult(
     listingId: string,
-    status: 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW',
+    status: 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW' | 'IN_PROGRESS',
     conditionGrade?: string,
     integrityFlags?: string[],
   ): Promise<void> {

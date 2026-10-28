@@ -6,7 +6,7 @@ import { ListingSyncService } from './listing-sync.service';
 import { UserSyncService } from './user-sync.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { CreateVerificationRequestDto } from './dto/create-verification-request.dto';
-import { DeviceType } from '.prisma/veribuy-client';
+import { ChecklistEvidenceType, DeviceType, EvidenceType } from '.prisma/veribuy-client';
 
 /** Fields safe to return to sellers (strips rawApiResponse, imei, serialNumber). */
 const SELLER_ID_VALIDATION_SELECT = {
@@ -134,20 +134,50 @@ export class TrustLensService {
         });
       }
 
+      // Check if evidence items were already uploaded prior to verification request creation
+      const existingPack = await tx.evidencePack.findUnique({
+        where: { listingId: dto.listingId },
+        include: { items: { select: { type: true } } },
+      });
+      const imageTypes: EvidenceType[] = [
+        EvidenceType.DEVICE_IMAGE,
+        EvidenceType.SCREEN_IMAGE,
+        EvidenceType.BODY_IMAGE,
+        EvidenceType.PACKAGING_IMAGE,
+        EvidenceType.ACCESSORIES_IMAGE,
+      ];
+      const hasUploadedImages = existingPack?.items?.some((i) =>
+        imageTypes.includes(i.type),
+      ) ?? false;
+
+      const screenshotTypes: EvidenceType[] = [
+        EvidenceType.SETTINGS_SCREENSHOT,
+        EvidenceType.IMEI_SCREENSHOT,
+      ];
+      const hasUploadedScreenshots = existingPack?.items?.some((i) =>
+        screenshotTypes.includes(i.type),
+      ) ?? false;
+
       // Create evidence checklist items (required evidence)
-      const checklistItems = [
-        { type: 'IMAGE', description: 'Device images (front, back, sides)', required: true },
-        { type: 'IMAGE', description: 'Screen images (on, display condition)', required: true },
-        { type: 'SCREENSHOT', description: 'Settings screenshot (model, storage)', required: true },
+      const checklistItems: Array<{
+        type: ChecklistEvidenceType;
+        description: string;
+        required: boolean;
+        fulfilled: boolean;
+      }> = [
+        { type: ChecklistEvidenceType.IMAGE, description: 'Device images (front, back, sides)', required: true, fulfilled: hasUploadedImages },
+        { type: ChecklistEvidenceType.IMAGE, description: 'Screen images (on, display condition)', required: true, fulfilled: hasUploadedImages },
+        { type: ChecklistEvidenceType.SCREENSHOT, description: 'Settings screenshot (model, storage)', required: true, fulfilled: hasUploadedScreenshots },
       ];
 
       await tx.evidenceChecklist.createMany({
         data: checklistItems.map((item) => ({
           verificationRequestId: verificationRequest.id,
-          type: item.type as any,
+          type: item.type,
           description: item.description,
           required: item.required,
-          fulfilled: false,
+          fulfilled: item.fulfilled,
+          fulfilledAt: item.fulfilled ? new Date() : null,
         })),
       });
 
@@ -584,6 +614,51 @@ export class TrustLensService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  /**
+   * Re-run automated IMEI telemetry check for a listing.
+   * Resets status to IN_PROGRESS, re-enqueues the job to the worker queue,
+   * and clears previous terminal statuses.
+   */
+  async rerunImeiCheck(listingId: string) {
+    const vr = await this.prisma.verificationRequest.findUnique({
+      where: { listingId },
+      include: {
+        identifierValidation: true,
+        listing: { select: { imei: true, serialNumber: true, brand: true } },
+      },
+    });
+
+    if (!vr) {
+      throw new NotFoundException('Verification request not found for listing');
+    }
+
+    const imei = vr.identifierValidation?.imei || vr.listing.imei || undefined;
+    const serialNumber = vr.identifierValidation?.serialNumber || vr.listing.serialNumber || undefined;
+    const brand = vr.listing.brand || undefined;
+
+    // Reset status to IN_PROGRESS
+    const updated = await this.prisma.verificationRequest.update({
+      where: { id: vr.id },
+      data: {
+        status: 'IN_PROGRESS',
+        reviewNotes: 'Re-running automated IMEI telemetry check...',
+        completedAt: null,
+      },
+    });
+
+    await this.listingSync.syncTrustLensResult(listingId, 'IN_PROGRESS', undefined, []).catch(() => {});
+
+    await this.enqueueImeiCheck({
+      verificationRequestId: vr.id,
+      listingId,
+      imei,
+      serialNumber,
+      brand,
+    });
+
+    return updated;
   }
 }
 

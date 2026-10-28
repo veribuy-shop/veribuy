@@ -283,13 +283,37 @@ export class ImeiCheckService {
     if (blacklisted) flags.push('BLACKLISTED');
     if (brandLocked && brandLockFlag) flags.push(brandLockFlag);
 
-    // IMEI is considered valid if at least one service ran and no hard blocks
-    const anySucceeded =
-      'service3' in raw || 'service4' in raw || 'service5' in raw || Object.keys(raw).some((k) => /^service\d+$/.test(k));
+    // Check if any service reported an explicitly invalid IMEI / SN
+    const isExplicitlyInvalidImei = (val: unknown): boolean => {
+      if (!val || typeof val !== 'object') return false;
+      const resp = val as Record<string, unknown>;
+      const text = String(resp.response ?? resp.result ?? '').toLowerCase();
+      return resp.status === 'failed' && (text.includes('invalid') || text.includes('not found'));
+    };
+
+    const hasInvalidImeiReport = Object.keys(raw)
+      .filter((k) => /^service\d+$/.test(k))
+      .some((k) => isExplicitlyInvalidImei(raw[k]));
+
+    if (hasInvalidImeiReport && !flags.includes('IMEI_MISMATCH')) {
+      flags.push('IMEI_MISMATCH');
+    }
+
+    // A service genuinely succeeded if it returned status === 'success' or an object payload
+    const isServiceSuccess = (val: unknown): boolean => {
+      if (!val || typeof val !== 'object') return false;
+      const resp = val as Record<string, unknown>;
+      return resp.status === 'success' || (Boolean(resp.object) && resp.status !== 'failed');
+    };
+
+    const anySucceeded = Object.keys(raw)
+      .filter((k) => /^service\d+$/.test(k))
+      .some((k) => isServiceSuccess(raw[k]));
+
     if (flags.length === 0) {
       flags.push(anySucceeded ? 'CLEAN' : 'NOT_RUN');
     }
-    const imeiValid = anySucceeded && !blacklisted && !reportedStolen;
+    const imeiValid = anySucceeded && !blacklisted && !reportedStolen && !hasInvalidImeiReport;
 
     return {
       imeiValid,
@@ -417,8 +441,9 @@ export class ImeiCheckService {
   private async callService(serviceId: number, imei: string): Promise<ImeiApiResponse> {
     const url = `${this.apiUrl}/api/php-api/create?key=${this.apiKey}&service=${serviceId}&imei=${encodeURIComponent(imei)}`;
 
+    // Increased timeout to 90s to accommodate upstream imeicheck latency
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(90_000),
     });
 
     if (!response.ok) {
@@ -431,7 +456,7 @@ export class ImeiCheckService {
       throw new Error(`API error from service ${serviceId}: ${data.result ?? 'unknown error'}`);
     }
 
-    // 'failed' = check ran but IMEI lookup returned no data — not a hard error
+    // 'failed' = check ran but IMEI lookup returned no data or invalid IMEI
     return data;
   }
 

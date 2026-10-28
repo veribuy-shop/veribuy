@@ -30,6 +30,9 @@ describe('TrustLensService', () => {
       identifierValidation: {
         create: jest.fn(),
       },
+      evidencePack: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       evidenceChecklist: {
         create: jest.fn(),
         createMany: jest.fn().mockResolvedValue({ count: 5 }),
@@ -47,6 +50,7 @@ describe('TrustLensService', () => {
 
     listingSync = {
       syncTrustLensStatus: jest.fn().mockResolvedValue(undefined),
+      syncTrustLensResult: jest.fn().mockResolvedValue(undefined),
     };
 
     userSync = {
@@ -130,6 +134,115 @@ describe('TrustLensService', () => {
         }),
       );
       expect(result).toEqual(mockCreatedRequest);
+    });
+
+    it('should pre-fulfill checklist items if evidence pack with images already exists', async () => {
+      prisma.listing.findUnique.mockResolvedValue({
+        deviceType: 'SMARTPHONE',
+      });
+
+      prisma.evidencePack.findUnique.mockResolvedValue({
+        items: [
+          { type: 'DEVICE_IMAGE' },
+          { type: 'SETTINGS_SCREENSHOT' },
+        ],
+      });
+
+      const mockCreatedRequest = {
+        id: 'vr-2',
+        listingId: 'lst-2',
+        sellerId: 'seller-1',
+        status: 'PENDING',
+      };
+
+      prisma.verificationRequest.create.mockResolvedValue(mockCreatedRequest);
+      prisma.verificationRequest.findUnique.mockResolvedValue(mockCreatedRequest);
+      prisma.identifierValidation.create.mockResolvedValue({ id: 'iv-2', verificationRequestId: 'vr-2' });
+
+      await service.createVerificationRequest({
+        listingId: 'lst-2',
+        sellerId: 'seller-1',
+        imeiProvided: true,
+        imei: '356938035643803',
+      });
+
+      expect(prisma.evidenceChecklist.createMany).toHaveBeenCalledWith({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'IMAGE',
+            fulfilled: true,
+            fulfilledAt: expect.any(Date),
+          }),
+          expect.objectContaining({
+            type: 'SCREENSHOT',
+            fulfilled: true,
+            fulfilledAt: expect.any(Date),
+          }),
+        ]),
+      });
+    });
+  });
+
+  describe('rerunImeiCheck', () => {
+    it('should throw NotFoundException if verification request does not exist', async () => {
+      prisma.verificationRequest.findUnique.mockResolvedValue(null);
+
+      await expect(service.rerunImeiCheck('lst-not-found')).rejects.toThrow(NotFoundException);
+    });
+
+    it('should reset status to IN_PROGRESS, notify listingSync, and re-enqueue IMEI check', async () => {
+      const mockVr = {
+        id: 'vr-10',
+        listingId: 'lst-10',
+        status: 'REQUIRES_REVIEW',
+        identifierValidation: {
+          imei: '356938035643803',
+          serialNumber: 'SN12345',
+        },
+        listing: {
+          imei: '356938035643803',
+          serialNumber: 'SN12345',
+          brand: 'Apple',
+        },
+      };
+
+      const updatedVr = {
+        ...mockVr,
+        status: 'IN_PROGRESS',
+        reviewNotes: 'Re-running automated IMEI telemetry check...',
+        completedAt: null,
+      };
+
+      prisma.verificationRequest.findUnique.mockResolvedValue(mockVr);
+      prisma.verificationRequest.update.mockResolvedValue(updatedVr);
+
+      const result = await service.rerunImeiCheck('lst-10');
+
+      expect(prisma.verificationRequest.update).toHaveBeenCalledWith({
+        where: { id: 'vr-10' },
+        data: {
+          status: 'IN_PROGRESS',
+          reviewNotes: 'Re-running automated IMEI telemetry check...',
+          completedAt: null,
+        },
+      });
+
+      expect(listingSync.syncTrustLensResult).toHaveBeenCalledWith(
+        'lst-10',
+        'IN_PROGRESS',
+        undefined,
+        [],
+      );
+
+      expect(imeiWorker.enqueue).toHaveBeenCalledWith({
+        verificationRequestId: 'vr-10',
+        listingId: 'lst-10',
+        imei: '356938035643803',
+        serialNumber: 'SN12345',
+        brand: 'Apple',
+      });
+
+      expect(result).toEqual(updatedVr);
     });
   });
 });

@@ -159,6 +159,12 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
 
   const handleApprove = async () => {
     if (!listing || !verification) return;
+
+    if (evidence.length === 0) {
+      if (!confirm('Warning: This listing has 0 uploaded evidence images. Are you sure you want to approve it?')) {
+        return;
+      }
+    }
     
     setSubmitting(true);
     setError(null);
@@ -183,6 +189,29 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
     } catch (error) {
       console.error('Failed to approve:', error);
       setError('Failed to approve verification. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRerun = async () => {
+    if (!listing) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/trust-lens?listingId=${listing.id}&action=rerun`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (response.ok) {
+        await fetchData(listing.id);
+      } else {
+        const data = await response.json().catch(() => ({}));
+        setError(data.message || data.error || 'Failed to re-run verification check');
+      }
+    } catch (error) {
+      console.error('Failed to rerun:', error);
+      setError('Failed to re-run verification check. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -322,16 +351,23 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
           </div>
           <div className="flex gap-3">
             <button
+              onClick={handleRerun}
+              disabled={submitting}
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:opacity-90 disabled:opacity-50 text-sm font-medium"
+            >
+              {submitting ? 'Processing...' : '🔄 Re-run Check'}
+            </button>
+            <button
               onClick={handleReject}
               disabled={submitting}
-              className="px-6 py-2 bg-[var(--color-danger)] text-white rounded-md hover:opacity-90 disabled:opacity-50"
+              className="px-6 py-2 bg-[var(--color-danger)] text-white rounded-md hover:opacity-90 disabled:opacity-50 text-sm font-medium"
             >
               {submitting ? 'Processing...' : 'Reject'}
             </button>
             <button
               onClick={handleApprove}
               disabled={submitting}
-              className="px-6 py-2 bg-[var(--color-green)] text-white rounded-md hover:opacity-90 disabled:opacity-50"
+              className="px-6 py-2 bg-[var(--color-green)] text-white rounded-md hover:opacity-90 disabled:opacity-50 text-sm font-medium"
             >
               {submitting ? 'Processing...' : 'Approve'}
             </button>
@@ -350,7 +386,16 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
           {/* Left Column: Images */}
           <div>
             <div className="bg-white rounded-xl border border-[var(--color-border)] p-6 mb-6">
-              <h2 className="text-xl font-semibold text-[var(--color-text)] mb-4">Evidence Images</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-[var(--color-text)]">Evidence Images</h2>
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-full font-bold ${
+                    evidence.length > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                  }`}
+                >
+                  {evidence.length} {evidence.length === 1 ? 'image' : 'images'}
+                </span>
+              </div>
               
               {selectedImage && (
                 <div className="mb-4">

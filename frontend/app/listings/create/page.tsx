@@ -459,6 +459,11 @@ export default function CreateListingPage() {
   const handleSubmit = async () => {
     if (!validateStep(currentStep)) return;
 
+    if (!formData.isBulkListing && (formData.deviceImages.length === 0 || formData.screenImages.length === 0)) {
+      setError('Please upload at least 3 device images and 1 screen image before submitting');
+      return;
+    }
+
     setIsSubmitting(true);
     setError('');
 
@@ -536,6 +541,11 @@ export default function CreateListingPage() {
             });
           })
         );
+
+        const successfulUploads = uploadResults.filter((r) => r.status === 'fulfilled');
+        if (allFiles.length > 0 && successfulUploads.length === 0) {
+          throw new Error('Failed to upload device images. Please check your network connection and image formats, and try again.');
+        }
 
         // Log any individual upload failures without failing the whole submission
         uploadResults.forEach((result, i) => {

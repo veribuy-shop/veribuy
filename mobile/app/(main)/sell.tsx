@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, View, Pressable, Image } from 'react-native';
 
 import { Button, Input, Screen, Tag } from '@/src/components/ui';
-import { evidenceService, listingsService } from '@/src/services';
+import { evidenceService, listingsService, trustLensService } from '@/src/services';
 import { Listing } from '@/src/types/entities';
 
 import { resolveDeviceWeightProfile } from '@/src/lib/shipping';
@@ -103,6 +103,11 @@ export default function SellScreen() {
       return;
     }
 
+    if (!pickedImage) {
+      setError('Please select at least one clear photo of your device.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -115,9 +120,23 @@ export default function SellScreen() {
             { uri: pickedImage, name: 'evidence.jpg', type: 'image/jpeg' },
             { type: 'DEVICE_IMAGE', description: 'Initial listing photo' },
           );
-        } catch {
-          // Non-fatal: listing exists even if evidence upload fails
+        } catch (uploadErr) {
+          console.warn('[SellScreen] Non-fatal: failed to upload initial evidence image:', uploadErr);
         }
+      }
+
+      try {
+        await trustLensService.submit({
+          listingId: listing.id,
+          conditionGrade: conditionGrade || undefined,
+          imeiProvided: !!imei.trim(),
+          serialProvided: !!serialNumber.trim(),
+          imei: imei.trim() || undefined,
+          serialNumber: serialNumber.trim() || undefined,
+          brand: brand.trim() || undefined,
+        });
+      } catch (trustLensErr) {
+        console.warn('[SellScreen] Non-fatal: failed to submit Trust Lens verification request:', trustLensErr);
       }
 
       Alert.alert('Listing created', 'Your listing is now registered with Trust Lens™ and under review.', [
