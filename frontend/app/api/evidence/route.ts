@@ -86,7 +86,10 @@ export async function GET(req: NextRequest) {
     const response = await fetch(url, { headers });
 
     if (!response.ok) {
-      const error = await response.json();
+      if (response.status === 404 && listingId) {
+        return NextResponse.json({ items: [] });
+      }
+      const error = await response.json().catch(() => ({}));
       return NextResponse.json(
         { message: error.message || 'Failed to fetch evidence' },
         { status: response.status }

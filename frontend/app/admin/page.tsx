@@ -357,6 +357,27 @@ function AdminDashboardContent() {
     }
   };
 
+  const handleRerunVerification = async (listingId: string) => {
+    setActionLoading(true);
+    setActionMessage(null);
+    try {
+      const res = await authFetch(`/api/trust-lens?listingId=${listingId}&action=rerun`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || data.error || 'Failed to re-run IMEI verification check');
+      }
+      setActionMessage({ type: 'success', text: `IMEI verification check re-triggered for listing ${listingId.substring(0, 8)}...` });
+      await fetchAll();
+      setTimeout(() => setActionMessage(null), 3500);
+    } catch (err: any) {
+      setActionMessage({ type: 'error', text: err.message || 'Re-run check failed' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleToggleUserRole = async (targetUser: User) => {
     const newRole = targetUser.role === 'ADMIN' ? 'USER' : 'ADMIN';
     setActionLoading(true);
@@ -1121,12 +1142,33 @@ function AdminDashboardContent() {
                         )}
                       </div>
 
-                      <div className={cn('flex items-center gap-3 border-t md:border-t-0 pt-3 md:pt-0', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
+                      <div className={cn('flex flex-wrap items-center gap-2 border-t md:border-t-0 pt-3 md:pt-0', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
+                        <Link
+                          href={`/admin/review/${v.listingId}`}
+                          className={cn(
+                            'px-3 py-1.5 font-semibold text-xs rounded-xl border transition-colors inline-flex items-center gap-1',
+                            isDarkMode
+                              ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
+                          )}
+                          title="Review evidence, checklist, and inspection telemetry"
+                        >
+                          <span>Review</span>
+                        </Link>
+                        <button
+                          disabled={actionLoading}
+                          onClick={() => handleRerunVerification(v.listingId)}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-1 shadow-xs"
+                          title="Re-run automated Trust Lens IMEI check"
+                        >
+                          <RefreshCw className={cn('w-3 h-3', actionLoading && 'animate-spin')} />
+                          <span>Re-run Check</span>
+                        </button>
                         <Link
                           href={`/verification/${v.listingId}`}
                           className={cn(
-                            'px-3.5 py-2 font-semibold text-xs rounded-xl border transition-colors',
-                            isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-sm'
+                            'px-3 py-1.5 font-semibold text-xs rounded-xl border transition-colors',
+                            isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-xs'
                           )}
                         >
                           Certificate
@@ -1134,14 +1176,14 @@ function AdminDashboardContent() {
                         <button
                           disabled={actionLoading}
                           onClick={() => handleVerificationReview(v.id, 'PASSED')}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors disabled:opacity-50"
                         >
                           Approve
                         </button>
                         <button
                           disabled={actionLoading}
                           onClick={() => handleVerificationReview(v.id, 'FAILED')}
-                          className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
+                          className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors disabled:opacity-50"
                         >
                           Reject
                         </button>
@@ -1531,6 +1573,35 @@ function AdminDashboardContent() {
                                   <span>View</span>
                                   <ExternalLink className="w-3 h-3 text-slate-400" />
                                 </Link>
+
+                                <Link
+                                  href={`/admin/review/${l.id}`}
+                                  className={cn(
+                                    'px-2.5 py-1.5 font-semibold rounded-lg border inline-flex items-center gap-1 text-xs transition-colors shadow-xs',
+                                    isDarkMode
+                                      ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700'
+                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                  )}
+                                  title="Review evidence, checklist, and inspection telemetry"
+                                >
+                                  <span>Review</span>
+                                </Link>
+
+                                {(l.status === 'UNDER_REVIEW' ||
+                                  l.status === 'DRAFT' ||
+                                  l.trustLensStatus === 'REQUIRES_REVIEW' ||
+                                  l.trustLensStatus === 'PENDING' ||
+                                  l.trustLensStatus === 'FAILED') && (
+                                  <button
+                                    onClick={() => handleRerunVerification(l.id)}
+                                    disabled={actionLoading}
+                                    className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50 inline-flex items-center gap-1 shadow-xs"
+                                    title="Re-run automated Trust Lens IMEI check"
+                                  >
+                                    <RefreshCw className={cn('w-3 h-3', actionLoading && 'animate-spin')} />
+                                    <span>Re-run Check</span>
+                                  </button>
+                                )}
 
                                 {isLive ? (
                                   <button

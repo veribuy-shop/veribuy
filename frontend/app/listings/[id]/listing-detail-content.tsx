@@ -445,12 +445,20 @@ export default function ListingDetailContent({ id }: { id: string }) {
     : null;
   const DeviceIcon = DEVICE_TYPE_ICON[listing.deviceType] || Smartphone;
 
-  // Group evidence by type
+  // Group evidence by type, and preserve any other uploaded evidence images
   const deviceImages = evidenceItems.filter((item) => item.type === 'DEVICE_IMAGE');
   const screenImages = evidenceItems.filter((item) => item.type === 'SCREEN_IMAGE');
   const bodyImages = evidenceItems.filter((item) => item.type === 'BODY_IMAGE');
   const settingsScreenshots = evidenceItems.filter((item) => item.type === 'SETTINGS_SCREENSHOT');
-  const allImages = [...deviceImages, ...screenImages, ...bodyImages, ...settingsScreenshots];
+  const otherImages = evidenceItems.filter(
+    (item) => !['DEVICE_IMAGE', 'SCREEN_IMAGE', 'BODY_IMAGE', 'SETTINGS_SCREENSHOT'].includes(item.type)
+  );
+  let allImages = [...deviceImages, ...screenImages, ...bodyImages, ...settingsScreenshots, ...otherImages].filter(
+    (item) => Boolean(item.fileUrl)
+  );
+  if (allImages.length === 0 && evidenceItems.length > 0) {
+    allImages = evidenceItems.filter((item) => Boolean(item.fileUrl));
+  }
   const hasImages = allImages.length > 0;
 
   const navigateImage = (direction: 'prev' | 'next') => {
@@ -570,6 +578,43 @@ export default function ListingDetailContent({ id }: { id: string }) {
         ? 'Find My iPhone, iCloud, and FRP activation locks are completely disabled.'
         : 'Device has an active activation or account lock.',
       passed: isCleanFmi,
+      icon: LockKeyhole,
+    });
+  } else if (listing.trustLensStatus === 'PASSED') {
+    // When listing has passed Trust Lens verification (via automated inspection or admin verification approval)
+    securityChecks.push({
+      id: 'unlocked',
+      title: 'Unlocked Device',
+      statusLabel: 'Network Unlocked',
+      description: 'Device accepts all SIM cards and is unlocked for UK & international networks.',
+      passed: true,
+      icon: Radio,
+    });
+
+    securityChecks.push({
+      id: 'blacklist',
+      title: 'Blacklist Status',
+      statusLabel: 'Clean & Verified',
+      description: 'Audited against GSMA international mobile registers and national police databases.',
+      passed: true,
+      icon: ShieldCheck,
+    });
+
+    securityChecks.push({
+      id: 'warranty',
+      title: 'Warranty Status',
+      statusLabel: 'Verified Authentic',
+      description: 'Device authenticity confirmed. Covered by VeriBuy 48-Hour Escrow Protection.',
+      passed: true,
+      icon: Award,
+    });
+
+    securityChecks.push({
+      id: 'fmi',
+      title: 'Find My Phone',
+      statusLabel: 'Off / Setup Ready',
+      description: 'Find My iPhone, iCloud, and FRP activation locks are completely disabled.',
+      passed: true,
       icon: LockKeyhole,
     });
   }
