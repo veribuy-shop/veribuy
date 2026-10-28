@@ -5,14 +5,14 @@ import { ListingStatus } from '.prisma/veribuy-client';
 export const ALLOWED_TRANSITIONS: Record<ListingStatus, ListingStatus[]> = {
   [ListingStatus.DRAFT]: [ListingStatus.SUBMITTED, ListingStatus.DELISTED],
   [ListingStatus.SUBMITTED]: [ListingStatus.UNDER_REVIEW, ListingStatus.REJECTED, ListingStatus.DELISTED],
-  [ListingStatus.UNDER_REVIEW]: [ListingStatus.APPROVED, ListingStatus.REJECTED],
+  [ListingStatus.UNDER_REVIEW]: [ListingStatus.APPROVED, ListingStatus.ACTIVE, ListingStatus.REJECTED],
   [ListingStatus.APPROVED]: [ListingStatus.ACTIVE, ListingStatus.REJECTED],
   [ListingStatus.REJECTED]: [ListingStatus.SUBMITTED, ListingStatus.DELISTED],
   [ListingStatus.ACTIVE]: [ListingStatus.SOLD, ListingStatus.AUCTION_ENDED, ListingStatus.DELISTED, ListingStatus.UNDER_REVIEW, ListingStatus.INACTIVE],
   [ListingStatus.AUCTION_ENDED]: [ListingStatus.SOLD, ListingStatus.DELISTED],
   [ListingStatus.INACTIVE]: [ListingStatus.ACTIVE, ListingStatus.DELISTED],
   [ListingStatus.SOLD]: [],  // Terminal — no transitions
-  [ListingStatus.DELISTED]: [],  // Terminal — no transitions
+  [ListingStatus.DELISTED]: [ListingStatus.ACTIVE],  // Can be reactivated by admin/seller
 };
 
 export class UpdateStatusDto {
