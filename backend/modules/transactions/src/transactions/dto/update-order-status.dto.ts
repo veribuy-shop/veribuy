@@ -25,4 +25,10 @@ export class UpdateOrderStatusDto {
   @IsOptional()
   @MaxLength(100)
   trackingNumber?: string;
+
+  /** Required when a buyer or seller opens a dispute: what went wrong. */
+  @IsString()
+  @IsOptional()
+  @MaxLength(1000)
+  reason?: string;
 }

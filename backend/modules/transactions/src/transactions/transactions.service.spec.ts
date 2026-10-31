@@ -65,6 +65,13 @@ describe('TransactionsService', () => {
       user: {
         findUnique: jest.fn(),
       },
+      message: {
+        create: jest.fn().mockResolvedValue({ id: 'msg-1' }),
+      },
+      offer: {
+        findUnique: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       profile: {
         findUnique: jest.fn(),
       },
@@ -131,6 +138,7 @@ describe('TransactionsService', () => {
         freeShipping: false,
         quantity: 1,
         deviceType: 'SMARTPHONE',
+        trustLensStatus: 'PASSED',
         status: 'ACTIVE',
       });
 
@@ -189,6 +197,7 @@ describe('TransactionsService', () => {
         freeShipping: false,
         quantity: 1,
         deviceType: 'SMARTPHONE',
+        trustLensStatus: 'PASSED',
         status: 'ACTIVE',
       };
 
@@ -299,6 +308,7 @@ describe('TransactionsService', () => {
         price: 500,
         quantity: 1,
         deviceType: 'SMARTPHONE',
+        trustLensStatus: 'PASSED',
         format: 'AUCTION',
         currentBid: 650,
       };
@@ -328,6 +338,26 @@ describe('TransactionsService', () => {
         ).rejects.toThrow(BadRequestException);
       });
 
+      it('lets the winner check out even though the client sends the display price', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({
+          ...auction,
+          status: 'AUCTION_ENDED',
+          highestBidderId: 'buyer-1',
+        });
+        prisma.order.create.mockResolvedValue({ id: 'ord-win' });
+
+        await service.createOrder({
+          buyerId: 'buyer-1',
+          sellerId: 'seller-1',
+          listingId: 'listing-1',
+          amount: 500, // listing.price shown in the UI, not the winning bid
+        });
+
+        expect(prisma.order.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ amount: 650 }) }),
+        );
+      });
+
       it('charges the Buy It Now price on a running auction', async () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue({
           ...auction,
@@ -353,6 +383,7 @@ describe('TransactionsService', () => {
         price: 500,
         quantity: 1,
         deviceType: 'SMARTPHONE',
+        trustLensStatus: 'PASSED',
         status: 'ACTIVE',
       };
 
@@ -385,6 +416,15 @@ describe('TransactionsService', () => {
         expect(mockPaymentIntents.create).not.toHaveBeenCalled();
       });
 
+      it('refuses to sell a listing that has not passed TrustLens', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({ ...listing, trustLensStatus: 'REQUIRES_REVIEW' });
+
+        await expect(
+          service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1' }),
+        ).rejects.toThrow(BadRequestException);
+        expect(mockPaymentIntents.create).not.toHaveBeenCalled();
+      });
+
       it('rejects donations above the cap', async () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
 
@@ -410,6 +450,7 @@ describe('TransactionsService', () => {
         isBulkListing: true,
         quantity: 5,
         deviceType: 'SMARTPHONE',
+        trustLensStatus: 'PASSED',
       });
 
       const mockOrder = {
@@ -467,6 +508,7 @@ describe('TransactionsService', () => {
         price: 300,
         quantity: 1,
         deviceType: 'SMARTPHONE',
+        trustLensStatus: 'PASSED',
         freeShipping: false,
       });
 
@@ -623,6 +665,33 @@ describe('TransactionsService', () => {
         await expect(
           service.updateOrderStatus('ord-1', { status: 'REFUNDED' as any }, 'BUYER', BUYER),
         ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('requires a reason when a buyer opens a dispute', async () => {
+        mockOrderAt('SHIPPED');
+
+        await expect(
+          service.updateOrderStatus('ord-1', { status: 'DISPUTED' as any }, 'BUYER', BUYER),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('lets a buyer dispute with a reason and messages the seller', async () => {
+        mockOrderAt('SHIPPED');
+
+        await service.updateOrderStatus(
+          'ord-1',
+          { status: 'DISPUTED' as any, reason: 'Screen is cracked, not Grade A as listed.' },
+          'BUYER',
+          BUYER,
+        );
+
+        expect(prisma.message.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            senderId: BUYER,
+            recipientId: SELLER,
+            content: 'Screen is cracked, not Grade A as listed.',
+          }),
+        });
       });
 
       it('allows ADMIN to resolve a dispute in the seller\'s favour', async () => {
@@ -875,6 +944,132 @@ describe('TransactionsService', () => {
         { payment_intent: 'pi_test_123' },
         { idempotencyKey: 'refund-order-ord-disp' },
       );
+    });
+  });
+
+  describe('accepted offers', () => {
+    const listing = {
+      id: 'listing-1',
+      sellerId: 'seller-1',
+      title: 'iPhone 15',
+      price: 500,
+      quantity: 1,
+      deviceType: 'SMARTPHONE',
+      status: 'ACTIVE',
+      trustLensStatus: 'PASSED',
+    };
+
+    it('charges the accepted offer price instead of the asking price', async () => {
+      (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
+      prisma.offer.findUnique.mockResolvedValue({
+        buyerId: 'buyer-1', listingId: 'listing-1', status: 'ACCEPTED', amount: 420,
+        expiresAt: new Date(Date.now() + 3600_000),
+      });
+      prisma.order.create.mockResolvedValue({ id: 'ord-offer' });
+
+      await service.createOrder({
+        buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1', amount: 500, offerId: 'offer-1',
+      });
+
+      expect(prisma.order.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ amount: 420, protectionFee: 21 }) }),
+      );
+    });
+
+    it("rejects someone else's accepted offer", async () => {
+      (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
+      prisma.offer.findUnique.mockResolvedValue({
+        buyerId: 'other-buyer', listingId: 'listing-1', status: 'ACCEPTED', amount: 300,
+        expiresAt: new Date(Date.now() + 3600_000),
+      });
+
+      await expect(
+        service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1', offerId: 'offer-1' }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPaymentIntents.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an expired or unaccepted offer', async () => {
+      (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
+      prisma.offer.findUnique.mockResolvedValue({
+        buyerId: 'buyer-1', listingId: 'listing-1', status: 'ACCEPTED', amount: 300,
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      await expect(
+        service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1', offerId: 'offer-1' }),
+      ).rejects.toThrow(BadRequestException);
+
+      prisma.offer.findUnique.mockResolvedValue({
+        buyerId: 'buyer-1', listingId: 'listing-1', status: 'PENDING', amount: 300, expiresAt: null,
+      });
+      await expect(
+        service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1', offerId: 'offer-1' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('multi-unit (bulk) stock reservation', () => {
+    it('sizes the parcel and shipping for one unit, not the whole batch', async () => {
+      (service as any).fetchListing = jest.fn().mockResolvedValue({
+        id: 'bulk-1',
+        sellerId: 'seller-1',
+        title: 'Bulk AirPods',
+        price: 120,
+        deviceType: 'AIRPODS',
+        brand: 'Apple',
+        model: 'AirPods Pro 2',
+        quantity: 10,
+        isBulkListing: true,
+        status: 'ACTIVE',
+        trustLensStatus: 'PASSED',
+      });
+      prisma.order.create.mockResolvedValue({ id: 'ord-bulk' });
+      const profileSpy = jest.spyOn(royalMailService, 'resolvePackageProfile');
+
+      await service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'bulk-1' });
+
+      expect(profileSpy).toHaveBeenCalledWith('AIRPODS', 'Apple', 'AirPods Pro 2', 1);
+    });
+
+    it('reserves a single unit and keeps a bulk listing on sale', async () => {
+      prisma.listing.updateMany
+        .mockResolvedValueOnce({ count: 1 }) // decrement one unit
+        .mockResolvedValueOnce({ count: 0 }); // not the last unit → stays ACTIVE
+
+      const reserved = await (service as any).reserveListing('bulk-1');
+
+      expect(reserved).toBe(true);
+      expect(prisma.listing.updateMany).toHaveBeenNthCalledWith(1, {
+        where: { id: 'bulk-1', status: { in: ['ACTIVE', 'AUCTION_ENDED'] }, quantity: { gte: 1 } },
+        data: { quantity: { decrement: 1 } },
+      });
+    });
+
+    it('refuses to reserve when no stock is left', async () => {
+      prisma.listing.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect((service as any).reserveListing('bulk-1')).resolves.toBe(false);
+    });
+
+    it('returns a released unit to stock and relists a sold-out listing', async () => {
+      prisma.listing.findUnique.mockResolvedValue({ status: 'INACTIVE', quantity: 0, format: 'FIXED_PRICE', auctionEndsAt: null });
+
+      await (service as any).releaseListingReservation('bulk-1');
+
+      expect(prisma.listing.update).toHaveBeenCalledWith({
+        where: { id: 'bulk-1' },
+        data: { quantity: { increment: 1 }, status: 'ACTIVE' },
+      });
+    });
+
+    it('restocks but does not reactivate a listing the seller paused', async () => {
+      prisma.listing.findUnique.mockResolvedValue({ status: 'INACTIVE', quantity: 4, format: 'FIXED_PRICE', auctionEndsAt: null });
+
+      await (service as any).releaseListingReservation('bulk-1');
+
+      expect(prisma.listing.update).toHaveBeenCalledWith({
+        where: { id: 'bulk-1' },
+        data: { quantity: { increment: 1 } },
+      });
     });
   });
   });

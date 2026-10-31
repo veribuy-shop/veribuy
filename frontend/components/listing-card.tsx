@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ShieldCheck, Truck, Gavel, Clock, Sparkles } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
+import { buyerFacingPrice } from '@/lib/fees';
 import { cn } from '@/lib/utils';
 import { formatAuctionCountdown } from '@/lib/auction';
 
@@ -82,8 +83,12 @@ export function ListingCard({
     ? (currentBid !== undefined && currentBid !== null && bidsCount > 0 ? currentBid : startingBid || price)
     : price;
 
-  const savingsPercent = originalPrice && originalPrice > activePrice
-    ? Math.round(((originalPrice - activePrice) / originalPrice) * 100)
+  // Buyers see the price including Buyer Protection; only Royal Mail shipping
+  // is added at checkout. Auction bids stay on the item price (that is what
+  // bidders bid), with the protection fee noted alongside.
+  const displayPrice = isAuction ? activePrice : buyerFacingPrice(price);
+  const savingsPercent = originalPrice && originalPrice > displayPrice
+    ? Math.round(((originalPrice - displayPrice) / originalPrice) * 100)
     : null;
 
   return (
@@ -192,17 +197,18 @@ export function ListingCard({
                 </span>
                 {buyItNowPrice && buyItNowPrice > activePrice && (
                   <span className="text-[11px] text-gray-500 font-medium truncate">
-                    Buy Now: {formatPrice(buyItNowPrice, currency)}
+                    Buy Now: {formatPrice(buyerFacingPrice(buyItNowPrice), currency)}
                   </span>
                 )}
               </div>
+              <div className="text-[10px] text-gray-500">+ buyer protection</div>
             </div>
           ) : (
             <div className="flex items-baseline gap-1.5">
               <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
-                {formatPrice(price, currency)}
+                {formatPrice(displayPrice, currency)}
               </span>
-              {originalPrice && originalPrice > price && (
+              {originalPrice && originalPrice > displayPrice && (
                 <span className="text-xs text-gray-400 line-through">
                   {formatPrice(originalPrice, currency)}
                 </span>

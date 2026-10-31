@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
+import { safeRedirectPath } from '@/lib/safe-redirect';
 
 interface User {
   id: string;
@@ -89,7 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (data.user) setUser(data.user);
           return true;
         }
-        return false;
+        // 409: another tab refreshed first; the browser already has new cookies.
+        return res.status === 409;
       } catch {
         return false;
       } finally {
@@ -123,14 +125,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return res;
   }, [refreshSession]);
 
+  // ── Transparent session refresh for every same-origin API call ──────
+  // Many pages call `/api/*` with plain fetch. When the 15-minute access token
+  // has expired (sleeping laptop, slow 3DS, long form), refresh once and retry
+  // instead of surfacing "Invalid or expired token" to the user.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const originalFetch = window.fetch.bind(window);
+
+    const isRetryableApiCall = (input: RequestInfo | URL): boolean => {
+      const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      let url: URL;
+      try {
+        url = new URL(raw, window.location.origin);
+      } catch {
+        return false;
+      }
+      return (
+        url.origin === window.location.origin &&
+        url.pathname.startsWith('/api/') &&
+        !url.pathname.startsWith('/api/auth/') &&
+        // A Request object's body can only be read once — can't be replayed.
+        !(input instanceof Request && input.body !== null)
+      );
+    };
+
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const res = await originalFetch(input, init);
+      if (res.status !== 401 || !isRetryableApiCall(input)) return res;
+      const refreshed = await refreshSession();
+      return refreshed ? originalFetch(input, init) : res;
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, [refreshSession]);
+
   // ── Load user on mount ───────────────────────────────────────────────
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const response = await fetch('/api/auth/verify', {
+        let response = await fetch('/api/auth/verify', {
           method: 'GET',
           credentials: 'include',
         });
+        if (response.status === 409) {
+          // Another tab/request refreshed the session at the same moment; its
+          // new cookies are already set — just ask again.
+          response = await fetch('/api/auth/verify', { method: 'GET', credentials: 'include' });
+        }
 
         if (response.ok) {
           const data = await response.json();
@@ -181,7 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
 
     if (redirectTo) {
-      router.push(redirectTo);
+      router.push(safeRedirectPath(redirectTo));
     } else if (data.user.role === 'ADMIN') {
       router.push('/admin');
     } else {
@@ -237,7 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (redirectTo) {
-      router.push(redirectTo);
+      router.push(safeRedirectPath(redirectTo));
     } else if (data.user.role === 'ADMIN') {
       router.push('/admin');
     } else {

@@ -25,6 +25,8 @@ import {
   Timer,
   Clock,
 } from 'lucide-react';
+import { buyerFacingPrice, getBuyerProtectionFeePercent } from '@/lib/fees';
+import { formatPrice } from '@/lib/currency';
 
 function validateImeiChecksum(imei: string): { valid: boolean; status: 'empty' | 'incomplete' | 'invalid' | 'valid'; message: string } {
   const clean = imei.trim().replace(/[\s-]/g, '');
@@ -345,6 +347,12 @@ export default function CreateListingPage() {
     }
   };
 
+  // Only phones are verified by IMEI. Cellular tablets/watches may have one;
+  // AirPods, laptops and desktops never do, so the IMEI field is hidden for them.
+  const deviceHasImei = !['AIRPODS', 'LAPTOP', 'DESKTOP'].includes(formData.deviceType);
+  // AirPods have no display, so a powered-on screen photo can't be required.
+  const deviceHasScreen = formData.deviceType !== 'AIRPODS';
+
   const validateStep = (step: number): boolean => {
     setError('');
 
@@ -421,14 +429,12 @@ export default function CreateListingPage() {
           setError('Smartphones require an IMEI for verification');
           return false;
         }
-      } else {
-        // Other IMEI-capable devices must provide an identifier (IMEI or serial).
-        // Laptops and AirPods have no IMEI, so the serial (or none) is acceptable.
-        const requiresIdentifier = !['LAPTOP', 'AIRPODS'].includes(formData.deviceType);
-        if (requiresIdentifier && !formData.imei && !formData.serialNumber) {
-          setError('IMEI or Serial Number is required for verification');
-          return false;
-        }
+      }
+      // Other devices don't need an IMEI: without one they are routed to manual
+      // Trust & Safety review of the photos and (optional) serial number.
+      if (formData.imei && !validateImeiChecksum(formData.imei).valid) {
+        setError('Please enter a valid 15-digit IMEI, or leave it blank');
+        return false;
       }
 
       if (formData.deviceImages.length < 3) {
@@ -436,7 +442,7 @@ export default function CreateListingPage() {
         return false;
       }
 
-      if (formData.screenImages.length < 1) {
+      if (deviceHasScreen && formData.screenImages.length < 1) {
         setError('Please upload at least 1 screen/display image');
         return false;
       }
@@ -459,8 +465,10 @@ export default function CreateListingPage() {
   const handleSubmit = async () => {
     if (!validateStep(currentStep)) return;
 
-    if (!formData.isBulkListing && (formData.deviceImages.length === 0 || formData.screenImages.length === 0)) {
-      setError('Please upload at least 3 device images and 1 screen image before submitting');
+    if (!formData.isBulkListing && (formData.deviceImages.length === 0 || (deviceHasScreen && formData.screenImages.length === 0))) {
+      setError(deviceHasScreen
+        ? 'Please upload at least 3 device images and 1 screen image before submitting'
+        : 'Please upload at least 3 device images before submitting');
       return;
     }
 
@@ -493,7 +501,7 @@ export default function CreateListingPage() {
         reservePrice: isAuction && formData.reservePrice ? parseFloat(formData.reservePrice) : undefined,
         durationDays: isAuction ? Number(formData.durationDays) || 7 : undefined,
         buyItNowPrice: isAuction && formData.buyItNowPrice ? parseFloat(formData.buyItNowPrice) : undefined,
-        imei: formData.isBulkListing ? undefined : (formData.imei || undefined),
+        imei: formData.isBulkListing || !deviceHasImei ? undefined : (formData.imei || undefined),
         serialNumber: formData.isBulkListing ? undefined : (formData.serialNumber || undefined),
         city: formData.city || undefined,
       };
@@ -560,12 +568,6 @@ export default function CreateListingPage() {
         );
       }
 
-      // For bulk listings, skip Trust Lens single-item IMEI verification and navigate to detail page
-      if (formData.isBulkListing) {
-        router.push(`/listings/${listing.id}`);
-        return;
-      }
-
       // Step 3: Create verification request in Trust Lens
       let verificationFailed = false;
       try {
@@ -578,9 +580,9 @@ export default function CreateListingPage() {
             // SEC-06: sellerId intentionally omitted — the backend derives it from
             // the verified JWT token (sellerId is the authenticated user's id).
             conditionGrade: formData.conditionGrade,
-            imeiProvided: !!formData.imei,
+            imeiProvided: deviceHasImei && !!formData.imei,
             serialProvided: !!formData.serialNumber,
-            imei: formData.imei || undefined,
+            imei: deviceHasImei ? formData.imei || undefined : undefined,
             serialNumber: formData.serialNumber || undefined,
             brand: formData.brand || undefined,
           };
@@ -1188,21 +1190,22 @@ export default function CreateListingPage() {
                           className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                         />
                       </div>
-                      <label htmlFor="listing-currency" className="sr-only">Currency</label>
-                      <select
-                        id="listing-currency"
-                        value={formData.currency}
-                        onChange={(e) => updateFormData('currency', e.target.value)}
-                        className="px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
-                      >
-                        <option value="GBP">GBP (£)</option>
-                        <option value="EUR">EUR (€)</option>
-                        <option value="USD">USD ($)</option>
-                      </select>
+                      {/* All VeriBuy orders settle in GBP. */}
+                      <span className="px-4 py-2 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)] text-sm text-[var(--color-text-muted)]">
+                        GBP (£)
+                      </span>
                     </div>
-                    <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-                      Set a competitive price. Trust Lens verification helps you command higher prices.
-                    </p>
+                    {Number(formData.price) > 0 ? (
+                      <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                        You receive {formatPrice(Number(formData.price), 'GBP')}. Buyers will see{' '}
+                        <strong>{formatPrice(buyerFacingPrice(Number(formData.price)), 'GBP')}</strong>{' '}
+                        (includes {getBuyerProtectionFeePercent()}% Buyer Protection, paid by the buyer). Royal Mail shipping is added at checkout.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+                        Set a competitive price. Trust Lens verification helps you command higher prices.
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-lg p-4">
@@ -1425,7 +1428,7 @@ export default function CreateListingPage() {
                         </span>
                       </h3>
                       <p className="text-xs text-emerald-800 mt-1">
-                        Individual 15-digit IMEI verification is not required upfront for bulk business inventory. Each unit dispatched will be fulfilled under your Verified Business credentials.
+                        Individual 15-digit IMEI verification is not required upfront for bulk business inventory. Our Trust & Safety team reviews your batch photos and business details before the listing goes live.
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
                         <span className="bg-white border border-emerald-200 text-emerald-800 px-2.5 py-1 rounded-md font-medium">
@@ -1455,19 +1458,25 @@ export default function CreateListingPage() {
                       <AlertTriangle className="w-4 h-4 inline mr-1" aria-hidden="true" /> Verification Requirements
                     </h3>
                     <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
-                      <li>• IMEI required for phones; serial optional. Tablets/smartwatches need IMEI or serial (laptops & AirPods may use serial only)</li>
+                      <li>• IMEI required for smartphones only. Other devices: add an IMEI (cellular tablets/watches) or serial number if you have one — devices without an IMEI are reviewed manually by our team</li>
                       <li>• At least 3 high-quality device images (various angles)</li>
-                      <li>• At least 1 screen/display image (powered on)</li>
+                      {deviceHasScreen && <li>• At least 1 screen/display image (powered on)</li>}
                       <li>• Optional: Screenshots of Settings showing device info</li>
                       <li>• All images will be timestamped and stored for dispute resolution</li>
                     </ul>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {deviceHasImei && (
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <label htmlFor="device-imei" className="block text-sm font-medium text-[var(--color-text)]">
-                          IMEI <span className="text-red-500" aria-hidden="true">*</span>
+                          IMEI{' '}
+                          {formData.deviceType === 'SMARTPHONE' ? (
+                            <span className="text-red-500" aria-hidden="true">*</span>
+                          ) : (
+                            <span className="text-xs text-[var(--color-text-muted)]">(optional)</span>
+                          )}
                           <span className="sr-only">(required)</span>
                         </label>
                         <button
@@ -1566,6 +1575,7 @@ export default function CreateListingPage() {
                         </div>
                       )}
                     </div>
+                    )}
 
                     <div>
                       <label htmlFor="device-serial" className="block text-sm font-medium text-[var(--color-text)] mb-2">
@@ -1624,8 +1634,15 @@ export default function CreateListingPage() {
 
               <div>
                 <label htmlFor="screen-images" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                  Screen/Display Images <span className="text-red-500" aria-hidden="true">*</span>
-                  <span className="sr-only">(required, minimum 1)</span>
+                  Screen/Display Images{' '}
+                  {deviceHasScreen ? (
+                    <>
+                      <span className="text-red-500" aria-hidden="true">*</span>
+                      <span className="sr-only">(required, minimum 1)</span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-[var(--color-text-muted)]">(optional)</span>
+                  )}
                 </label>
                 <input
                   id="screen-images"
@@ -1731,7 +1748,7 @@ export default function CreateListingPage() {
 
         <p className="text-center text-sm text-[var(--color-text-muted)] mt-4">
           {formData.isBulkListing
-            ? 'Bulk inventory will be published immediately under your verified business credentials.'
+            ? 'Bulk inventory is reviewed by our Trust & Safety team before it goes live.'
             : 'Your IMEI will be checked automatically. Flagged listings are reviewed by an admin.'}
         </p>
       </div>

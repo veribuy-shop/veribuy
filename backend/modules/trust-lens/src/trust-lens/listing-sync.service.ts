@@ -42,6 +42,7 @@ export class ListingSyncService {
     status: 'PASSED' | 'FAILED' | 'REQUIRES_REVIEW' | 'IN_PROGRESS',
     conditionGrade?: string,
     integrityFlags?: string[],
+    reviewNotes?: string,
   ): Promise<void> {
     try {
       const body: Record<string, unknown> = {
@@ -49,6 +50,7 @@ export class ListingSyncService {
       };
       if (conditionGrade !== undefined) body['conditionGrade'] = conditionGrade;
       if (integrityFlags !== undefined) body['integrityFlags'] = integrityFlags;
+      if (reviewNotes) body['reviewNotes'] = reviewNotes;
 
       const res = await fetch(`${this.url}/listings/${listingId}/trust-lens`, {
         method: 'PUT',

@@ -262,7 +262,8 @@ export interface SafeOrderWithPayment extends SafeOrder {
 // ---------------------------------------------------------------------------
 
 /** Auth session user — minimal shape for login/register/verify/refresh responses. */
-export function sanitizeAuthUser(raw: Record<string, any>): SafeAuthUser {
+export function sanitizeAuthUser(input: Record<string, any> | null | undefined): SafeAuthUser {
+  const raw = input ?? {};
   return {
     id: raw.id ?? raw.userId ?? '',
     name: raw.name ?? '',

@@ -85,7 +85,7 @@ function deduplicateOrders(orders: Order[]): Order[] {
 
 export default function OrdersPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'buying' | 'selling'>('buying');
   const [buyingOrders, setBuyingOrders] = useState<Order[]>([]);
@@ -95,13 +95,15 @@ export default function OrdersPage() {
   const sellingOrdersFetched = useRef(false);
 
   useEffect(() => {
+    // Wait for the session to load before deciding the visitor is signed out.
+    if (authLoading) return;
     if (!user) {
       router.push('/login?redirect=/orders');
       return;
     }
     fetchBuyingOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, authLoading]);
 
   useEffect(() => {
     if (activeTab === 'selling' && !sellingOrdersFetched.current && user) {

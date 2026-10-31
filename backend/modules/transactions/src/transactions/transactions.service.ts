@@ -125,6 +125,11 @@ const ORDER_CLIENT_SELECT = {
 
 /** All marketplace prices and charges are denominated in GBP. */
 const SETTLEMENT_CURRENCY = 'GBP';
+/**
+ * Every order is for exactly one unit — including purchases from bulk stock —
+ * so parcel size and shipping are priced for one device, not the whole batch.
+ */
+const ORDER_UNIT_QUANTITY = 1;
 /** Max distinct listings a buyer may hold in checkout at once (anti-squatting). */
 const MAX_OPEN_CHECKOUTS_PER_BUYER = 3;
 /** Upper bound on the optional charity donation added at checkout (GBP). */
@@ -233,6 +238,12 @@ export class TransactionsService implements OnModuleInit {
     if (!listing) {
       throw new NotFoundException('Listing not found');
     }
+    // Only devices that passed TrustLens may be sold — a listing flagged for
+    // review (blacklisted, IMEI mismatch, …) is never purchasable.
+    if (listing.trustLensStatus !== 'PASSED') {
+      throw new BadRequestException('This listing is awaiting verification and cannot be purchased yet');
+    }
+
     const isAuction = listing.format === 'AUCTION';
     const auctionEnded =
       isAuction &&
@@ -275,17 +286,25 @@ export class TransactionsService implements OnModuleInit {
       listing.deviceType || listingCategory || 'SMARTPHONE',
       listing.brand,
       listing.model,
-      listing.quantity || 1,
+      ORDER_UNIT_QUANTITY,
     );
     const parcelWeightGrams: number = profile.totalWeightGrams;
     const parcelFormat: string = profile.parcelFormat;
 
-    // Authoritative item price — derived from the listing, never from the client.
-    const numericAmount = this.resolveListingPrice(listing, !!auctionEnded);
+    // Authoritative item price — derived from the listing (or a seller-accepted
+    // offer, validated here), never from the client.
+    const acceptedOffer = createOrderDto.offerId
+      ? await this.resolveAcceptedOffer(createOrderDto.offerId, buyerId, listingId)
+      : null;
+    const numericAmount = acceptedOffer
+      ? acceptedOffer.amount
+      : this.resolveListingPrice(listing, !!auctionEnded);
     if (numericAmount <= 0) {
       throw new BadRequestException('This listing does not have a valid price');
     }
-    if (amount !== undefined && !this.amountsMatch(Number(amount), numericAmount)) {
+    // Stale-price guard for fixed-price listings. Auction prices move with
+    // bidding (and the client shows the BIN/starting price), so skip it there.
+    if (!isAuction && !acceptedOffer && amount !== undefined && !this.amountsMatch(Number(amount), numericAmount)) {
       this.logger.warn(
         `Rejected order: client amount ${amount} does not match listing ${listingId} price ${numericAmount}`,
       );
@@ -418,8 +437,8 @@ export class TransactionsService implements OnModuleInit {
       if (existingPendingOrder.paymentIntentId) {
         await this.stripe.paymentIntents.cancel(existingPendingOrder.paymentIntentId).catch(() => undefined);
       }
-      // The buyer already held the reservation; make sure it is still in place.
-      await this.reserveListing(listingId);
+      // The buyer's stale checkout already holds a reserved unit — it carries
+      // over to the new order (re-reserving would deduct stock twice).
     } else {
       const reserved = await this.reserveListing(listingId);
       if (!reserved) {
@@ -711,8 +730,16 @@ export class TransactionsService implements OnModuleInit {
     }
     const { updatedOrder, escrow } = result;
 
-    // Mark listing as SOLD — fire-and-forget, must not block order flow
-    this.updateListingStatus(updatedOrder.listingId, 'SOLD').catch((error) => {
+    // A paid accepted offer is fulfilled.
+    this.prisma.offer
+      .updateMany({
+        where: { listingId: updatedOrder.listingId, buyerId: updatedOrder.buyerId, status: 'ACCEPTED' },
+        data: { status: 'COMPLETED' },
+      })
+      .catch((err) => this.logger.warn(`Failed to complete accepted offer: ${(err as Error).message}`));
+
+    // The unit was deducted at reservation; mark SOLD only if it was the last one.
+    this.markUnitSold(updatedOrder.listingId).catch((error) => {
       this.logger.error('Failed to update listing status to SOLD', error?.stack ?? error);
     });
 
@@ -974,6 +1001,17 @@ export class TransactionsService implements OnModuleInit {
       );
     }
 
+    // A dispute freezes escrow, so the counterparty and Trust & Safety need to
+    // know what the problem is.
+    const disputeReason = updateOrderStatusDto.reason?.trim();
+    if (
+      updateOrderStatusDto.status === 'DISPUTED' &&
+      (actor === 'BUYER' || actor === 'SELLER') &&
+      (!disputeReason || disputeReason.length < 10)
+    ) {
+      throw new BadRequestException('Please describe the problem (at least 10 characters) to open a dispute');
+    }
+
     // An admin "refund" must actually return the money via Stripe.
     if (updateOrderStatusDto.status === 'REFUNDED' && actor === 'ADMIN') {
       return (await this.refundOrder(orderId)).order;
@@ -1032,6 +1070,23 @@ export class TransactionsService implements OnModuleInit {
       }
       return tx.order.findUniqueOrThrow({ where: { id: orderId } });
     });
+
+    // Record the dispute reason as a message to the other party (visible in
+    // their inbox and to admins reviewing the order).
+    if (updateOrderStatusDto.status === 'DISPUTED' && disputeReason && actorUserId) {
+      const recipientId = actorUserId === order.buyerId ? order.sellerId : order.buyerId;
+      this.prisma.message
+        .create({
+          data: {
+            senderId: actorUserId,
+            recipientId,
+            listingId: order.listingId,
+            subject: `Dispute opened for order #${order.id.substring(0, 8)}`,
+            content: disputeReason,
+          },
+        })
+        .catch((err) => this.logger.error('Failed to record dispute reason', err?.stack ?? err));
+    }
 
     // Send notifications — fire-and-forget
     this.sendStatusChangeNotification(updatedOrder, order.status).catch((err) => {
@@ -1166,7 +1221,8 @@ export class TransactionsService implements OnModuleInit {
       throw new ConflictException('Order status changed — please refresh and try again');
     }
 
-    if (order.listingId) {
+    // Only a PENDING order still holds a reserved unit (a CANCELLED one already gave it back).
+    if (order.listingId && order.status === 'PENDING') {
       this.releaseListingReservation(order.listingId).catch((error) => {
         this.logger.error('Failed to release listing reservation on delete', error?.stack ?? error);
       });
@@ -1436,8 +1492,8 @@ export class TransactionsService implements OnModuleInit {
     // Relist only if the device never left the seller; once shipped the item
     // is in transit / with the buyer and must be handled as a return.
     if (PRE_DISPATCH_STATUSES.includes(order.status)) {
-      this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
-        this.logger.error('Failed to restore listing status to ACTIVE', error?.stack ?? error);
+      this.releaseListingReservation(order.listingId).catch((error) => {
+        this.logger.error('Failed to restock listing after refund', error?.stack ?? error);
       });
     }
 
@@ -1770,32 +1826,6 @@ export class TransactionsService implements OnModuleInit {
 
       default:
         break;
-    }
-  }
-
-  /**
-   * Update listing status in listing service (internal service-to-service call).
-   * Always call as fire-and-forget (.catch(...)) — must not block order flow.
-   */
-  private async updateListingStatus(listingId: string, status: string): Promise<void> {
-    const LISTING_SERVICE_URL = getInternalApiUrl();
-
-    const response = await fetch(`${LISTING_SERVICE_URL}/listings/${listingId}/status`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN!,
-      },
-      body: JSON.stringify({ status }),
-      signal: AbortSignal.timeout(5000),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-      throw new HttpException(
-        error.message || 'Failed to update listing status',
-        response.status,
-      );
     }
   }
 
@@ -2148,6 +2178,28 @@ export class TransactionsService implements OnModuleInit {
     }
   }
 
+  /** Loads an offer the seller ACCEPTED for this buyer and listing, still within its pay window. */
+  private async resolveAcceptedOffer(
+    offerId: string,
+    buyerId: string,
+    listingId: string,
+  ): Promise<{ amount: number }> {
+    const offer = await this.prisma.offer.findUnique({
+      where: { id: offerId },
+      select: { buyerId: true, listingId: true, status: true, amount: true, expiresAt: true },
+    });
+    if (!offer || offer.buyerId !== buyerId || offer.listingId !== listingId) {
+      throw new ForbiddenException('This offer is not valid for your checkout');
+    }
+    if (offer.status !== 'ACCEPTED') {
+      throw new BadRequestException('This offer has not been accepted by the seller');
+    }
+    if (!offer.expiresAt || offer.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('This accepted offer has expired — please make a new offer');
+    }
+    return { amount: Math.round(Number(offer.amount) * 100) / 100 };
+  }
+
   private normalizeDonation(value: unknown): number {
     const amount = Number(value);
     if (!isFinite(amount) || amount <= 0) return 0;
@@ -2158,42 +2210,59 @@ export class TransactionsService implements OnModuleInit {
   }
 
   /**
-   * Atomically moves a purchasable listing into the checkout reservation
-   * state. Returns false if another checkout already holds it.
+   * Atomically reserves ONE unit of a listing for a checkout. Multi-unit (bulk)
+   * listings stay on sale for other buyers; a listing only leaves sale
+   * (INACTIVE) when its last unit is reserved. Returns false if nothing is left.
    */
   private async reserveListing(listingId: string): Promise<boolean> {
     const { count } = await this.prisma.listing.updateMany({
-      where: { id: listingId, status: { in: ['ACTIVE', 'AUCTION_ENDED'] } },
+      where: { id: listingId, status: { in: ['ACTIVE', 'AUCTION_ENDED'] }, quantity: { gte: 1 } },
+      data: { quantity: { decrement: 1 } },
+    });
+    if (count !== 1) return false;
+    await this.prisma.listing.updateMany({
+      where: { id: listingId, quantity: 0, status: { in: ['ACTIVE', 'AUCTION_ENDED'] } },
       data: { status: 'INACTIVE' },
     });
     await this.redis?.del(`listing:${listingId}`).catch(() => undefined);
-    return count === 1;
+    return true;
   }
 
   /**
-   * Returns a reserved listing to sale, but only if no other live order holds
-   * it. Ended auctions go back to AUCTION_ENDED rather than ACTIVE.
+   * Returns one reserved (or refunded-before-dispatch) unit to stock, putting
+   * the listing back on sale if it had sold out. A listing the seller paused
+   * (INACTIVE with stock left) is restocked but stays paused.
+   * Ended auctions go back to AUCTION_ENDED rather than ACTIVE.
    */
   private async releaseListingReservation(listingId: string): Promise<void> {
-    const liveOrders = await this.prisma.order.count({
-      where: {
-        listingId,
-        status: { in: ['PENDING', 'PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'DISPUTED', 'COMPLETED'] },
-      },
-    });
-    if (liveOrders > 0) return;
-
     const listing = await this.prisma.listing.findUnique({
       where: { id: listingId },
-      select: { format: true, auctionEndsAt: true, status: true },
+      select: { format: true, auctionEndsAt: true, status: true, quantity: true },
     });
-    if (!listing || listing.status !== 'INACTIVE') return;
+    if (!listing) return;
+
+    // Delisted / rejected listings don't take stock back.
+    if (!['ACTIVE', 'AUCTION_ENDED', 'INACTIVE', 'SOLD'].includes(listing.status)) return;
+    // INACTIVE with stock left = paused by the seller: restock, but don't relist.
+    const soldOut = (listing.status === 'INACTIVE' || listing.status === 'SOLD') && listing.quantity === 0;
 
     const auctionEnded =
       listing.format === 'AUCTION' && !!listing.auctionEndsAt && listing.auctionEndsAt.getTime() <= Date.now();
+    await this.prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        quantity: { increment: 1 },
+        ...(soldOut ? { status: auctionEnded ? 'AUCTION_ENDED' : 'ACTIVE' } : {}),
+      },
+    });
+    await this.redis?.del(`listing:${listingId}`).catch(() => undefined);
+  }
+
+  /** After payment: the unit was already deducted at reservation; mark SOLD only when none remain. */
+  private async markUnitSold(listingId: string): Promise<void> {
     await this.prisma.listing.updateMany({
-      where: { id: listingId, status: 'INACTIVE' },
-      data: { status: auctionEnded ? 'AUCTION_ENDED' : 'ACTIVE' },
+      where: { id: listingId, quantity: 0, status: 'INACTIVE' },
+      data: { status: 'SOLD' },
     });
     await this.redis?.del(`listing:${listingId}`).catch(() => undefined);
   }
@@ -2238,7 +2307,7 @@ export class TransactionsService implements OnModuleInit {
         {
           brand: listing.brand,
           model: listing.model,
-          quantity: listing.quantity || 1,
+          quantity: ORDER_UNIT_QUANTITY,
           destinationPostcode: options.destinationPostcode,
           itemValue: options.itemValue,
         },

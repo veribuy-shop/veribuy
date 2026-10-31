@@ -30,10 +30,13 @@ export function calculateMinimumNextBid(params: {
   currentBid?: number | null;
   highestBidderId?: string | null;
   bidderId?: string | null;
+  /** Listings store the starting price as currentBid before any bids exist. */
+  bidCount?: number;
 }): number {
-  const { startingBid, currentBid, highestBidderId, bidderId } = params;
+  const { startingBid, currentBid, highestBidderId, bidderId, bidCount } = params;
 
-  if (currentBid == null || currentBid <= 0) {
+  // First bid may be placed at the starting price (matches the backend engine).
+  if (currentBid == null || currentBid <= 0 || bidCount === 0) {
     return startingBid > 0 ? startingBid : 0.99;
   }
 

@@ -32,9 +32,11 @@ export async function GET(
     );
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Failed to generate shipping label');
+      // Surface the backend's human-readable message (e.g. incomplete address)
+      // rather than its raw JSON body.
+      const body = await response.json().catch(() => null);
       return NextResponse.json(
-        { error: errorText || 'Failed to generate shipping label' },
+        { error: body?.message || 'Failed to generate shipping label' },
         { status: response.status }
       );
     }

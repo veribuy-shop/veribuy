@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
+import { buyerFacingPrice } from '@/lib/fees';
 import {
   Smartphone,
   Tablet,
@@ -776,7 +777,8 @@ export default function BrowseContent() {
                                 </span>
                               )}
                               <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
-                                {formatPrice(numericDisplayPrice, item.currency)}
+                                {/* Fixed prices include Buyer Protection; bids are on the item price. */}
+                                {formatPrice(isAuction ? numericDisplayPrice : buyerFacingPrice(numericDisplayPrice), item.currency)}
                               </span>
                             </div>
                             {isAuction ? (
@@ -786,7 +788,7 @@ export default function BrowseContent() {
                             ) : null}
                           </div>
                           <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
-                            {isAuction ? 'Proxy bidding · 48h escrow' : 'Tracked delivery · 0% fee'}
+                            {isAuction ? 'Proxy bidding · + buyer protection' : 'Incl. buyer protection · + shipping'}
                           </p>
                         </div>
                       </div>

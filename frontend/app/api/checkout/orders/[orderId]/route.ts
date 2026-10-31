@@ -75,7 +75,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { status, trackingNumber } = body;
+    const { status, trackingNumber, reason } = body;
 
     if (!status) {
       return NextResponse.json(
@@ -90,7 +90,7 @@ export async function PATCH(
       {
         method: 'PATCH',
         headers: createAuthHeaders(authResult.token),
-        body: JSON.stringify({ status, trackingNumber }),
+        body: JSON.stringify({ status, trackingNumber, ...(typeof reason === 'string' ? { reason } : {}) }),
       }
     );
 

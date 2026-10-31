@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth-context';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { Clock } from 'lucide-react';
+import ConfirmModal from '@/components/confirm-modal';
 
 interface EvidenceItem {
   id: string;
@@ -71,7 +72,7 @@ interface Listing {
 export default function ReviewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
   const [verification, setVerification] = useState<VerificationRequest | null>(null);
   const [evidence, setEvidence] = useState<EvidenceItem[]>([]);
@@ -79,19 +80,24 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [confirmReject, setConfirmReject] = useState(false);
   const [selectedIntegrityFlags, setSelectedIntegrityFlags] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [listingNotFound, setListingNotFound] = useState(false);
   const [verificationNotFound, setVerificationNotFound] = useState(false);
 
   useEffect(() => {
+    // Wait for the session before deciding — a direct visit or refresh would
+    // otherwise bounce admins to the dashboard while the user is still loading.
+    // (The middleware already enforces ADMIN server-side for /admin routes.)
+    if (authLoading) return;
     if (user?.role !== 'ADMIN') {
-      router.push('/dashboard');
+      router.push('/unauthorized');
       return;
     }
 
     fetchData(id);
-  }, [user, id]);
+  }, [user, id, authLoading]);
 
   const fetchData = async (listingId: string) => {
     setLoading(true);
@@ -402,7 +408,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               {submitting ? 'Processing...' : '🔄 Re-run Check'}
             </button>
             <button
-              onClick={handleReject}
+              onClick={() => setConfirmReject(true)}
               disabled={submitting}
               className="px-6 py-2 bg-[var(--color-danger)] text-white rounded-md hover:opacity-90 disabled:opacity-50 text-sm font-medium"
             >
@@ -417,6 +423,34 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             </button>
           </div>
         </div>
+
+        <ConfirmModal
+          isOpen={confirmReject}
+          onClose={() => setConfirmReject(false)}
+          onConfirm={async () => {
+            await handleReject();
+            setConfirmReject(false);
+          }}
+          title="Reject this listing?"
+          description="The listing will be rejected and the seller notified with the reason below. They can fix the issues and resubmit."
+          confirmLabel="Reject listing"
+          isLoading={submitting}
+          loadingLabel="Rejecting…"
+          variant="danger"
+        >
+          <label htmlFor="reject-reason" className="block text-sm font-medium text-[var(--color-text)] mb-1">
+            Reason (sent to the seller)
+          </label>
+          <textarea
+            id="reject-reason"
+            value={reviewNotes}
+            onChange={(e) => setReviewNotes(e.target.value)}
+            rows={4}
+            maxLength={2000}
+            placeholder="e.g. The IMEI belongs to a different device model. Please check and resubmit."
+            className="w-full border border-[var(--color-border)] rounded-md p-2 text-sm"
+          />
+        </ConfirmModal>
 
         {/* Inline error banner */}
         {error && (

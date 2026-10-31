@@ -116,7 +116,17 @@ export class TrustLensService {
         data: {
           listingId: dto.listingId,
           conditionGrade: dto.conditionGrade || null,
-          status: 'PENDING',
+          // Devices without an IMEI (AirPods, laptops, …) can't be checked
+          // against carrier/GSMA registries — a Trust & Safety reviewer verifies
+          // them from the photos and (optional) serial number instead.
+          status: dto.imeiProvided ? 'PENDING' : 'REQUIRES_REVIEW',
+          ...(dto.imeiProvided
+            ? {}
+            : {
+                reviewNotes: dto.serialProvided
+                  ? 'No IMEI for this device type — manual review of photos and serial number.'
+                  : 'No IMEI or serial provided — manual review of photos.',
+              }),
           integrityFlags: [],
         },
       });
@@ -186,7 +196,9 @@ export class TrustLensService {
 
     // Enqueue the IMEI check for the durable Redis-backed worker (network call
     // runs outside the request). The job persists in Redis so it is never lost.
-    if (dto.imeiProvided || dto.serialProvided) {
+    // Only an IMEI can be checked — a serial-only job would fail and auto-reject
+    // a legitimate non-phone listing.
+    if (dto.imeiProvided && dto.imei) {
       await this.enqueueImeiCheck({
         verificationRequestId: result.id,
         listingId: dto.listingId,
@@ -194,6 +206,10 @@ export class TrustLensService {
         serialNumber: dto.serialNumber,
         brand: dto.brand,
       });
+    } else {
+      await this.listingSync
+        .syncTrustLensResult(dto.listingId, 'REQUIRES_REVIEW', undefined, [])
+        .catch((err) => this.logger.warn(`Failed to route listing ${dto.listingId} to review: ${(err as Error).message}`));
     }
 
     // Fetch and return the complete verification request (seller-safe shape)
@@ -538,6 +554,7 @@ export class TrustLensService {
           status as 'PASSED' | 'FAILED',
           conditionGrade as string | undefined,
           flags,
+          status === 'FAILED' ? reviewNotes : undefined,
         )
         .catch(() => {});
 

@@ -57,7 +57,7 @@ export interface PublicVerificationSummary {
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -68,8 +68,14 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid listing ID format' }, { status: 400 });
     }
 
+    // Forward the session so the owner can see the report while the listing is
+    // still unpublished (drafts / in review are hidden from anonymous viewers).
+    const sessionToken = request.cookies.get('accessToken')?.value;
     const listingRes = await fetch(`${LISTING_SERVICE_URL}/listings/${id}`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
     }).catch(() => null);
 
     if (!listingRes || !listingRes.ok) {

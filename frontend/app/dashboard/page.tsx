@@ -48,6 +48,7 @@ import {
   Share2,
   Users,
   Coins,
+  Tag,
 } from 'lucide-react';
 import { PhoneVerificationModal } from '@/components/phone-verification-modal';
 import {
@@ -679,6 +680,16 @@ function DashboardContent() {
                 </button>
               );
             })}
+            <Link
+              href="/offers"
+              className={cn(
+                'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-150',
+                isDarkMode ? 'text-neutral-400 hover:text-white hover:bg-neutral-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              )}
+            >
+              <Tag className={cn('w-4 h-4', isDarkMode ? 'text-neutral-400' : 'text-slate-500')} />
+              <span>Offers</span>
+            </Link>
           </nav>
         </div>
 
@@ -2002,6 +2013,25 @@ function DashboardContent() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
+                  <div className="sm:col-span-2">
+                    <label className={cn('text-xs font-semibold block mb-1', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
+                      Street Address
+                    </label>
+                    <input
+                      type="text"
+                      value={profileLine1}
+                      onChange={(e) => setProfileLine1(e.target.value)}
+                      placeholder="e.g. 10 Market Street"
+                      autoComplete="address-line1"
+                      className={cn(
+                        'w-full border rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500',
+                        isDarkMode ? 'bg-neutral-900 border-neutral-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                      )}
+                    />
+                    <p className={cn('text-[11px] mt-1', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
+                      Required for shipping labels. Only your city is shown to buyers.
+                    </p>
+                  </div>
                   <div>
                     <label className={cn('text-xs font-semibold block mb-1', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
                       City / Town

@@ -24,10 +24,14 @@ export async function GET(
     // view counts by session (prevents polling/refresh from inflating views).
     const viewer = request.nextUrl.searchParams.get('viewer') ?? '';
     const qs = viewer ? `?viewer=${encodeURIComponent(viewer)}` : '';
+    // Forward the session when present so owners/admins can open listings that
+    // aren't public yet (drafts, under review); anonymous viewers get 404 for those.
+    const sessionToken = request.cookies.get('accessToken')?.value;
     const response = await fetch(`${LISTING_SERVICE_URL}/listings/${id}${qs}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
     });
 

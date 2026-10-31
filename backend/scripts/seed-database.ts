@@ -3,6 +3,11 @@
  * Creates sample data for development/testing
  * 
  * Run with: pnpm seed
+ *
+ * Extra local-only accounts created through the UI during browser E2E testing
+ * (not created by this script; local dev database only):
+ *   Bidder:   e2e.bidder@veribuy.test   / E2eBidder!2026
+ *   Business: e2e.business@veribuy.test / E2eBusiness!2026
  */
 
 import 'dotenv/config';

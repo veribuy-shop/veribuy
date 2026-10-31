@@ -39,6 +39,8 @@ model User {
   referralReceived     Referral?             @relation("ReferredReferral")
   listings             Listing[]             @relation("SellerListings")
   bids                 Bid[]                 @relation("BidderBids")
+  offersMade           Offer[]               @relation("BuyerOffers")
+  offersReceived       Offer[]               @relation("SellerOffers")
   wonAuctions          Listing[]             @relation("HighestBidder")
   purchases            Order[]               @relation("BuyerOrders")
   sales                Order[]               @relation("SellerOrders")
@@ -169,6 +171,7 @@ model Listing {
 
   // ── Relations ──────────────────────────────────────────────────────────
   bids                Bid[]
+  offers              Offer[]
   orders              Order[]
   verificationRequest VerificationRequest?
   evidencePack        EvidencePack?
@@ -203,6 +206,38 @@ model Bid {
   @@index([bidderId])
   @@index([listingId, amount(sort: Desc)])
   @@map("bids")
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+  EXPIRED
+  COMPLETED
+}
+
+/// A buyer's price offer on a fixed-price listing. Once the seller accepts,
+/// the buyer may check out at `amount` until `expiresAt`.
+model Offer {
+  id        String      @id @default(uuid())
+  listingId String      @map("listing_id")
+  listing   Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  buyerId   String      @map("buyer_id")
+  buyer     User        @relation("BuyerOffers", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId  String      @map("seller_id")
+  seller    User        @relation("SellerOffers", fields: [sellerId], references: [id], onDelete: Cascade)
+  amount    Decimal     @db.Decimal(10, 2)
+  note      String?     @db.VarChar(500)
+  status    OfferStatus @default(PENDING)
+  expiresAt DateTime?   @map("expires_at")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@index([listingId, status])
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@map("offers")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

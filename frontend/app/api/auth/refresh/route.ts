@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { sanitizeAuthUser } from '@/lib/sanitize';
+import { setAuthCookies, clearAuthCookies } from '@/lib/auth-cookies';
 
 /**
  * Token refresh endpoint
@@ -29,41 +30,31 @@ export async function POST(request: NextRequest) {
       }
     );
 
+    if (response.status === 409) {
+      // A concurrent refresh (another tab / the middleware) already rotated the
+      // token and set fresh cookies — keep them and tell the client to retry.
+      return NextResponse.json({ message: 'Session already refreshed' }, { status: 409 });
+    }
+
     if (!response.ok) {
       // Refresh token is invalid or expired — clear cookies, return generic message
       const errorResponse = NextResponse.json(
         { message: 'Session expired. Please log in again.' },
         { status: 401 }
       );
-      errorResponse.cookies.delete({ name: 'accessToken', path: '/' });
-      errorResponse.cookies.delete({ name: 'refreshToken', path: '/' });
+      clearAuthCookies(errorResponse);
       return errorResponse;
     }
 
     const data = await response.json();
 
-    // Return only sanitized user fields
-    const nextResponse = NextResponse.json({ user: sanitizeAuthUser(data.user) });
-
-    // Set new access token in HttpOnly cookie
-    nextResponse.cookies.set('accessToken', data.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 15 * 60, // 15 minutes
-      path: '/',
-    });
-
-    // Optionally update refresh token if backend returns a new one
-    if (data.refreshToken) {
-      nextResponse.cookies.set('refreshToken', data.refreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60, // 7 days
-        path: '/',
-      });
-    }
+    // The backend has already rotated the refresh token at this point, so the new
+    // cookies MUST be set — nothing after this may throw before they are attached.
+    // The backend refresh response carries tokens only; user data is optional.
+    const nextResponse = NextResponse.json(
+      data.user ? { user: sanitizeAuthUser(data.user) } : { refreshed: true },
+    );
+    setAuthCookies(nextResponse, { accessToken: data.accessToken, refreshToken: data.refreshToken });
 
     return nextResponse;
   } catch (error) {

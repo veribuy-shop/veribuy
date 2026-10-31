@@ -3,6 +3,7 @@ import ListingDetailContent from './listing-detail-content';
 import { productJsonLd } from '@/lib/structured-data';
 import { getBackendUrl } from '@/lib/backend-url';
 import { serializeJsonLd } from '@/lib/json-ld';
+import { buyerFacingPrice } from '@/lib/fees';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
@@ -46,8 +47,10 @@ export async function generateMetadata(
 
   if (!listing) {
     return {
-      title: 'Listing Not Found',
-      description: 'This listing does not exist or has been removed.',
+      // Also reached for unpublished listings (drafts / in review), which the
+      // owner can still preview client-side — keep the title neutral.
+      title: 'Listing',
+      description: 'This listing is unavailable or not yet published.',
       robots: { index: false, follow: true },
     };
   }
@@ -55,7 +58,8 @@ export async function generateMetadata(
   const gradeLabel = listing.conditionGrade
     ? ` — ${GRADE_LABELS[listing.conditionGrade] || listing.conditionGrade} Condition`
     : '';
-  const price = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
+  // Advertised price includes Buyer Protection (only shipping is added at checkout).
+  const price = buyerFacingPrice(typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price);
   const title = `${listing.title}${gradeLabel}`;
   const description = `${listing.brand} ${listing.model} for £${price.toFixed(2)}. Trust Lens verified on VeriBuy.`;
 
@@ -93,7 +97,7 @@ export default async function ListingPage({
         description: listing.description,
         brand: listing.brand,
         model: listing.model,
-        price: typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price,
+        price: buyerFacingPrice(typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price),
         currency: listing.currency,
         url: `${SITE_URL}/listings/${id}`,
         conditionGrade: listing.conditionGrade,

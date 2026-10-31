@@ -11,7 +11,7 @@ import ConfirmModal from '@/components/confirm-modal';
 import AuctionBiddingCard from '@/components/AuctionBiddingCard';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
-import { getBuyerProtectionFeePercent, calculateProtectionFee } from '@/lib/fees';
+import { getBuyerProtectionFeePercent, calculateProtectionFee, buyerFacingPrice } from '@/lib/fees';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -487,9 +487,13 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const grade = listing.conditionGrade ? GRADE_CONFIG[listing.conditionGrade] : null;
   const isSeller = user?.id === listing.sellerId;
   const numericPrice = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
+  // What the buyer pays for the item: seller price + Buyer Protection. Only
+  // Royal Mail shipping is added at checkout.
+  const protectionFee = calculateProtectionFee(numericPrice);
+  const buyerPrice = buyerFacingPrice(numericPrice);
   const estimatedRetail = estimateRetailPrice(numericPrice, listing.brand);
   const savingsPercent = estimatedRetail
-    ? Math.round(((estimatedRetail - numericPrice) / estimatedRetail) * 100)
+    ? Math.round(((estimatedRetail - buyerPrice) / estimatedRetail) * 100)
     : null;
   const DeviceIcon = DEVICE_TYPE_ICON[listing.deviceType] || Smartphone;
 
@@ -840,7 +844,8 @@ export default function ListingDetailContent({ id }: { id: string }) {
                       aria-describedby="grade-tooltip"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      Verified Grade {listing.conditionGrade} ({grade.label})
+                      {listing.trustLensStatus === 'PASSED' ? 'Verified ' : ''}Grade {listing.conditionGrade} ({grade.label})
+                      {listing.trustLensStatus !== 'PASSED' && ' · pending verification'}
                       <span className="w-4 h-4 rounded-full border border-current flex items-center justify-center text-[10px] leading-none ml-0.5" aria-hidden="true">i</span>
                     </button>
                     {showGradeTooltip && (
@@ -893,9 +898,13 @@ export default function ListingDetailContent({ id }: { id: string }) {
                 <div className="pb-4 border-b border-gray-100">
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tight">
-                      {formatPrice(listing.price, listing.currency)}
+                      {formatPrice(buyerPrice, listing.currency)}
                     </span>
                   </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Includes {formatPrice(protectionFee, listing.currency)} Buyer Protection ({getBuyerProtectionFeePercent()}%).
+                    {listing.freeShipping ? ' Free UK delivery.' : ' Royal Mail shipping calculated at checkout.'}
+                  </p>
 
                   {estimatedRetail && savingsPercent && savingsPercent > 0 && (
                     <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -903,7 +912,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                         MSRP {formatPrice(estimatedRetail, listing.currency)}
                       </span>
                       <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
-                        Save {formatPrice(estimatedRetail - numericPrice, listing.currency)} ({savingsPercent}%)
+                        Save {formatPrice(estimatedRetail - buyerPrice, listing.currency)} ({savingsPercent}%)
                       </span>
                     </div>
                   )}

@@ -2,7 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Logger,
+  OnModuleInit,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';
@@ -56,8 +59,9 @@ const PUBLIC_SELECT = {
 } as const;
 
 @Injectable()
-export class UlistingsService {
+export class UlistingsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(UlistingsService.name);
+  private settleTimer?: NodeJS.Timeout;
 
   constructor(
     private prisma: PrismaService,
@@ -65,11 +69,40 @@ export class UlistingsService {
     private notifications: NotificationClient,
   ) {}
 
+  /**
+   * Auctions must close on time even with no external scheduler: settle
+   * expired auctions every minute (moves them to AUCTION_ENDED and notifies
+   * the winner). Settlement is compare-and-set, so concurrent instances are safe.
+   */
+  onModuleInit() {
+    if (process.env.NODE_ENV === 'test') return;
+    this.settleTimer = setInterval(() => {
+      this.settleExpiredAuctions().catch((err) =>
+        this.logger.warn(`Auction settlement run failed: ${(err as Error).message}`),
+      );
+    }, 60 * 1000);
+    this.settleTimer.unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.settleTimer) clearInterval(this.settleTimer);
+  }
+
   async create(dto: CreateListingDto): Promise<Listing> {
     const initialFlags: IntegrityFlag[] = [IntegrityFlag.CLEAN];
-    let initialTrustStatus: TrustLensStatus = dto.isBulkListing
-      ? TrustLensStatus.PASSED
-      : TrustLensStatus.PENDING;
+    // Bulk inventory is a business-account feature, and it is NOT pre-verified:
+    // business status is self-declared, so every listing (bulk included) goes
+    // through Trust Lens / manual review before it can be sold.
+    if (dto.isBulkListing) {
+      const profile = await this.prisma.profile.findUnique({
+        where: { userId: dto.sellerId! },
+        select: { accountType: true },
+      });
+      if (profile?.accountType !== 'BUSINESS') {
+        throw new ForbiddenException('Bulk inventory listings are only available to business accounts');
+      }
+    }
+    let initialTrustStatus: TrustLensStatus = TrustLensStatus.PENDING;
 
     // Check if duplicate IMEI before creating
     const cleanImei = dto.imei ? dto.imei.replace(/[^0-9]/g, '').trim() : null;
@@ -849,15 +882,35 @@ export class UlistingsService {
     trustLensStatus: TrustLensStatus,
     conditionGrade?: string,
     integrityFlags?: IntegrityFlag[],
+    reviewNotes?: string,
   ): Promise<Listing> {
     try {
-      // Derive the listing status from the trust lens outcome
+      const current = await this.prisma.listing.findUnique({ where: { id }, select: { status: true } });
+      if (!current) {
+        throw new NotFoundException('Listing not found');
+      }
+
+      // Derive the listing status from the trust lens outcome — relative to where
+      // the listing is now. A verification (re-)run must never resurrect a sold,
+      // delisted or mid-checkout listing, and a failed/flagged result must take
+      // a live listing off sale.
       const statusUpdate: Record<string, unknown> = {};
-      if (trustLensStatus === 'PASSED') {
-        statusUpdate['status'] = 'ACTIVE';
+      const awaitingPublication: string[] = [
+        ListingStatus.DRAFT,
+        ListingStatus.SUBMITTED,
+        ListingStatus.UNDER_REVIEW,
+        ListingStatus.APPROVED,
+      ];
+      if (trustLensStatus === 'PASSED' && awaitingPublication.includes(current.status)) {
+        statusUpdate['status'] = ListingStatus.ACTIVE;
         statusUpdate['publishedAt'] = new Date();
-      } else if (trustLensStatus === 'FAILED') {
-        statusUpdate['status'] = 'REJECTED';
+      } else if (trustLensStatus === 'FAILED' && current.status !== ListingStatus.SOLD) {
+        statusUpdate['status'] = ListingStatus.REJECTED;
+      } else if (
+        trustLensStatus === 'REQUIRES_REVIEW' &&
+        (current.status === ListingStatus.ACTIVE || current.status === ListingStatus.APPROVED)
+      ) {
+        statusUpdate['status'] = ListingStatus.UNDER_REVIEW;
       }
 
       const listing = await this.prisma.listing.update({
@@ -872,6 +925,25 @@ export class UlistingsService {
       });
 
       await this.redis.del(`listing:${id}`).catch(() => {});
+
+      // Tell the seller why their listing was rejected so they can fix and resubmit.
+      if (statusUpdate['status'] === ListingStatus.REJECTED) {
+        this.getSellerInfo(listing.sellerId)
+          .then((seller) => {
+            if (seller) {
+              this.notifications.notifyListingStatusChanged({
+                sellerEmail: seller.email,
+                sellerName: seller.name,
+                listingTitle: listing.title,
+                listingId: listing.id,
+                status: ListingStatus.REJECTED,
+                reason: reviewNotes,
+              });
+            }
+          })
+          .catch(() => {});
+      }
+
       return listing;
     } catch (err: any) {
       if (err?.code === 'P2025') {
@@ -1094,12 +1166,14 @@ export class UlistingsService {
         const reserveMet = !listing.reservePrice || curBid >= resPrice;
         const hasWinner = listing.highestBidderId && reserveMet;
 
-        await this.prisma.listing.update({
-          where: { id: listing.id },
+        // Compare-and-set: only one instance/run may settle (and notify) each auction.
+        const { count } = await this.prisma.listing.updateMany({
+          where: { id: listing.id, status: ListingStatus.ACTIVE },
           data: {
             status: ListingStatus.AUCTION_ENDED,
           },
         });
+        if (count !== 1) continue;
 
         await this.redis.del(`listing:${listing.id}`).catch(() => {});
         settledCount++;

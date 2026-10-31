@@ -19,6 +19,37 @@ export interface ImeiCheckResult {
   rawApiResponse: Record<string, unknown>;
   flags: string[];
   checksRun: string[];
+  /** Brand reported by the GSMA lookup (e.g. "Nokia"), if any. */
+  reportedBrand?: string;
+  /** Provider fraud-risk score (0–100), if reported. */
+  fraudRiskScore?: number;
+}
+
+/** Fraud-risk score at/above which a listing is never auto-approved. */
+export const FRAUD_RISK_REVIEW_THRESHOLD = 70;
+
+/** Convert the provider's HTML `result` string into plain text lines. */
+function htmlToText(input: unknown): string {
+  return String(input ?? '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+}
+
+/** Value of a "Label: value" line in provider text, lowercased and trimmed. */
+function labeledValue(text: string, label: string): string | undefined {
+  const match = new RegExp(`^\\s*${label}\\s*:\\s*(.+)$`, 'im').exec(text);
+  return match ? match[1].trim().toLowerCase() : undefined;
+}
+
+/** True for affirmative provider values (true / 1 / "yes" / "blacklisted" …). */
+function isAffirmative(value: unknown): boolean {
+  if (value === true || value === 1) return true;
+  if (typeof value !== 'string') return false;
+  return ['true', 'yes', 'blacklisted', 'blocked', 'locked', 'stolen', 'reported'].includes(
+    value.trim().toLowerCase(),
+  );
 }
 
 interface ImeiApiResponse {
@@ -166,6 +197,10 @@ export class ImeiCheckService {
     // surface as REQUIRES_REVIEW flags but do NOT make the IMEI "invalid".
     let brandLocked = false;
     let brandLockFlag: string | null = null;
+    let reportedBrand: string | undefined;
+    let fraudRiskScore: number | undefined;
+    // The provider says the device is not the brand the seller claimed.
+    let brandMismatch = false;
 
     if (apple) {
       // --- Apple: run services 3 + 5 in parallel (service 4 iCloud check is
@@ -215,6 +250,12 @@ export class ImeiCheckService {
         const s3result = this.statusValue(service3.value.result);
         if (this.isBlocked(s3result)) blacklisted = true;
         if (this.isStolen(s3result)) reportedStolen = true;
+        if (
+          service3.value.status === 'failed' &&
+          /only apple devices supported/i.test(String(service3.value.result ?? ''))
+        ) {
+          brandMismatch = true;
+        }
       } else {
         this.logger.warn(`ImeiCheck service 3 failed: ${String(service3.reason)}`);
         raw['service3Error'] = String(service3.reason);
@@ -227,7 +268,11 @@ export class ImeiCheckService {
       // Service 5 — GSMA Blacklist (brand-agnostic live safety net)
       if (service5.status === 'fulfilled') {
         raw['service5'] = service5.value;
-        ({ blacklisted, reportedStolen } = this.parseBlacklistResult(service5.value, blacklisted, reportedStolen));
+        ({ blacklisted, reportedStolen, reportedBrand, fraudRiskScore } = this.parseBlacklistResult(
+          service5.value,
+          blacklisted,
+          reportedStolen,
+        ));
       } else {
         this.logger.warn(`ImeiCheck service 5 failed: ${String(service5.reason)}`);
         raw['service5Error'] = String(service5.reason);
@@ -266,7 +311,11 @@ export class ImeiCheckService {
       // GSMA blacklist — brand-agnostic safety net
       if (service5.status === 'fulfilled') {
         raw['service5'] = service5.value;
-        ({ blacklisted, reportedStolen } = this.parseBlacklistResult(service5.value, blacklisted, reportedStolen));
+        ({ blacklisted, reportedStolen, reportedBrand, fraudRiskScore } = this.parseBlacklistResult(
+          service5.value,
+          blacklisted,
+          reportedStolen,
+        ));
       } else {
         this.logger.warn(`ImeiCheck service 5 (non-Apple) failed: ${String(service5.reason)}`);
         raw['service5Error'] = String(service5.reason);
@@ -283,12 +332,27 @@ export class ImeiCheckService {
     if (blacklisted) flags.push('BLACKLISTED');
     if (brandLocked && brandLockFlag) flags.push(brandLockFlag);
 
+    // The IMEI must belong to the brand the seller listed. A mismatch means the
+    // identifier was copied from another device — never auto-approve it.
+    const claimed = this.normalizeBrand(brand);
+    const reported = this.normalizeBrand(reportedBrand);
+    if (claimed && reported && !['na', 'n/a', 'unknown'].includes(reported) && claimed !== reported) {
+      brandMismatch = true;
+    }
+    if (brandMismatch) flags.push('IMEI_MISMATCH');
+
+    // High provider fraud score (cloning / suspicious resale) → manual review.
+    if (fraudRiskScore !== undefined && fraudRiskScore >= FRAUD_RISK_REVIEW_THRESHOLD) {
+      flags.push('HIGH_FRAUD_RISK');
+    }
+
     // Check if any service reported an explicitly invalid IMEI / SN
     const isExplicitlyInvalidImei = (val: unknown): boolean => {
       if (!val || typeof val !== 'object') return false;
       const resp = val as Record<string, unknown>;
       const text = String(resp.response ?? resp.result ?? '').toLowerCase();
       return resp.status === 'failed' && (text.includes('invalid') || text.includes('not found'));
+      // ("Only Apple devices supported" is handled above as a brand mismatch.)
     };
 
     const hasInvalidImeiReport = Object.keys(raw)
@@ -313,7 +377,8 @@ export class ImeiCheckService {
     if (flags.length === 0) {
       flags.push(anySucceeded ? 'CLEAN' : 'NOT_RUN');
     }
-    const imeiValid = anySucceeded && !blacklisted && !reportedStolen && !hasInvalidImeiReport;
+    const imeiValid =
+      anySucceeded && !blacklisted && !reportedStolen && !hasInvalidImeiReport && !brandMismatch;
 
     return {
       imeiValid,
@@ -327,19 +392,27 @@ export class ImeiCheckService {
       rawApiResponse: raw,
       flags,
       checksRun,
+      reportedBrand,
+      fraudRiskScore,
     };
   }
 
-  /** Extract blacklist/stolen booleans from a service 5 API response. */
+  /** Extract blacklist/stolen booleans, brand and fraud score from a service 5 API response. */
   private parseBlacklistResult(
     response: ImeiApiResponse,
     blacklisted: boolean,
     reportedStolen: boolean,
-  ): { blacklisted: boolean; reportedStolen: boolean } {
+  ): { blacklisted: boolean; reportedStolen: boolean; reportedBrand?: string; fraudRiskScore?: number } {
     const obj = response.object;
+    let reportedBrand: string | undefined;
     if (obj) {
-      const blacklist = obj['blacklisted'] ?? obj['blacklist'];
-      if (blacklist === true || blacklist === 'true' || blacklist === 1) blacklisted = true;
+      // The provider has used several key names for the same signal.
+      const blacklistKeys = [
+        'blacklisted', 'blacklist', 'blacklistStatus', 'blacklist_status',
+        'gsmaBlacklisted', 'gsma_blacklisted',
+      ];
+      if (blacklistKeys.some((key) => isAffirmative(obj[key]))) blacklisted = true;
+      if (typeof obj['brand'] === 'string') reportedBrand = obj['brand'] as string;
 
       const stolen = obj['stolen'] ?? obj['reportedStolen'] ?? obj['reported_stolen'];
       if (stolen === true || stolen === 'true' || stolen === 1) reportedStolen = true;
@@ -352,17 +425,24 @@ export class ImeiCheckService {
       }
     }
 
-    // The human-readable `result` is a "<Label>: <Status>" string, e.g.
-    // "Blacklist Status: Clean". We must look at the STATUS VALUE, not the whole
-    // string — grepping the whole thing for "blacklist" would flag a clean device
-    // just because the label contains the word "Blacklist".
-    const resultValue = this.statusValue(response.result);
+    // The human-readable `result` is HTML with "<Label>: <Status>" lines, e.g.
+    // "Brand: Nokia<br>Blacklist Status: <span>Blacklisted</span><br>Fraud Risk
+    // Score: 90/100". Read the STATUS VALUE of the relevant line — grepping the
+    // whole string for "blacklist" would flag clean devices because of the label.
+    const text = htmlToText(response.result);
+    const blacklistLine = labeledValue(text, 'Blacklist Status');
+    const resultValue = blacklistLine ?? this.statusValue(text);
     if (this.isBlocked(resultValue)) blacklisted = true;
     if (this.isStolen(resultValue)) {
       blacklisted = true;
       reportedStolen = true;
     }
-    return { blacklisted, reportedStolen };
+
+    reportedBrand ??= labeledValue(text, 'Brand');
+    const score = /fraud risk score\s*:\s*(\d{1,3})\s*\/\s*100/i.exec(text);
+    const fraudRiskScore = score ? Number(score[1]) : undefined;
+
+    return { blacklisted, reportedStolen, reportedBrand, fraudRiskScore };
   }
 
   /** The status token after the last ":", trimmed and lowercased ("Clean", "Blacklisted"). */

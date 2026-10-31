@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { formatPrice } from '@/lib/currency';
+import { buyerFacingPrice, getBuyerProtectionFeePercent } from '@/lib/fees';
 import {
   formatAuctionCountdown,
   calculateMinimumNextBid,
@@ -91,6 +92,7 @@ export default function AuctionBiddingCard({
     currentBid,
     highestBidderId,
     bidderId: user?.id,
+    bidCount,
   });
 
   const isSeller = user?.id === sellerId;
@@ -335,6 +337,7 @@ export default function AuctionBiddingCard({
             </div>
             <p className="text-[11px] text-gray-500 mt-1.5">
               Proxy bidding automatically submits the minimum increment required to keep you leading, up to your max.
+              {' '}Bids are on the item price; a {getBuyerProtectionFeePercent()}% Buyer Protection fee and Royal Mail shipping are added at checkout.
             </p>
           </div>
 
@@ -344,7 +347,7 @@ export default function AuctionBiddingCard({
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-gray-700">Don&apos;t want to wait?</span>
                 <span className="text-sm font-black text-gray-900">
-                  {formatPrice(buyItNowPrice, currency)}
+                  {formatPrice(buyerFacingPrice(buyItNowPrice), currency)}
                 </span>
               </div>
               <button

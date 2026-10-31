@@ -3,6 +3,7 @@ import {
   getBuyerProtectionFeePercent,
   getBuyerProtectionFeeRate,
   calculateProtectionFee,
+  buyerFacingPrice,
 } from '../fees';
 
 describe('Fee calculation utilities', () => {
@@ -60,5 +61,13 @@ describe('Fee calculation utilities', () => {
     expect(calculateProtectionFee(200)).toBe(10);
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe('buyerFacingPrice', () => {
+  it('adds the buyer protection fee to the seller price (shipping excluded)', () => {
+    // Default 5% rate: a £120 listing is shown to buyers as £126.
+    expect(buyerFacingPrice(120)).toBe(126);
+    expect(buyerFacingPrice(749.99)).toBe(787.49);
   });
 });

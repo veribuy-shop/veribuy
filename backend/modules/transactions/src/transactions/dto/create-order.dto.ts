@@ -9,6 +9,7 @@ import {
   Length,
   Max,
   IsObject,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -52,6 +53,19 @@ export class ShippingAddressDto {
   @IsOptional()
   @Length(0, 25)
   phone?: string;
+
+  /**
+   * Accepted for client compatibility only (web and mobile echo these inside
+   * the address). The server always uses the validated top-level fields and
+   * overwrites these before persisting.
+   */
+  @IsOptional()
+  @IsIn(['HOME', 'CLICK_AND_COLLECT'])
+  deliveryMethod?: string;
+
+  @IsOptional()
+  @IsObject()
+  collectionPoint?: Record<string, any>;
 }
 
 export class CreateOrderDto {
@@ -121,4 +135,12 @@ export class CreateOrderDto {
   @IsOptional()
   @Length(0, 100)
   charityName?: string;
+
+  /**
+   * Pay at a seller-accepted offer price. Validated server-side (must be an
+   * ACCEPTED, unexpired offer by this buyer on this listing).
+   */
+  @IsOptional()
+  @IsUUID()
+  offerId?: string;
 }

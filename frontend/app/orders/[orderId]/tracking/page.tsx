@@ -64,6 +64,8 @@ export default function OrderTrackingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showDisputeForm, setShowDisputeForm] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -96,7 +98,7 @@ export default function OrderTrackingPage() {
     fetchOrderDetails();
   }, [fetchOrderDetails]);
 
-  const updateOrderStatus = async (newStatus: string) => {
+  const updateOrderStatus = async (newStatus: string, reason?: string) => {
     setActionLoading(true);
     setActionError(null);
     try {
@@ -104,7 +106,7 @@ export default function OrderTrackingPage() {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, ...(reason ? { reason } : {}) }),
       });
       if (!response.ok) {
         const data = await response.json();
@@ -617,6 +619,80 @@ export default function OrderTrackingPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Buyer protection: report a problem (freezes escrow pending review) */}
+        {isBuyer && ['ESCROW_HELD', 'SHIPPED', 'DELIVERED'].includes(order.status) && (
+          <div className="border border-red-200 bg-red-50/40 rounded-3xl p-6">
+            {!showDisputeForm ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Something wrong with this order?</h3>
+                  <p className="text-xs text-slate-600">
+                    Not arrived, damaged, or not as described? Report it and your payment stays frozen in escrow while our team reviews.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDisputeForm(true)}
+                  className="px-4 py-2 border border-red-300 text-red-700 hover:bg-red-100 text-sm font-semibold rounded-xl"
+                >
+                  Report a problem
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  updateOrderStatus('DISPUTED', disputeReason.trim()).then(() => setShowDisputeForm(false));
+                }}
+                className="space-y-3"
+              >
+                <label htmlFor="dispute-reason" className="block text-sm font-bold text-slate-900">
+                  What went wrong?
+                </label>
+                <textarea
+                  id="dispute-reason"
+                  value={disputeReason}
+                  onChange={(e) => setDisputeReason(e.target.value)}
+                  maxLength={1000}
+                  rows={4}
+                  required
+                  minLength={10}
+                  placeholder="e.g. The screen has a crack that wasn't shown in the listing photos."
+                  className="w-full border border-slate-300 rounded-xl p-3 text-sm"
+                />
+                <p className="text-xs text-slate-500">
+                  The seller will see this message. Escrow funds will not be released until the dispute is resolved.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={actionLoading || disputeReason.trim().length < 10}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded-xl disabled:opacity-50"
+                  >
+                    {actionLoading ? 'Submitting…' : 'Open dispute'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDisputeForm(false)}
+                    className="px-4 py-2 border border-slate-300 text-sm rounded-xl"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
+        {isBuyer && order.status === 'DISPUTED' && (
+          <div className="border border-amber-200 bg-amber-50 rounded-3xl p-6">
+            <h3 className="text-sm font-bold text-amber-900">Dispute under review</h3>
+            <p className="text-xs text-amber-800">
+              Your payment is frozen in escrow. Our Trust &amp; Safety team will review the order and contact you.
+            </p>
           </div>
         )}
       </div>

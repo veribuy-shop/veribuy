@@ -62,16 +62,27 @@ export class EvidenceService {
   }
 
   async createEvidencePack(dto: CreateEvidencePackDto) {
-    const pack = await this.prisma.evidencePack.upsert({
-      where: { listingId: dto.listingId },
-      create: {
-        listingId: dto.listingId,
-      },
-      update: {},
-      include: {
-        items: { select: ITEM_SELECT },
-      },
-    });
+    const upsertPack = () =>
+      this.prisma.evidencePack.upsert({
+        where: { listingId: dto.listingId },
+        create: {
+          listingId: dto.listingId,
+        },
+        update: {},
+        include: {
+          items: { select: ITEM_SELECT },
+        },
+      });
+
+    // Prisma's upsert is not atomic: parallel first uploads for the same listing
+    // can both try to INSERT. The loser gets P2002 — the pack now exists, so retry.
+    let pack: Awaited<ReturnType<typeof upsertPack>>;
+    try {
+      pack = await upsertPack();
+    } catch (err: any) {
+      if (err?.code !== 'P2002') throw err;
+      pack = await upsertPack();
+    }
 
     this.logger.log(`Upserted evidence pack ${pack.id} for listing ${dto.listingId}`);
     return pack;

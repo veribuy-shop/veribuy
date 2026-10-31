@@ -99,7 +99,9 @@ function CheckoutForm({
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
-  const { user } = useAuth();
+  // authFetch refreshes an expired session and retries once, so a slow checkout
+  // (3DS, BNPL, a sleeping laptop) never fails on a stale access token.
+  const { user, authFetch } = useAuth();
 
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
@@ -246,7 +248,12 @@ function CheckoutForm({
     return Object.keys(errors).length === 0;
   };
 
-  const itemPrice = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
+  // The server-priced order amount is authoritative (e.g. an auction's winning
+  // bid differs from the listing's display/Buy It Now price).
+  const itemPrice =
+    pendingOrder.amount != null
+      ? Number(pendingOrder.amount)
+      : typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
   const protectionFee =
     pendingOrder.protectionFee != null
       ? Number(pendingOrder.protectionFee)
@@ -286,7 +293,7 @@ function CheckoutForm({
         postal_code: selectedCollectionPoint.postcode,
       } : shippingAddress;
 
-      const updateRes = await fetch('/api/checkout/update-shipping', {
+      const updateRes = await authFetch('/api/checkout/update-shipping', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -343,7 +350,7 @@ function CheckoutForm({
       }
 
       // Step 3: Confirm payment on backend
-      const confirmResponse = await fetch('/api/checkout/confirm-payment', {
+      const confirmResponse = await authFetch('/api/checkout/confirm-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -732,7 +739,7 @@ function CheckoutForm({
               const quote = calculateShippingFee(listing.deviceType, shippingAddress.postal_code || 'SW1A 1AA', svc, {
                 brand: listing.brand,
                 model: listing.model,
-                quantity: listing.quantity,
+                quantity: 1, // each order is a single unit, even from bulk stock
               });
               const isSelected = selectedService === svc;
               return (
@@ -991,7 +998,7 @@ function CheckoutForm({
 function CheckoutPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading, authFetch } = useAuth();
 
   const [listing, setListing] = useState<Listing | null>(null);
   const [pendingOrder, setPendingOrder] = useState<PendingOrder | null>(null);
@@ -1016,13 +1023,18 @@ function CheckoutPageContent() {
   const [donateToCharity, setDonateToCharity] = useState(false);
 
   const listingId = searchParams.get('listingId');
+  // Present when paying for a seller-accepted offer (price validated server-side).
+  const offerId = searchParams.get('offerId');
 
   // Guard against double order creation (React 18 Strict Mode runs effects twice)
   const initRef = useRef(false);
 
   useEffect(() => {
+    // Wait for the session to load — otherwise a direct visit (or refresh)
+    // bounces signed-in buyers to the login page.
+    if (authLoading) return;
     if (!user) {
-      router.push(`/login?redirect=/checkout?listingId=${listingId}`);
+      router.push(`/login?redirect=${encodeURIComponent(`/checkout?listingId=${listingId ?? ''}`)}`);
       return;
     }
 
@@ -1042,7 +1054,7 @@ function CheckoutPageContent() {
     initRef.current = true;
 
     initCheckout();
-  }, [listingId, user?.id, user?.role]); // PERF-07: depend on user?.id and user?.role to avoid stale-closure re-runs
+  }, [listingId, user?.id, user?.role, authLoading]); // PERF-07: depend on user?.id and user?.role to avoid stale-closure re-runs
 
   const initCheckout = async () => {
     try {
@@ -1069,7 +1081,7 @@ function CheckoutPageContent() {
 
       // Step 2: Pre-create the order to get a clientSecret for PaymentElement.
       // The shipping fee is set to 0 if seller covers delivery, or default mainland TRACKED_48 rate.
-      const createOrderResponse = await fetch('/api/checkout/create-order', {
+      const createOrderResponse = await authFetch('/api/checkout/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1087,6 +1099,7 @@ function CheckoutPageContent() {
           shippingService: 'TRACKED_48',
           // shippingAddress will be collected from the form
           shippingAddress: null,
+          ...(offerId ? { offerId } : {}),
         }),
       });
 
@@ -1123,7 +1136,7 @@ function CheckoutPageContent() {
       const quote = calculateShippingFee(listing.deviceType, newPostcode, selectedService, {
         brand: listing.brand,
         model: listing.model,
-        quantity: listing.quantity,
+        quantity: 1, // each order is a single unit, even from bulk stock
       });
       setShippingQuote(quote);
     } else {
@@ -1137,15 +1150,19 @@ function CheckoutPageContent() {
       const quote = calculateShippingFee(listing.deviceType, postcode, service, {
         brand: listing.brand,
         model: listing.model,
-        quantity: listing.quantity,
+        quantity: 1, // each order is a single unit, even from bulk stock
       });
       setShippingQuote(quote);
     }
   };
 
-  const itemPrice = listing
-    ? typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price
-    : 0;
+  // Server-priced order amount is authoritative (auction winning bid, etc.).
+  const itemPrice =
+    pendingOrder?.amount != null
+      ? Number(pendingOrder.amount)
+      : listing
+        ? typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price
+        : 0;
   const protectionFee =
     pendingOrder?.protectionFee != null
       ? Number(pendingOrder.protectionFee)
@@ -1179,12 +1196,21 @@ function CheckoutPageContent() {
           <CircleX aria-hidden="true" className="inline-block h-16 w-16 text-[var(--color-danger)] mb-4" />
           <h1 className="text-2xl font-bold text-[var(--color-text)] mb-4">Checkout Error</h1>
           <p className="text-[var(--color-text-muted)] mb-6">{error || 'Unable to load checkout'}</p>
-          <Link
-            href="/browse"
-            className="inline-block px-6 py-3 bg-[var(--color-accent)] text-white rounded-lg hover:opacity-90"
-          >
-            Back to Browse
-          </Link>
+          {error && /verify your email/i.test(error) ? (
+            <Link
+              href="/check-email"
+              className="inline-block px-6 py-3 bg-[var(--color-accent)] text-white rounded-lg hover:opacity-90"
+            >
+              Verify your email
+            </Link>
+          ) : (
+            <Link
+              href="/browse"
+              className="inline-block px-6 py-3 bg-[var(--color-accent)] text-white rounded-lg hover:opacity-90"
+            >
+              Back to Browse
+            </Link>
+          )}
         </div>
       </div>
     );
@@ -1255,16 +1281,14 @@ function CheckoutPageContent() {
               </div>
 
               <div className="border-t pt-4 space-y-2">
+                {/* Same figure the listing advertised — only shipping is added here. */}
                 <div className="flex justify-between text-sm">
-                  <span className="text-[var(--color-text-muted)]">Subtotal:</span>
-                  <span className="font-medium">{formatPrice(listing.price, listing.currency)}</span>
+                  <span className="text-[var(--color-text-muted)]">Item (incl. Buyer Protection):</span>
+                  <span className="font-medium">{formatPrice(itemPrice + protectionFee, listing.currency)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--color-text-muted)]">Buyer Protection Fee:</span>
-                  <span className="font-medium text-[var(--color-text)]">
-                    {formatPrice(protectionFee, listing.currency)}
-                  </span>
-                </div>
+                <p className="text-xs text-[var(--color-text-muted)] -mt-1">
+                  {formatPrice(itemPrice, listing.currency)} + {formatPrice(protectionFee, listing.currency)} Buyer Protection ({feePercent}%)
+                </p>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--color-text-muted)]">Shipping:</span>
                   {listing.freeShipping ? (

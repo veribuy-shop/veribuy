@@ -192,6 +192,8 @@ export default function OrderConfirmationPage() {
   const [dropoffPostcode, setDropoffPostcode] = useState('');
   const [loadingDropoff, setLoadingDropoff] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [labelLoading, setLabelLoading] = useState(false);
+  const [labelError, setLabelError] = useState<string | null>(null);
 
   const fetchOrderDetails = useCallback(async () => {
     if (!orderId) {
@@ -533,15 +535,48 @@ export default function OrderConfirmationPage() {
                       Standard Royal Mail 4x6&quot; PDF label with barcode and return address. Print at home, affix to your parcel, and drop in any Post Office or 24/7 Parcel Postbox.
                     </p>
                   </div>
-                  <a
-                    href={`/api/orders/${order.id}/shipping-label`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs py-2.5 px-4 rounded-xl shadow-sm transition"
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      // Fetch first so a failure shows a helpful message instead
+                      // of opening a tab of raw JSON.
+                      setLabelError(null);
+                      setLabelLoading(true);
+                      const labelTab = window.open('', '_blank');
+                      try {
+                        const res = await fetch(`/api/orders/${order.id}/shipping-label`, { credentials: 'include' });
+                        if (!res.ok) {
+                          const body = await res.json().catch(() => null);
+                          labelTab?.close();
+                          setLabelError(body?.error || 'Could not generate the shipping label. Please try again.');
+                          return;
+                        }
+                        const url = URL.createObjectURL(await res.blob());
+                        if (labelTab) labelTab.location.href = url;
+                        else window.location.href = url;
+                      } catch {
+                        labelTab?.close();
+                        setLabelError('Could not generate the shipping label. Please try again.');
+                      } finally {
+                        setLabelLoading(false);
+                      }
+                    }}
+                    disabled={labelLoading}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-60 text-white font-medium text-xs py-2.5 px-4 rounded-xl shadow-sm transition"
                   >
                     <Download className="w-4 h-4" />
-                    Download PDF Shipping Label
-                  </a>
+                    {labelLoading ? 'Generating label…' : 'Download PDF Shipping Label'}
+                  </button>
+                  {labelError && (
+                    <p role="alert" className="mt-2 text-xs text-red-700">
+                      {labelError}{' '}
+                      {/address/i.test(labelError) && (
+                        <Link href="/profile" className="font-semibold underline">
+                          Complete your address
+                        </Link>
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -597,6 +632,28 @@ export default function OrderConfirmationPage() {
               </div>
             </div>
           )}
+
+        {/* Buyer next step: confirming receipt / releasing escrow lives on the tracking page */}
+        {isBuyer && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">
+                {order.status === 'SHIPPED' ? 'Has your parcel arrived?' : 'Inspected your device?'}
+              </p>
+              <p className="text-xs text-emerald-800">
+                {order.status === 'SHIPPED'
+                  ? 'Confirm delivery to start your 48-hour inspection window.'
+                  : 'Release escrow to the seller once the device matches its Trust Lens certificate.'}
+              </p>
+            </div>
+            <Link
+              href={`/orders/${order.id}/tracking`}
+              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl"
+            >
+              {order.status === 'SHIPPED' ? 'Confirm delivery' : 'Review & release escrow'}
+            </Link>
+          </div>
+        )}
 
         {/* Buyer Tracking Link */}
         {isBuyer && order.trackingNumber && (

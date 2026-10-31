@@ -471,10 +471,22 @@ describe('AuthService', () => {
       expect(stored).toMatch(/^[0-9a-f]{64}$/);
     });
 
+    it('treats a reuse within the grace window as a benign concurrent refresh', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-old',
+        revokedAt: new Date(Date.now() - 5_000),
+        expiresAt: new Date(Date.now() + 60_000),
+        user: { id: 'usr-1', role: 'BUYER', isActive: true },
+      });
+
+      await expect(service.refreshToken('raced-token')).rejects.toThrow(ConflictException);
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    });
+
     it('revokes every session when a rotated refresh token is reused', async () => {
       prisma.refreshToken.findUnique.mockResolvedValue({
         id: 'rt-old',
-        revokedAt: new Date(),
+        revokedAt: new Date(Date.now() - 5 * 60_000),
         expiresAt: new Date(Date.now() + 60_000),
         user: { id: 'usr-1', role: 'BUYER', isActive: true },
       });

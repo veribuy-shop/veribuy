@@ -7,10 +7,9 @@
  * the backend verifies. The signature only vouches for the IP — it grants no
  * access to internal endpoints — and is only sent to the backend origin.
  */
-import { createHmac } from 'crypto';
 import { headers as requestHeaders } from 'next/headers';
 import { getBackendUrl } from './lib/backend-url';
-import { resolveClientIp, isBackendUrl } from './lib/client-ip';
+import { clientIpHeaders, isBackendUrl } from './lib/client-ip';
 
 export async function registerNodeFetchInstrumentation() {
   const originalFetch = globalThis.fetch;
@@ -21,18 +20,17 @@ export async function registerNodeFetchInstrumentation() {
     const token = process.env.INTERNAL_SERVICE_TOKEN;
 
     if (token && isBackendUrl(url, backendUrl)) {
-      let clientIp: string | null = null;
+      let forwarded: Record<string, string> = {};
       try {
-        clientIp = resolveClientIp((await requestHeaders()).get('x-forwarded-for'));
+        forwarded = await clientIpHeaders((await requestHeaders()).get('x-forwarded-for'));
       } catch {
         // Outside a request scope (build, background work) — nothing to forward.
       }
 
-      if (clientIp) {
+      if (Object.keys(forwarded).length > 0) {
         const merged = new Headers(input instanceof Request ? input.headers : undefined);
         new Headers(init?.headers).forEach((value, key) => merged.set(key, value));
-        merged.set('x-client-ip', clientIp);
-        merged.set('x-client-ip-sig', createHmac('sha256', token).update(`client-ip:${clientIp}`).digest('hex'));
+        Object.entries(forwarded).forEach(([key, value]) => merged.set(key, value));
         return originalFetch(input, { ...init, headers: merged });
       }
     }

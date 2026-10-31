@@ -16,10 +16,29 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
 
     if (isPublic) {
-      return true;
+      return this.tryOptionalAuth(context);
     }
 
     return super.canActivate(context);
+  }
+
+  /**
+   * Public routes still identify the caller when a bearer token is sent, so
+   * handlers can tailor responses (e.g. owners viewing their unpublished
+   * listing). An invalid or missing token simply means "anonymous".
+   */
+  private async tryOptionalAuth(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const header = request?.headers?.authorization;
+    if (typeof header !== 'string' || !header.startsWith('Bearer ')) {
+      return true;
+    }
+    try {
+      await super.canActivate(context);
+    } catch {
+      request.user = undefined;
+    }
+    return true;
   }
 
   handleRequest(err: any, user: any, info: any) {

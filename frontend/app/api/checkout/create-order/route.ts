@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId, getTokenRole } from '@/lib/api-auth';
 import { sanitizeOrderWithPayment } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid } from '@/lib/validate-id';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -50,6 +51,7 @@ export async function POST(req: NextRequest) {
       collectionPoint,
       donationAmount,
       charityName,
+      offerId,
     } = body;
 
     if (!sellerId || !listingId || !currency) {
@@ -123,6 +125,8 @@ export async function POST(req: NextRequest) {
         collectionPoint: collectionPoint ?? undefined,
         donationAmount: donationAmount ?? undefined,
         charityName: charityName ?? undefined,
+        // Validated server-side against an ACCEPTED offer for this buyer/listing.
+        offerId: isUuid(offerId) ? offerId : undefined,
       }),
     });
 

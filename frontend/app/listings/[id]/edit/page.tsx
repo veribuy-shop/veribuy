@@ -30,14 +30,9 @@ interface EditFormData {
   storageCapacity: string;
 }
 
+// All VeriBuy orders settle in GBP; the backend ignores any other currency.
 const CURRENCIES = [
   { value: 'GBP', label: 'GBP — British Pound' },
-  { value: 'USD', label: 'USD — US Dollar' },
-  { value: 'EUR', label: 'EUR — Euro' },
-  { value: 'NGN', label: 'NGN — Nigerian Naira' },
-  { value: 'GHS', label: 'GHS — Ghanaian Cedi' },
-  { value: 'KES', label: 'KES — Kenyan Shilling' },
-  { value: 'ZAR', label: 'ZAR — South African Rand' },
 ];
 
 const CONDITION_GRADES: { value: ConditionGrade; label: string; description: string }[] = [

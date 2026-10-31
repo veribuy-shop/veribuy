@@ -60,8 +60,8 @@ const nextConfig: NextConfig = {
               // 'unsafe-eval' is only needed by the dev server (React Refresh). 'unsafe-inline'
               // remains for Next.js inline bootstrap scripts until nonce-based CSP is adopted.
               process.env.NODE_ENV === 'development'
-                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com"
-                : "script-src 'self' 'unsafe-inline' https://js.stripe.com",
+                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com https://www.googletagmanager.com"
+                : "script-src 'self' 'unsafe-inline' https://js.stripe.com https://www.googletagmanager.com",
               "style-src 'self' 'unsafe-inline'", // Allow inline styles (Tailwind)
               "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
@@ -69,8 +69,8 @@ const nextConfig: NextConfig = {
               // the browser only needs to connect to this origin + Stripe.
               // http://localhost:* is intentionally omitted from production CSP.
               process.env.NODE_ENV === 'development'
-                ? "connect-src 'self' https://api.stripe.com https://*.stripe.com http://localhost:*"
-                : "connect-src 'self' https://api.stripe.com https://*.stripe.com",
+                ? "connect-src 'self' https://api.stripe.com https://*.stripe.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com http://localhost:*"
+                : "connect-src 'self' https://api.stripe.com https://*.stripe.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com",
               "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
               "object-src 'none'",
               "base-uri 'self'",

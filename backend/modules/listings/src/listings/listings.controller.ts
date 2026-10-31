@@ -13,6 +13,7 @@ import {
   UseGuards,
   ForbiddenException,
   BadRequestException,
+  NotFoundException,
   Headers,
   ParseUUIDPipe,
   UnauthorizedException,
@@ -28,6 +29,14 @@ import { PlaceBidDto } from './dto/place-bid.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto, assertEmailVerified } from '@veribuy/common';
 import { DeviceType, ConditionGrade, ListingStatus } from '.prisma/veribuy-client';
 import * as crypto from 'crypto';
+
+/** Listing states anyone may open by direct link. */
+const PUBLICLY_VISIBLE_STATUSES = new Set<string>([
+  ListingStatus.ACTIVE,
+  ListingStatus.INACTIVE,
+  ListingStatus.AUCTION_ENDED,
+  ListingStatus.SOLD,
+]);
 
 interface AuthenticatedUser {
   userId: string;
@@ -80,8 +89,19 @@ export class UlistingsController {
 
   @Get(':id')
   @Public()
-  async findOne(@Param('id', ParseUUIDPipe) id: string, @Query('viewer') viewer?: string) {
-    return this.listingsService.findOne(id, viewer);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('viewer') viewer?: string,
+    @CurrentUser() user?: AuthenticatedUser,
+  ) {
+    const listing = await this.listingsService.findOne(id, viewer);
+    // Unpublished listings (drafts, in review, rejected, delisted) are only
+    // visible to their owner and admins — everyone else gets a plain 404.
+    const isPrivileged = user?.role === 'ADMIN' || (user?.userId && user.userId === listing.sellerId);
+    if (!PUBLICLY_VISIBLE_STATUSES.has(listing.status) && !isPrivileged) {
+      throw new NotFoundException('Listing not found');
+    }
+    return listing;
   }
 
   /**
@@ -238,6 +258,7 @@ export class UlistingsController {
       dto.trustLensStatus,
       dto.conditionGrade,
       dto.integrityFlags,
+      dto.reviewNotes,
     );
   }
 

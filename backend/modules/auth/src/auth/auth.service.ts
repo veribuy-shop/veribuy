@@ -49,6 +49,10 @@ export const hashRefreshToken = (token: string) =>
 // Constant-time-ish login: compare against a dummy hash when the user doesn't exist.
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync('veribuy-dummy-password-for-timing', 12);
 
+// Two tabs (or the middleware and the client) can legitimately refresh with the
+// same token at once. A reuse inside this window is a benign race, not theft.
+const REFRESH_REUSE_GRACE_MS = 30_000;
+
 const LOGIN_MAX_FAILURES = 10;
 const LOGIN_LOCKOUT_SECONDS = 15 * 60;
 
@@ -662,6 +666,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
+    if (stored.revokedAt && Date.now() - stored.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS) {
+      // Concurrent refresh lost the race; the winner already set fresh cookies.
+      throw new ConflictException('Refresh token was already rotated');
+    }
+
     if (stored.revokedAt) {
       // Reuse of a rotated token means it was likely stolen — kill every session.
       this.logger.warn(`Refresh token reuse detected for user ${stored.user.id}; revoking all sessions`);
@@ -679,7 +688,7 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
     if (count !== 1) {
-      throw new UnauthorizedException('Invalid refresh token');
+      throw new ConflictException('Refresh token was already rotated');
     }
 
     return this.generateTokens(stored.user.id, stored.user.role);

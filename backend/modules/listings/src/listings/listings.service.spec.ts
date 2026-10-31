@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UlistingsService } from './listings.service';
 import { PrismaService } from '../../../../src/database/prisma.service';
@@ -107,7 +107,7 @@ describe('UlistingsService', () => {
       expect(result).toEqual(mockListing);
     });
 
-    it('should create a business bulk listing with PASSED trust status and multi-unit quantity', async () => {
+    it('creates a business bulk listing as unverified (PENDING) with multi-unit quantity', async () => {
       const mockBulkListing = {
         id: 'lst-bulk-1',
         sellerId: 'seller-biz',
@@ -120,12 +120,13 @@ describe('UlistingsService', () => {
         isBulkListing: true,
         quantity: 15,
         freeShipping: true,
-        trustLensStatus: 'PASSED',
+        trustLensStatus: 'PENDING',
         storageCapacity: '256GB',
         color: 'Space Black',
       };
 
       prisma.listing.create.mockResolvedValue(mockBulkListing);
+      prisma.profile.findUnique.mockResolvedValue({ accountType: 'BUSINESS' });
 
       const result = await service.create({
         sellerId: 'seller-biz',
@@ -148,7 +149,7 @@ describe('UlistingsService', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             sellerId: 'seller-biz',
-            trustLensStatus: 'PASSED',
+            trustLensStatus: 'PENDING',
             isBulkListing: true,
             quantity: 15,
             freeShipping: true,
@@ -157,8 +158,27 @@ describe('UlistingsService', () => {
           }),
         }),
       );
-      expect(result.trustLensStatus).toBe('PASSED');
       expect(result.quantity).toBe(15);
+    });
+
+    it('refuses bulk listings from non-business accounts', async () => {
+      prisma.profile.findUnique.mockResolvedValue({ accountType: 'INDIVIDUAL' });
+
+      await expect(
+        service.create({
+          sellerId: 'seller-1',
+          title: 'Fake bulk to skip verification',
+          description: 'x'.repeat(60),
+          deviceType: 'SMARTPHONE',
+          brand: 'Apple',
+          model: 'iPhone 14',
+          price: 500,
+          conditionGrade: 'A',
+          isBulkListing: true,
+          quantity: 5,
+        } as any),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.listing.create).not.toHaveBeenCalled();
     });
     it('should create an AUCTION listing with starting bid and calculated endsAt', async () => {
       const mockAuctionListing = {
@@ -471,6 +491,34 @@ describe('UlistingsService', () => {
         where: { id: 'lst-1' },
         data: expect.not.objectContaining({ status: expect.anything() }),
       });
+    });
+  });
+
+  describe('updateTrustLensStatus (state-aware)', () => {
+    const run = async (current: string, result: string) => {
+      prisma.listing.findUnique.mockResolvedValue({ status: current });
+      prisma.listing.update.mockResolvedValue({ id: 'lst-1' });
+      await service.updateTrustLensStatus('lst-1', result as any);
+      return prisma.listing.update.mock.calls.at(-1)[0].data;
+    };
+
+    it('publishes a listing awaiting verification when it passes', async () => {
+      expect(await run('SUBMITTED', 'PASSED')).toMatchObject({ status: 'ACTIVE' });
+    });
+
+    it('never resurrects a sold, delisted or reserved listing on a passing re-run', async () => {
+      for (const status of ['SOLD', 'DELISTED', 'INACTIVE']) {
+        expect(await run(status, 'PASSED')).not.toHaveProperty('status');
+      }
+    });
+
+    it('takes a live listing off sale when a re-run flags it for review', async () => {
+      expect(await run('ACTIVE', 'REQUIRES_REVIEW')).toMatchObject({ status: 'UNDER_REVIEW' });
+    });
+
+    it('rejects a failed listing unless it already sold', async () => {
+      expect(await run('ACTIVE', 'FAILED')).toMatchObject({ status: 'REJECTED' });
+      expect(await run('SOLD', 'FAILED')).not.toHaveProperty('status');
     });
   });
 

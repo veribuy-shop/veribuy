@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { sanitizeAuthUser } from '@/lib/sanitize';
+import { setAuthCookies, clearAuthCookies } from '@/lib/auth-cookies';
 
 /**
  * Verify endpoint
@@ -49,35 +50,34 @@ export async function GET(request: NextRequest) {
         if (refreshResponse.ok) {
           const refreshData = await refreshResponse.json();
 
-          // Normalise id field (backend may return userId or id)
-          const rawUser = {
-            ...refreshData.user,
-            id: refreshData.user?.userId ?? refreshData.user?.id,
-          };
+          // The refresh response carries tokens only — hydrate the real user with
+          // the new access token rather than returning a blank user (which made
+          // pages treat a signed-in user as a stranger: no id, no role).
+          const hydrated = await fetch(`${getBackendUrl()}/auth/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${refreshData.accessToken}`,
+            },
+          }).catch(() => null);
+          const userData = hydrated?.ok ? await hydrated.json() : null;
 
-          const nextResponse = NextResponse.json({ user: sanitizeAuthUser(rawUser) });
+          const nextResponse = userData
+            ? NextResponse.json({ user: sanitizeAuthUser({ ...userData, id: userData.userId ?? userData.id }) })
+            : NextResponse.json({ message: 'Unable to load session' }, { status: 401 });
 
-          // Set new access token
-          nextResponse.cookies.set('accessToken', refreshData.accessToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
-            maxAge: 15 * 60, // 15 minutes
-            path: '/',
+          // The backend already rotated the refresh token — always persist the new pair.
+          setAuthCookies(nextResponse, {
+            accessToken: refreshData.accessToken,
+            refreshToken: refreshData.refreshToken,
           });
 
-          // Rotate refresh token if the backend issued a new one
-          if (refreshData.refreshToken) {
-            nextResponse.cookies.set('refreshToken', refreshData.refreshToken, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: 'strict',
-              maxAge: 7 * 24 * 60 * 60, // 7 days
-              path: '/',
-            });
-          }
-
           return nextResponse;
+        }
+
+        if (refreshResponse.status === 409) {
+          // A concurrent request already refreshed; its cookies are on the way.
+          return NextResponse.json({ message: 'Session already refreshed' }, { status: 409 });
         }
       }
 
@@ -87,8 +87,7 @@ export async function GET(request: NextRequest) {
         { status: 401 }
       );
 
-      errorResponse.cookies.delete({ name: 'accessToken', path: '/' });
-      errorResponse.cookies.delete({ name: 'refreshToken', path: '/' });
+      clearAuthCookies(errorResponse);
 
       return errorResponse;
     }

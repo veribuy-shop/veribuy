@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -486,11 +486,12 @@ function VerificationReportContent({ id }: { id: string }) {
   );
 }
 
-export default async function VerificationReportPage({
+// Client components can't be async; unwrap the params promise with React.use().
+export default function VerificationReportPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const { id } = use(params);
   return <VerificationReportContent id={id} />;
 }

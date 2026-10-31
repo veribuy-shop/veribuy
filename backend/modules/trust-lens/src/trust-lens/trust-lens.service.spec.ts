@@ -136,6 +136,29 @@ describe('TrustLensService', () => {
       expect(result).toEqual(mockCreatedRequest);
     });
 
+    it('routes a serial-only non-phone device to manual review without an IMEI check', async () => {
+      prisma.listing.findUnique.mockResolvedValue({ deviceType: 'AIRPODS' });
+      const created = { id: 'vr-3', listingId: 'lst-3', status: 'REQUIRES_REVIEW' };
+      prisma.verificationRequest.create.mockResolvedValue(created);
+      prisma.verificationRequest.findUnique.mockResolvedValue(created);
+      prisma.identifierValidation.create.mockResolvedValue({ id: 'iv-3' });
+
+      await service.createVerificationRequest({
+        listingId: 'lst-3',
+        sellerId: 'seller-1',
+        serialProvided: true,
+        serialNumber: 'H6WXYZ123ABC',
+        brand: 'Apple',
+      } as any);
+
+      // A serial-only job would fail in the IMEI worker and auto-reject the listing.
+      expect(imeiWorker.enqueue).not.toHaveBeenCalled();
+      expect(prisma.verificationRequest.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'REQUIRES_REVIEW' }) }),
+      );
+      expect(listingSync.syncTrustLensResult).toHaveBeenCalledWith('lst-3', 'REQUIRES_REVIEW', undefined, []);
+    });
+
     it('should pre-fulfill checklist items if evidence pack with images already exists', async () => {
       prisma.listing.findUnique.mockResolvedValue({
         deviceType: 'SMARTPHONE',

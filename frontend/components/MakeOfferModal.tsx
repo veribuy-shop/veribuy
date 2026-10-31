@@ -116,26 +116,13 @@ export default function MakeOfferModal({
     setError('');
 
     try {
-      const subject = `🏷️ Offer: ${formatPrice(numericOffer, currency)} for ${listingTitle}`;
-      const messageBody = [
-        `Hi! I would like to make an offer of ${formatPrice(numericOffer, currency)} on your listing "${listingTitle}" (Asking price: ${formatPrice(askingPrice, currency)}${discountPercent > 0 ? `, ${discountPercent}% discount` : ''}).`,
-        note.trim() ? `\nBuyer note: "${note.trim()}"` : '',
-        `\nI am ready to complete payment via VeriBuy Escrow once you accept.`,
-      ]
-        .filter(Boolean)
-        .join('\n');
-
-      const response = await fetch('/api/messages/send', {
+      // Recorded as a real offer the seller can accept; once accepted the buyer
+      // can check out at this price (validated server-side).
+      const response = await fetch(`/api/listings/${listingId}/offers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          recipientId: sellerId,
-          listingId,
-          subject,
-          content: messageBody,
-          listingTitle,
-        }),
+        body: JSON.stringify({ amount: numericOffer, note: note.trim() || undefined }),
       });
 
       if (!response.ok) {
@@ -209,7 +196,7 @@ export default function MakeOfferModal({
                 Offer Sent to Seller!
               </h3>
               <p className="text-sm text-gray-600 max-w-sm mx-auto mb-4">
-                Your offer of <strong className="text-emerald-700 font-bold">{formatPrice(numericOffer, currency)}</strong> has been delivered to the seller&apos;s inbox. You will receive an alert as soon as they respond.
+                Your offer of <strong className="text-emerald-700 font-bold">{formatPrice(numericOffer, currency)}</strong> has been sent to the seller. Track it on your <a href="/offers" className="underline font-semibold">Offers page</a> — if they accept, you can pay that price within 48 hours.
               </p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-xs text-gray-600">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />

@@ -86,3 +86,12 @@ export function calculateProtectionFee(itemPrice: number): number {
   const rate = getBuyerProtectionFeeRate();
   return Math.round(itemPrice * rate * 100) / 100;
 }
+
+/**
+ * The price a buyer pays for the item itself: seller price + Buyer Protection
+ * Fee. This is what listings display, so the only amount added at checkout is
+ * Royal Mail shipping. Display-only — the server charges the same figures.
+ */
+export function buyerFacingPrice(itemPrice: number): number {
+  return Math.round((itemPrice + calculateProtectionFee(itemPrice)) * 100) / 100;
+}
