@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeOrder } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -19,6 +20,8 @@ export async function GET(
     }
 
     const { orderId } = await params;
+
+    if (!isUuid(orderId)) return invalidIdResponse();
 
     if (!UUID_RE.test(orderId)) {
       return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });
@@ -64,6 +67,8 @@ export async function PATCH(
     }
 
     const { orderId } = await params;
+
+    if (!isUuid(orderId)) return invalidIdResponse();
 
     if (!UUID_RE.test(orderId)) {
       return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });
@@ -119,6 +124,8 @@ export async function DELETE(
     }
 
     const { orderId } = await params;
+
+    if (!isUuid(orderId)) return invalidIdResponse();
 
     if (!UUID_RE.test(orderId)) {
       return NextResponse.json({ error: 'Invalid order ID format' }, { status: 400 });

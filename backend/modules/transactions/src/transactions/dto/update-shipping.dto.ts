@@ -1,4 +1,6 @@
-import { IsNumber, IsString, IsIn, IsOptional, Min } from 'class-validator';
+import { IsNumber, IsString, IsIn, IsOptional, Min, Max, IsObject, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ShippingAddressDto } from './create-order.dto';
 
 export class UpdateShippingDto {
   /**
@@ -18,6 +20,7 @@ export class UpdateShippingDto {
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Max(50)
   donationAmount?: number;
 
   @IsString()
@@ -25,9 +28,13 @@ export class UpdateShippingDto {
   @IsIn(['HOME', 'CLICK_AND_COLLECT'])
   deliveryMethod?: string;
 
+  /** Sanitised server-side to a bounded set of string fields. */
   @IsOptional()
+  @IsObject()
   collectionPoint?: Record<string, any>;
 
   @IsOptional()
-  shippingAddress?: Record<string, any>;
+  @ValidateNested()
+  @Type(() => ShippingAddressDto)
+  shippingAddress?: ShippingAddressDto;
 }

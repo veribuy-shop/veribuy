@@ -38,6 +38,10 @@ export class CreateMessageDto {
   @MaxLength(2000)
   content: string;
 
+  /**
+   * Deprecated and ignored — recipient details are resolved server-side.
+   * Still accepted so older clients don't fail whitelist validation.
+   */
   @IsOptional()
   @ValidateNested()
   @Type(() => EmailContextDto)

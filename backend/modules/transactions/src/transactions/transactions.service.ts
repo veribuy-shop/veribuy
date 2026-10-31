@@ -4,9 +4,13 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
   HttpException,
   OnModuleInit,
+  Optional,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
+import { RedisService } from '@veribuy/redis-cache';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -44,23 +48,28 @@ const ALLOWED_TRANSITIONS: Record<string, Record<string, OrderActor[]>> = {
   PENDING: {
     CANCELLED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
   },
+  // Once money is captured an order can't simply be CANCELLED — it must be
+  // REFUNDED. ADMIN refunds go through refundOrder() (which calls Stripe);
+  // INTERNAL refunds record a refund already made in Stripe (charge.refunded).
   PAYMENT_RECEIVED: {
     // Driven by the Stripe webhook, never by an end user.
     ESCROW_HELD: ['ADMIN', 'INTERNAL'],
-    CANCELLED: ['ADMIN', 'INTERNAL'],
+    REFUNDED: ['ADMIN', 'INTERNAL'],
   },
   ESCROW_HELD: {
     SHIPPED: ['SELLER', 'ADMIN', 'INTERNAL'],
     DISPUTED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
-    CANCELLED: ['ADMIN', 'INTERNAL'],
+    REFUNDED: ['ADMIN', 'INTERNAL'],
   },
   SHIPPED: {
     DELIVERED: ['BUYER', 'ADMIN', 'INTERNAL'],
     DISPUTED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
+    REFUNDED: ['ADMIN', 'INTERNAL'],
   },
   DELIVERED: {
     COMPLETED: ['BUYER', 'ADMIN', 'INTERNAL'],
     DISPUTED: ['BUYER', 'SELLER', 'ADMIN', 'INTERNAL'],
+    REFUNDED: ['ADMIN', 'INTERNAL'],
   },
   COMPLETED: {},
   DISPUTED: {
@@ -114,6 +123,39 @@ const ORDER_CLIENT_SELECT = {
   updatedAt: true,
 } as const;
 
+/** All marketplace prices and charges are denominated in GBP. */
+const SETTLEMENT_CURRENCY = 'GBP';
+/** Max distinct listings a buyer may hold in checkout at once (anti-squatting). */
+const MAX_OPEN_CHECKOUTS_PER_BUYER = 3;
+/** Upper bound on the optional charity donation added at checkout (GBP). */
+const MAX_DONATION_GBP = 50;
+/** Order statuses in which money has been captured but not yet released or refunded. */
+const REFUNDABLE_STATUSES = ['PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'DISPUTED'];
+/** Paid statuses where the device has not left the seller, so the listing can be relisted. */
+const PRE_DISPATCH_STATUSES = ['PAYMENT_RECEIVED', 'ESCROW_HELD'];
+
+export function generateCollectionPin(): string {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
+
+/**
+ * Reduce a client-supplied Click & Collect point to a bounded set of string
+ * fields. It is stored on the order and rendered in emails / labels, so
+ * arbitrary nested JSON is never persisted.
+ */
+export function sanitizeCollectionPoint(input: unknown): Record<string, string> | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const allowed = ['id', 'name', 'type', 'addressLine1', 'town', 'postcode'];
+  const out: Record<string, string> = {};
+  for (const key of allowed) {
+    const value = (input as Record<string, unknown>)[key];
+    if (typeof value === 'string' || typeof value === 'number') {
+      out[key] = String(value).slice(0, 200);
+    }
+  }
+  return out.id || out.name ? out : null;
+}
+
 export function getBuyerProtectionFeeRate(): number {
   const raw = process.env.BUYER_PROTECTION_FEE_PERCENT || process.env.BUYER_PROTECTION_FEE_RATE;
   if (!raw) return 0.05;
@@ -131,6 +173,7 @@ export class TransactionsService implements OnModuleInit {
     private prisma: PrismaService,
     private invoicesService: InvoicesService,
     private royalMailService: RoyalMailService,
+    @Optional() private redis?: RedisService,
   ) {}
 
   /**
@@ -163,9 +206,11 @@ export class TransactionsService implements OnModuleInit {
       listingId,
       amount,
       shippingService = null,
-      currency = 'GBP',
       shippingAddress,
     } = createOrderDto;
+    // SECURITY: all prices are GBP; a client-chosen currency would let a buyer
+    // pay e.g. 500 ZAR for a £500 item. The DTO field is ignored.
+    const currency = SETTLEMENT_CURRENCY;
 
     // DI-06: Prevent self-dealing — buyer and seller must be different users
     if (buyerId === sellerId) {
@@ -188,8 +233,32 @@ export class TransactionsService implements OnModuleInit {
     if (!listing) {
       throw new NotFoundException('Listing not found');
     }
-    if (listing.status === 'SOLD' || listing.status === 'DELISTED') {
+    const isAuction = listing.format === 'AUCTION';
+    const auctionEnded =
+      isAuction &&
+      (listing.status === 'AUCTION_ENDED' ||
+        (listing.auctionEndsAt && new Date(listing.auctionEndsAt).getTime() <= Date.now()));
+
+    // INACTIVE is allowed only so the same buyer can resume their own checkout
+    // (handled by the pending-order reuse path below); the atomic reservation
+    // step rejects anyone else.
+    if (!['ACTIVE', 'AUCTION_ENDED', 'INACTIVE'].includes(listing.status)) {
       throw new BadRequestException('This listing is no longer available for purchase');
+    }
+
+    // Auction rules: a running auction can only be bought via Buy It Now; an
+    // ended auction can only be bought by the winning bidder with the reserve met.
+    if (isAuction) {
+      if (auctionEnded) {
+        if (listing.highestBidderId !== buyerId) {
+          throw new ForbiddenException('Only the winning bidder can purchase this auction');
+        }
+        if (listing.reservePrice != null && Number(listing.currentBid) < Number(listing.reservePrice)) {
+          throw new BadRequestException('The reserve price for this auction was not met');
+        }
+      } else if (!(Number(listing.buyItNowPrice) > 0)) {
+        throw new BadRequestException('This auction is still running and has no Buy It Now price');
+      }
     }
     // Ensure the client cannot redirect funds by supplying a mismatched sellerId
     if (listing.sellerId && listing.sellerId !== sellerId) {
@@ -212,7 +281,7 @@ export class TransactionsService implements OnModuleInit {
     const parcelFormat: string = profile.parcelFormat;
 
     // Authoritative item price — derived from the listing, never from the client.
-    const numericAmount = this.resolveListingPrice(listing);
+    const numericAmount = this.resolveListingPrice(listing, !!auctionEnded);
     if (numericAmount <= 0) {
       throw new BadRequestException('This listing does not have a valid price');
     }
@@ -239,22 +308,19 @@ export class TransactionsService implements OnModuleInit {
     const protectionFee = Math.round(numericAmount * rate * 100) / 100;
 
     // Optional charity donation (e.g. £1 to Good Things Foundation / Digital Inclusion)
-    const donationAmount = (createOrderDto as any).donationAmount && Number((createOrderDto as any).donationAmount) > 0
-      ? Math.round(Number((createOrderDto as any).donationAmount) * 100) / 100
-      : 0;
+    const donationAmount = this.normalizeDonation(createOrderDto.donationAmount);
 
     // Compute total: item price + buyer protection fee + shipping (waived/0 if covered by seller) + optional donation
     const totalAmount = Math.round((numericAmount + protectionFee + numericShipping + donationAmount) * 100) / 100;
 
-    const deliveryMethod = (createOrderDto as any).deliveryMethod || 'HOME';
+    const deliveryMethod = createOrderDto.deliveryMethod || 'HOME';
     let enrichedShippingAddress: Record<string, any> = shippingAddress ? { ...shippingAddress } : {};
     if (deliveryMethod === 'CLICK_AND_COLLECT') {
-      const collectionPin = (createOrderDto as any).collectionPin || Math.floor(100000 + Math.random() * 900000).toString();
       enrichedShippingAddress = {
         ...enrichedShippingAddress,
         deliveryMethod: 'CLICK_AND_COLLECT',
-        collectionPoint: (createOrderDto as any).collectionPoint || null,
-        collectionPin,
+        collectionPoint: sanitizeCollectionPoint(createOrderDto.collectionPoint),
+        collectionPin: generateCollectionPin(),
       };
     } else {
       enrichedShippingAddress = {
@@ -268,7 +334,7 @@ export class TransactionsService implements OnModuleInit {
         ...enrichedShippingAddress,
         donation: {
           amount: donationAmount,
-          charity: (createOrderDto as any).charityName || 'Good Things Foundation (Digital Inclusion UK)',
+          charity: 'Good Things Foundation (Digital Inclusion UK)',
         },
       };
     }
@@ -284,10 +350,17 @@ export class TransactionsService implements OnModuleInit {
     });
 
     if (existingPendingOrder && existingPendingOrder.paymentIntentId) {
-      try {
-        const paymentIntent = await this.stripe.paymentIntents.retrieve(
-          existingPendingOrder.paymentIntentId,
+      const existingIntent = await this.stripe.paymentIntents
+        .retrieve(existingPendingOrder.paymentIntentId)
+        .catch(() => null);
+      // Never replace a checkout whose payment is already going through.
+      if (existingIntent && ['succeeded', 'processing', 'requires_capture'].includes(existingIntent.status)) {
+        throw new ConflictException(
+          'Your payment for this item is already being processed. Please check your orders.',
         );
+      }
+      try {
+        const paymentIntent = existingIntent;
 
         if (paymentIntent && paymentIntent.status === 'requires_payment_method') {
           await this.stripe.paymentIntents.update(existingPendingOrder.paymentIntentId, {
@@ -325,23 +398,62 @@ export class TransactionsService implements OnModuleInit {
       }
     }
 
-    // Create Stripe Payment Intent — charge the total (item + protection fee + shipping + donation)
-    // Supports Card, Klarna, and Clearpay BNPL deferred escrow capture
-    const paymentIntent = await this.stripe.paymentIntents.create({
-      amount: Math.round(totalAmount * 100),
-      currency: currency.toLowerCase(),
-      metadata: {
-        buyerId,
-        sellerId,
-        listingId,
-        deliveryMethod,
-        donationAmount: donationAmount.toString(),
-      },
-      payment_method_types: ['card', 'klarna', 'afterpay_clearpay'],
+    // Anti-squatting: cap how many listings one buyer can hold in checkout.
+    const openCheckouts = await this.prisma.order.count({
+      where: { buyerId, status: 'PENDING', listingId: { not: listingId } },
     });
+    if (openCheckouts >= MAX_OPEN_CHECKOUTS_PER_BUYER) {
+      throw new BadRequestException(
+        'You have too many checkouts in progress. Complete or cancel one before starting another.',
+      );
+    }
+
+    // Atomically reserve the listing so two buyers can never pay for the same item.
+    // If this buyer already holds the reservation (stale pending order), take it over.
+    if (existingPendingOrder) {
+      await this.prisma.order.updateMany({
+        where: { id: existingPendingOrder.id, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+      if (existingPendingOrder.paymentIntentId) {
+        await this.stripe.paymentIntents.cancel(existingPendingOrder.paymentIntentId).catch(() => undefined);
+      }
+      // The buyer already held the reservation; make sure it is still in place.
+      await this.reserveListing(listingId);
+    } else {
+      const reserved = await this.reserveListing(listingId);
+      if (!reserved) {
+        throw new ConflictException(
+          'Another buyer is currently checking out this item. Please try again shortly.',
+        );
+      }
+    }
+
+    let paymentIntent: Stripe.PaymentIntent;
+    let order: Awaited<ReturnType<typeof this.prisma.order.create>>;
+    try {
+      // Create Stripe Payment Intent — charge the total (item + protection fee + shipping + donation)
+      // Supports Card, Klarna, and Clearpay BNPL deferred escrow capture
+      paymentIntent = await this.stripe.paymentIntents.create({
+        amount: Math.round(totalAmount * 100),
+        currency: currency.toLowerCase(),
+        metadata: {
+          buyerId,
+          sellerId,
+          listingId,
+          deliveryMethod,
+          donationAmount: donationAmount.toString(),
+        },
+        payment_method_types: ['card', 'klarna', 'afterpay_clearpay'],
+      });
+    } catch (err) {
+      await this.releaseListingReservation(listingId).catch(() => undefined);
+      throw err;
+    }
 
     // Create order in database — store paymentIntentId immediately
-    const order = await this.prisma.order.create({
+    try {
+    order = await this.prisma.order.create({
       data: {
         buyerId,
         sellerId,
@@ -363,9 +475,11 @@ export class TransactionsService implements OnModuleInit {
         shippingAddress: enrichedShippingAddress as any,
       },
     });
-
-    // Temporarily reserve listing during checkout
-    this.updateListingStatus(listingId, 'INACTIVE').catch(() => {});
+    } catch (err) {
+      await this.stripe.paymentIntents.cancel(paymentIntent.id).catch(() => undefined);
+      await this.releaseListingReservation(listingId).catch(() => undefined);
+      throw err;
+    }
 
     return {
       order,
@@ -409,19 +523,28 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Unable to verify listing details. Please try again.');
     }
 
-    const currentAddress = (dto.shippingAddress || order.shippingAddress || {}) as Record<string, any>;
-    const deliveryMethod = dto.deliveryMethod || currentAddress.deliveryMethod || 'HOME';
+    const storedAddress = (order.shippingAddress || {}) as Record<string, any>;
+    // A new address replaces only the validated address fields; server-owned
+    // metadata (collection PIN, donation) is never taken from the client.
+    const currentAddress: Record<string, any> = dto.shippingAddress
+      ? { ...dto.shippingAddress }
+      : { ...storedAddress };
+    const deliveryMethod = dto.deliveryMethod || storedAddress.deliveryMethod || 'HOME';
     const effectiveDonation = dto.donationAmount !== undefined
-      ? Math.round(Number(dto.donationAmount) * 100) / 100
-      : (currentAddress.donation?.amount ? Number(currentAddress.donation.amount) : 0);
+      ? this.normalizeDonation(dto.donationAmount)
+      : (storedAddress.donation?.amount ? Number(storedAddress.donation.amount) : 0);
+    delete currentAddress.donation;
+    delete currentAddress.collectionPin;
+    delete currentAddress.collectionPoint;
 
     const enrichedShippingAddress = {
       ...currentAddress,
       deliveryMethod,
       ...(deliveryMethod === 'CLICK_AND_COLLECT'
         ? {
-            collectionPoint: dto.collectionPoint || currentAddress.collectionPoint || null,
-            collectionPin: currentAddress.collectionPin || Math.floor(100000 + Math.random() * 900000).toString(),
+            collectionPoint:
+              sanitizeCollectionPoint(dto.collectionPoint) ?? sanitizeCollectionPoint(storedAddress.collectionPoint),
+            collectionPin: storedAddress.collectionPin || generateCollectionPin(),
           }
         : {}),
       ...(effectiveDonation > 0
@@ -487,7 +610,7 @@ export class TransactionsService implements OnModuleInit {
     }
 
     // Verify the paymentIntentId matches what was stored at order creation
-    if (existingOrder.paymentIntentId && existingOrder.paymentIntentId !== paymentIntentId) {
+    if (!existingOrder.paymentIntentId || existingOrder.paymentIntentId !== paymentIntentId) {
       throw new BadRequestException('Payment intent ID does not match this order');
     }
 
@@ -513,27 +636,38 @@ export class TransactionsService implements OnModuleInit {
       this.logger.log(`Verified cardholder name for order ${orderId}: ${cardholderName.trim().substring(0, 3)}***`);
     }
 
-    if (
-      existingOrder.status === 'ESCROW_HELD' ||
-      existingOrder.status === 'PAYMENT_RECEIVED'
-    ) {
-      const existingEscrow = existingOrder.escrowId
-        ? await this.prisma.escrowRecord.findUnique({ where: { id: existingOrder.escrowId } })
-        : await this.prisma.escrowRecord.findFirst({ where: { orderId } });
-      return { order: existingOrder, escrow: existingEscrow };
+    // The checkout expired (or was cancelled) but the buyer paid anyway, e.g.
+    // a slow 3DS / BNPL authorisation. Revive it if the item is still free,
+    // otherwise refund automatically so nobody is charged without an order.
+    if (existingOrder.status === 'CANCELLED') {
+      const revived = await this.reviveCancelledOrder(existingOrder.id, existingOrder.listingId);
+      if (!revived) {
+        await this.refundUnfulfillablePayment(existingOrder, paymentIntentId);
+        throw new ConflictException(
+          'This item is no longer available. Your payment has been refunded in full.',
+        );
+      }
+    } else if (existingOrder.status !== 'PENDING') {
+      // Idempotent: already confirmed (client call and webhook both arrive).
+      return this.getExistingPaymentState(existingOrder);
     }
 
     // Wrap the 3-step write in a transaction
-    const { updatedOrder, escrow } = await this.prisma.$transaction(async (tx) => {
-      // Update order to PAYMENT_RECEIVED with paidAt timestamp
-      const order = await tx.order.update({
-        where: { id: orderId },
+    const result = await this.prisma.$transaction(async (tx) => {
+      // Claim the PENDING → PAYMENT_RECEIVED transition atomically so concurrent
+      // confirmations (client + webhook) can never create two escrow records.
+      const claimed = await tx.order.updateMany({
+        where: { id: orderId, status: 'PENDING' },
         data: {
           status: 'PAYMENT_RECEIVED',
           paidAt: new Date(),
           paymentIntentId,
         },
       });
+      if (claimed.count !== 1) {
+        return null;
+      }
+      const order = await tx.order.findUniqueOrThrow({ where: { id: orderId } });
 
       // Create escrow record — escrow the full totalAmount (item + shipping)
       const escrow = await tx.escrowRecord.create({
@@ -570,6 +704,12 @@ export class TransactionsService implements OnModuleInit {
 
       return { updatedOrder, escrow };
     });
+
+    if (!result) {
+      const current = await this.prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+      return this.getExistingPaymentState(current);
+    }
+    const { updatedOrder, escrow } = result;
 
     // Mark listing as SOLD — fire-and-forget, must not block order flow
     this.updateListingStatus(updatedOrder.listingId, 'SOLD').catch((error) => {
@@ -618,6 +758,106 @@ export class TransactionsService implements OnModuleInit {
   }
 
   /**
+   * Builds sender/recipient blocks for a shipping label. Each address is taken
+   * whole from a single source (never stitched field-by-field) and the label
+   * is refused rather than printed with placeholder addresses.
+   */
+  private resolveLabelParties(
+    order: { shippingAddress: unknown },
+    seller: { name: string } | null,
+    sellerProfile: { displayName?: string | null; phone?: string | null; address?: any } | null,
+    buyer: { name: string } | null,
+    buyerProfile: { displayName?: string | null; phone?: string | null; address?: any } | null,
+  ): Pick<
+    ShippingLabelOrderData,
+    | 'senderName' | 'senderAddressLine1' | 'senderTown' | 'senderPostcode'
+    | 'recipientName' | 'recipientAddressLine1' | 'recipientAddressLine2'
+    | 'recipientTown' | 'recipientPostcode' | 'recipientPhone'
+  > | null {
+    const sellerAddr = sellerProfile?.address;
+    if (!sellerAddr?.line1 || !sellerAddr?.city || !sellerAddr?.postalCode) return null;
+
+    const shippingAddr = (order.shippingAddress as Record<string, any>) || {};
+    const collectionPoint = shippingAddr.deliveryMethod === 'CLICK_AND_COLLECT' ? shippingAddr.collectionPoint : null;
+    const orderPostcode = shippingAddr.postal_code || shippingAddr.postalCode;
+    const profileAddr = buyerProfile?.address;
+
+    let recipient: { line1: string; line2?: string; city: string; postcode: string } | null = null;
+    if (collectionPoint?.addressLine1 && collectionPoint?.town && collectionPoint?.postcode) {
+      recipient = { line1: collectionPoint.addressLine1, city: collectionPoint.town, postcode: collectionPoint.postcode };
+    } else if (shippingAddr.line1 && shippingAddr.city && orderPostcode) {
+      recipient = { line1: shippingAddr.line1, line2: shippingAddr.line2, city: shippingAddr.city, postcode: orderPostcode };
+    } else if (profileAddr?.line1 && profileAddr?.city && profileAddr?.postalCode) {
+      recipient = { line1: profileAddr.line1, line2: profileAddr.line2, city: profileAddr.city, postcode: profileAddr.postalCode };
+    }
+    if (!recipient) return null;
+
+    return {
+      senderName: seller?.name || sellerProfile?.displayName || 'VeriBuy Verified Seller',
+      senderAddressLine1: sellerAddr.line1,
+      senderTown: sellerAddr.city,
+      senderPostcode: sellerAddr.postalCode,
+      recipientName: shippingAddr.name || buyer?.name || buyerProfile?.displayName || 'Customer',
+      recipientAddressLine1: recipient.line1,
+      recipientAddressLine2: recipient.line2 || undefined,
+      recipientTown: recipient.city,
+      recipientPostcode: recipient.postcode,
+      recipientPhone: shippingAddr.phone || buyerProfile?.phone || undefined,
+    };
+  }
+
+  private async getExistingPaymentState(order: { id: string; escrowId: string | null } & Record<string, any>) {
+    const escrow = order.escrowId
+      ? await this.prisma.escrowRecord.findUnique({ where: { id: order.escrowId } })
+      : await this.prisma.escrowRecord.findFirst({ where: { orderId: order.id } });
+    return { order, escrow };
+  }
+
+  /** Moves a CANCELLED order back to PENDING if its listing can be re-reserved. */
+  private async reviveCancelledOrder(orderId: string, listingId: string): Promise<boolean> {
+    const reserved = await this.reserveListing(listingId);
+    if (!reserved) return false;
+    const { count } = await this.prisma.order.updateMany({
+      where: { id: orderId, status: 'CANCELLED' },
+      data: { status: 'PENDING' },
+    });
+    if (count !== 1) {
+      await this.releaseListingReservation(listingId).catch(() => undefined);
+      return false;
+    }
+    this.logger.warn(`Revived cancelled order ${orderId} after late successful payment`);
+    return true;
+  }
+
+  /** Refunds a successful payment for an order that can no longer be fulfilled. */
+  private async refundUnfulfillablePayment(
+    order: { id: string; totalAmount: any; amount: any; currency: string },
+    paymentIntentId: string,
+  ): Promise<void> {
+    const refund = await this.stripe.refunds.create(
+      { payment_intent: paymentIntentId, reason: 'requested_by_customer' },
+      { idempotencyKey: `refund-unfulfillable-${order.id}` },
+    );
+    await this.prisma.$transaction(async (tx) => {
+      await (tx as any).refundRecord.create({
+        data: {
+          orderId: order.id,
+          stripeRefundId: refund.id,
+          amount: order.totalAmount ?? order.amount,
+          currency: order.currency,
+          reason: 'Listing unavailable after late payment',
+          status: refund.status ?? 'pending',
+        },
+      });
+      await tx.order.updateMany({
+        where: { id: order.id, status: 'CANCELLED' },
+        data: { status: 'REFUNDED', refundedAt: new Date() },
+      });
+    });
+    this.logger.warn(`Auto-refunded late payment ${paymentIntentId} for unfulfillable order ${order.id}`);
+  }
+
+  /**
    * Automatically books the shipment in Royal Mail Click & Drop upon payment confirmation.
    * Fire-and-forget so that it never blocks the payment response.
    */
@@ -632,7 +872,11 @@ export class TransactionsService implements OnModuleInit {
         this.prisma.profile.findUnique({ where: { userId: order.buyerId }, include: { address: true } }),
       ]);
 
-      const shippingAddr = (order.shippingAddress as Record<string, any>) || {};
+      const parties = this.resolveLabelParties(order, seller, sellerProfile, buyer, buyerProfile);
+      if (!parties) {
+        this.logger.warn(`Skipping Click & Drop booking for order ${order.id}: incomplete sender or recipient address`);
+        return;
+      }
 
       const labelData: ShippingLabelOrderData = {
         orderId: order.id,
@@ -643,16 +887,7 @@ export class TransactionsService implements OnModuleInit {
         parcelWeightGrams: order.parcelWeightGrams || 350,
         parcelFormat: order.parcelFormat || 'SMALL_PARCEL',
         itemTitle: order.listingTitle || 'Verified Device',
-        senderName: seller?.name || sellerProfile?.displayName || 'VeriBuy Verified Seller',
-        senderAddressLine1: sellerProfile?.address?.line1 || '10 VeriBuy Logistics Hub',
-        senderTown: sellerProfile?.address?.city || 'London',
-        senderPostcode: sellerProfile?.address?.postalCode || 'EC1A 1BB',
-        recipientName: shippingAddr.name || buyer?.name || buyerProfile?.displayName || 'Customer',
-        recipientAddressLine1: shippingAddr.line1 || buyerProfile?.address?.line1 || '123 High Street',
-        recipientAddressLine2: shippingAddr.line2 || buyerProfile?.address?.line2 || undefined,
-        recipientTown: shippingAddr.city || buyerProfile?.address?.city || 'London',
-        recipientPostcode: shippingAddr.postalCode || buyerProfile?.address?.postalCode || 'SW1A 1AA',
-        recipientPhone: shippingAddr.phone || buyerProfile?.phone || undefined,
+        ...parties,
         createdAt: order.createdAt || new Date(),
       };
 
@@ -739,6 +974,11 @@ export class TransactionsService implements OnModuleInit {
       );
     }
 
+    // An admin "refund" must actually return the money via Stripe.
+    if (updateOrderStatusDto.status === 'REFUNDED' && actor === 'ADMIN') {
+      return (await this.refundOrder(orderId)).order;
+    }
+
     const updateData: any = { status: updateOrderStatusDto.status };
     const now = new Date();
 
@@ -781,7 +1021,16 @@ export class TransactionsService implements OnModuleInit {
         });
       }
 
-      return tx.order.update({ where: { id: orderId }, data: updateData });
+      // Compare-and-set on the status we validated, so two concurrent
+      // transitions can't both apply (e.g. COMPLETED racing DISPUTED).
+      const { count } = await tx.order.updateMany({
+        where: { id: orderId, status: order.status },
+        data: updateData,
+      });
+      if (count !== 1) {
+        throw new ConflictException('Order status changed — please refresh and try again');
+      }
+      return tx.order.findUniqueOrThrow({ where: { id: orderId } });
     });
 
     // Send notifications — fire-and-forget
@@ -802,8 +1051,8 @@ export class TransactionsService implements OnModuleInit {
 
     // If order was cancelled, restore listing status back to ACTIVE
     if (updateOrderStatusDto.status === 'CANCELLED' && order.listingId) {
-      this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
-        this.logger.error('Failed to restore listing status to ACTIVE on cancel', error?.stack ?? error);
+      this.releaseListingReservation(order.listingId).catch((error) => {
+        this.logger.error('Failed to release listing reservation on cancel', error?.stack ?? error);
       });
     }
 
@@ -895,29 +1144,31 @@ export class TransactionsService implements OnModuleInit {
       throw new NotFoundException('Order not found');
     }
 
-    if (userRole !== 'ADMIN' && order.buyerId !== userId && order.sellerId !== userId) {
-      throw new ForbiddenException('You can only delete orders you are involved in');
+    if (userRole !== 'ADMIN' && order.buyerId !== userId) {
+      throw new ForbiddenException('You can only delete your own checkout orders');
     }
 
     if (order.status !== 'PENDING' && order.status !== 'CANCELLED') {
       throw new BadRequestException(`Only PENDING or CANCELLED orders can be deleted. Current status: ${order.status}`);
     }
 
-    if (order.paymentIntentId) {
-      try {
-        await this.stripe.paymentIntents.cancel(order.paymentIntentId);
-      } catch (err) {
-        this.logger.warn(`Could not cancel Stripe payment intent: ${(err as Error).message}`);
-      }
+    // Never drop an order whose payment may have gone through.
+    if (order.paymentIntentId && !(await this.ensurePaymentIntentCancelled(order.paymentIntentId))) {
+      throw new ConflictException(
+        'Payment for this order is being processed and it cannot be deleted. Please check again shortly.',
+      );
     }
 
-    await this.prisma.order.delete({
-      where: { id: orderId },
+    const { count } = await this.prisma.order.deleteMany({
+      where: { id: orderId, status: { in: ['PENDING', 'CANCELLED'] } },
     });
+    if (count !== 1) {
+      throw new ConflictException('Order status changed — please refresh and try again');
+    }
 
     if (order.listingId) {
-      this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
-        this.logger.error('Failed to restore listing status to ACTIVE on delete', error?.stack ?? error);
+      this.releaseListingReservation(order.listingId).catch((error) => {
+        this.logger.error('Failed to release listing reservation on delete', error?.stack ?? error);
       });
     }
 
@@ -939,13 +1190,19 @@ export class TransactionsService implements OnModuleInit {
 
     for (const order of staleOrders) {
       try {
-        await this.prisma.order.update({
-          where: { id: order.id },
+        // Cancel the PaymentIntent first; if the buyer has actually paid (or a
+        // BNPL payment is still processing) leave the order for confirmPayment.
+        if (order.paymentIntentId && !(await this.ensurePaymentIntentCancelled(order.paymentIntentId))) {
+          continue;
+        }
+
+        const { count } = await this.prisma.order.updateMany({
+          where: { id: order.id, status: 'PENDING' },
           data: { status: 'CANCELLED' },
         });
 
-        if (order.listingId) {
-          await this.updateListingStatus(order.listingId, 'ACTIVE').catch(() => {});
+        if (count === 1 && order.listingId) {
+          await this.releaseListingReservation(order.listingId).catch(() => {});
         }
       } catch (err) {
         this.logger.warn(`Failed to expire pending order ${order.id}: ${(err as Error).message}`);
@@ -1124,6 +1381,13 @@ export class TransactionsService implements OnModuleInit {
       throw new BadRequestException('Order has already been refunded');
     }
 
+    // Only captured-but-unreleased funds can be refunded automatically. Once
+    // escrow is released (COMPLETED) the seller has been paid; recovering that
+    // money is a manual finance process, not a one-click refund.
+    if (!REFUNDABLE_STATUSES.includes(order.status)) {
+      throw new BadRequestException(`Orders in status ${order.status} cannot be refunded`);
+    }
+
     if (!order.escrowId) {
       throw new BadRequestException('No escrow record found for this order');
     }
@@ -1133,9 +1397,15 @@ export class TransactionsService implements OnModuleInit {
     if (!escrow?.providerRef) {
       throw new BadRequestException('No payment provider reference found');
     }
+    if (escrow.status !== 'HELD' && escrow.status !== 'DISPUTED') {
+      throw new BadRequestException(`Escrow is ${escrow.status} and cannot be refunded`);
+    }
 
-    // Refund via Stripe
-    const refund = await this.stripe.refunds.create({ payment_intent: escrow.providerRef });
+    // Refund via Stripe — idempotency key makes double-clicks / retries safe.
+    const refund = await this.stripe.refunds.create(
+      { payment_intent: escrow.providerRef },
+      { idempotencyKey: `refund-order-${order.id}` },
+    );
 
     // REG-02: Wrap all DB writes in a transaction and persist the Stripe refund
     // record alongside the order/escrow updates so the audit trail is atomic.
@@ -1163,10 +1433,13 @@ export class TransactionsService implements OnModuleInit {
       });
     });
 
-    // Restore listing to ACTIVE — fire-and-forget
-    this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
-      this.logger.error('Failed to restore listing status to ACTIVE', error?.stack ?? error);
-    });
+    // Relist only if the device never left the seller; once shipped the item
+    // is in transit / with the buyer and must be handled as a return.
+    if (PRE_DISPATCH_STATUSES.includes(order.status)) {
+      this.updateListingStatus(order.listingId, 'ACTIVE').catch((error) => {
+        this.logger.error('Failed to restore listing status to ACTIVE', error?.stack ?? error);
+      });
+    }
 
     // Notify buyer of refund — fire-and-forget
     this.sendOrderNotification({
@@ -1735,7 +2008,12 @@ export class TransactionsService implements OnModuleInit {
       include: { address: true },
     });
 
-    const shippingAddr = (order.shippingAddress as Record<string, any>) || {};
+    const parties = this.resolveLabelParties(order, seller, sellerProfile, buyer, buyerProfile);
+    if (!parties) {
+      throw new BadRequestException(
+        'A shipping label cannot be generated until both the seller and delivery addresses are complete.',
+      );
+    }
     const trackingNumber =
       order.trackingNumber ||
       this.royalMailService.generateTrackingNumber(order.shippingService || 'TRACKED_48');
@@ -1749,16 +2027,7 @@ export class TransactionsService implements OnModuleInit {
       parcelWeightGrams,
       parcelFormat,
       itemTitle: order.listingTitle || 'Verified Device',
-      senderName: seller?.name || sellerProfile?.displayName || 'VeriBuy Verified Seller',
-      senderAddressLine1: sellerProfile?.address?.line1 || '10 VeriBuy Logistics Hub',
-      senderTown: sellerProfile?.address?.city || 'London',
-      senderPostcode: sellerProfile?.address?.postalCode || 'EC1A 1BB',
-      recipientName: shippingAddr.name || buyer?.name || buyerProfile?.displayName || 'Customer',
-      recipientAddressLine1: shippingAddr.line1 || buyerProfile?.address?.line1 || '123 High Street',
-      recipientAddressLine2: shippingAddr.line2 || buyerProfile?.address?.line2 || undefined,
-      recipientTown: shippingAddr.city || buyerProfile?.address?.city || 'London',
-      recipientPostcode: shippingAddr.postalCode || buyerProfile?.address?.postalCode || 'SW1A 1AA',
-      recipientPhone: shippingAddr.phone || buyerProfile?.phone || undefined,
+      ...parties,
       createdAt: order.createdAt,
     };
 
@@ -1849,15 +2118,84 @@ export class TransactionsService implements OnModuleInit {
    * For auctions that have been settled, the winning bid supersedes the
    * listing price; otherwise the fixed listing price applies.
    */
-  private resolveListingPrice(listing: Record<string, any>): number {
-    const candidate =
-      listing.format === 'AUCTION' && listing.currentBid != null
-        ? listing.currentBid
-        : listing.price;
+  private resolveListingPrice(listing: Record<string, any>, auctionEnded = false): number {
+    let candidate = listing.price;
+    if (listing.format === 'AUCTION') {
+      // Ended auction → winning bid. Running auction → Buy It Now price only.
+      candidate = auctionEnded ? listing.currentBid : listing.buyItNowPrice;
+    }
 
     const parsed = Number(candidate);
     if (!isFinite(parsed) || parsed <= 0) return 0;
     return Math.round(parsed * 100) / 100;
+  }
+
+  /**
+   * Cancels a PaymentIntent. Returns true only if it is (now) cancelled and
+   * therefore can no longer move money; false if it succeeded or is processing.
+   */
+  private async ensurePaymentIntentCancelled(paymentIntentId: string): Promise<boolean> {
+    try {
+      const cancelled = await this.stripe.paymentIntents.cancel(paymentIntentId);
+      return cancelled.status === 'canceled';
+    } catch (err) {
+      const intent = await this.stripe.paymentIntents.retrieve(paymentIntentId).catch(() => null);
+      if (intent?.status === 'canceled') return true;
+      this.logger.warn(
+        `PaymentIntent ${paymentIntentId} not cancellable (status ${intent?.status ?? 'unknown'}): ${(err as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  private normalizeDonation(value: unknown): number {
+    const amount = Number(value);
+    if (!isFinite(amount) || amount <= 0) return 0;
+    if (amount > MAX_DONATION_GBP) {
+      throw new BadRequestException(`Donations are limited to £${MAX_DONATION_GBP}`);
+    }
+    return Math.round(amount * 100) / 100;
+  }
+
+  /**
+   * Atomically moves a purchasable listing into the checkout reservation
+   * state. Returns false if another checkout already holds it.
+   */
+  private async reserveListing(listingId: string): Promise<boolean> {
+    const { count } = await this.prisma.listing.updateMany({
+      where: { id: listingId, status: { in: ['ACTIVE', 'AUCTION_ENDED'] } },
+      data: { status: 'INACTIVE' },
+    });
+    await this.redis?.del(`listing:${listingId}`).catch(() => undefined);
+    return count === 1;
+  }
+
+  /**
+   * Returns a reserved listing to sale, but only if no other live order holds
+   * it. Ended auctions go back to AUCTION_ENDED rather than ACTIVE.
+   */
+  private async releaseListingReservation(listingId: string): Promise<void> {
+    const liveOrders = await this.prisma.order.count({
+      where: {
+        listingId,
+        status: { in: ['PENDING', 'PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'DISPUTED', 'COMPLETED'] },
+      },
+    });
+    if (liveOrders > 0) return;
+
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { format: true, auctionEndsAt: true, status: true },
+    });
+    if (!listing || listing.status !== 'INACTIVE') return;
+
+    const auctionEnded =
+      listing.format === 'AUCTION' && !!listing.auctionEndsAt && listing.auctionEndsAt.getTime() <= Date.now();
+    await this.prisma.listing.updateMany({
+      where: { id: listingId, status: 'INACTIVE' },
+      data: { status: auctionEnded ? 'AUCTION_ENDED' : 'ACTIVE' },
+    });
+    await this.redis?.del(`listing:${listingId}`).catch(() => undefined);
   }
 
   /**

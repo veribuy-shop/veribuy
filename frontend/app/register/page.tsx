@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BrandLogo } from '@/components/brand-logo';
+import { SOCIAL_SIGN_IN_ENABLED } from '@/lib/social-auth';
 
 const WHY_JOIN = [
   { icon: ShieldCheck, label: '100% Trust Lens™ Verified Hardware' },
@@ -341,7 +342,7 @@ export default function RegisterPage() {
         </div>
 
         {/* ── 1-Click Social Sign Up (Apple & Google) ── */}
-        {step === 1 && (
+        {SOCIAL_SIGN_IN_ENABLED && step === 1 && (
           <div className="mb-6">
             <div className="space-y-2.5">
               <button

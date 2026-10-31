@@ -1,6 +1,7 @@
 // Guards
 export * from './guards/jwt-auth.guard';
 export * from './guards/roles.guard';
+export * from './guards/email-verified';
 
 // Decorators
 export * from './decorators/roles.decorator';

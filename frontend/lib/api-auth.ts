@@ -32,7 +32,9 @@ async function verifyJwtPayload(token: string): Promise<Record<string, any> | nu
     return null;
   }
   try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
+      algorithms: ['HS256'],
+    });
     return payload as Record<string, any>;
   } catch {
     return null;

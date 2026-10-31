@@ -6,6 +6,8 @@ import {
   ForbiddenException,
   BadRequestException,
   ServiceUnavailableException,
+  HttpException,
+  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -26,6 +28,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
 import { VerifyPhoneOtpDto } from './dto/verify-phone-otp.dto';
+import { SocialTokenVerifierService } from './social-token-verifier.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 
 // Typed interface for the authenticated user (from JWT)
@@ -33,6 +36,28 @@ interface AuthenticatedUser {
   userId: string;
   role: string;
 }
+
+/** Redis key holding the epoch-ms before which all access tokens for a user are rejected. */
+export const sessionRevokedBeforeKey = (userId: string) => `auth:revoked-before:${userId}`;
+/** Redis key caching a user's live auth state (role / active / verified) for the JWT strategy. */
+export const userAuthStateKey = (userId: string) => `auth:user-state:${userId}`;
+
+/** Refresh tokens are stored as SHA-256 hashes so a DB leak cannot be replayed. */
+export const hashRefreshToken = (token: string) =>
+  crypto.createHash('sha256').update(token).digest('hex');
+
+// Constant-time-ish login: compare against a dummy hash when the user doesn't exist.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('veribuy-dummy-password-for-timing', 12);
+
+const LOGIN_MAX_FAILURES = 10;
+const LOGIN_LOCKOUT_SECONDS = 15 * 60;
+
+const OTP_TTL_SECONDS = 300;
+const OTP_MAX_VERIFY_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const OTP_MAX_SENDS_PER_HOUR = 5;
+// Longest access-token lifetime we expect; revocation markers live at least this long.
+const SESSION_REVOCATION_TTL_SECONDS = 24 * 60 * 60;
 
 @Injectable()
 export class AuthService {
@@ -45,6 +70,7 @@ export class AuthService {
     private notification: NotificationService,
     private smsService: SmsService,
     private redis: RedisService,
+    private socialTokenVerifier: SocialTokenVerifierService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -262,6 +288,16 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
+    // Per-account brute-force protection, independent of the caller's IP.
+    const failureKey = `login_fail:${dto.email}`;
+    const failures = Number((await this.redis.get<number>(failureKey).catch(() => 0)) ?? 0);
+    if (failures >= LOGIN_MAX_FAILURES) {
+      throw new HttpException(
+        'Too many failed sign-in attempts. Please wait 15 minutes or reset your password.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     // Explicit select: passwordHash is required for comparison here, but
     // verification/reset tokens are never loaded.
     const user = await this.prisma.user.findUnique({
@@ -277,9 +313,18 @@ export class AuthService {
       },
     });
 
-    if (!user) {
+    // Always run bcrypt so response timing doesn't reveal whether the email exists,
+    // and only disclose account state after the password has been proven.
+    const isPasswordValid = await bcrypt.compare(
+      dto.password,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+
+    if (!user || !isPasswordValid) {
+      await this.incrementCounter(failureKey, LOGIN_LOCKOUT_SECONDS).catch(() => 0);
       throw new UnauthorizedException('Invalid credentials');
     }
+    await this.redis.del(failureKey).catch(() => undefined);
 
     if (!user.isActive) {
       throw new UnauthorizedException('Account is disabled');
@@ -287,12 +332,6 @@ export class AuthService {
 
     if (!user.isEmailVerified) {
       throw new ForbiddenException('Please verify your email address before logging in');
-    }
-
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
     }
 
     const [profile] = await Promise.all([
@@ -322,7 +361,10 @@ export class AuthService {
   }
 
   async socialLogin(dto: SocialAuthDto) {
-    const email = dto.email.toLowerCase().trim();
+    // SECURITY: the email comes only from the provider-verified ID token.
+    const identity = await this.socialTokenVerifier.verify(dto.provider, dto.idToken);
+    const email = identity.email;
+    const avatarUrl = dto.avatarUrl && /^https:\/\//i.test(dto.avatarUrl) ? dto.avatarUrl : null;
     const existingUser = await this.prisma.user.findUnique({
       where: { email },
       select: {
@@ -388,7 +430,7 @@ export class AuthService {
           role: existingUser.role,
           accountType: profile?.accountType || 'INDIVIDUAL',
           companyName: profile?.companyName || null,
-          avatarUrl: profile?.avatarUrl || dto.avatarUrl || null,
+          avatarUrl: profile?.avatarUrl || avatarUrl,
           isEmailVerified: existingUser.isEmailVerified,
           isPhoneVerified: Boolean(profile?.isPhoneVerified),
           profileCompleted: isProfileComplete,
@@ -407,15 +449,9 @@ export class AuthService {
       );
     }
 
-    // New user sign up via Google / Apple
-    const autoVerify =
-      this.configService.get<string>('AUTO_VERIFY_EMAIL')?.toLowerCase() === 'true';
-
-    // Generate a raw verification token; store its SHA-256 hash in the DB
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
+    // New user sign up via Google / Apple. The provider has already verified
+    // ownership of the email address (email_verified claim), so no extra
+    // verification email is needed.
     const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
 
     let referredById: string | null = null;
@@ -434,7 +470,7 @@ export class AuthService {
     }
 
     const newReferralCode = 'VB-' + crypto.randomBytes(4).toString('hex').toUpperCase();
-    const displayName = dto.name?.trim() || email.split('@')[0];
+    const displayName = dto.name?.trim() || identity.name?.trim() || email.split('@')[0];
 
     let newUser: {
       id: string;
@@ -451,16 +487,10 @@ export class AuthService {
           name: displayName,
           email,
           passwordHash,
-          isEmailVerified: autoVerify,
+          isEmailVerified: true,
           referralCode: newReferralCode,
           referredById: referredById || null,
           lastLoginAt: new Date(),
-          ...(autoVerify
-            ? {}
-            : {
-                emailVerificationToken: tokenHash,
-                emailVerificationExpiry: tokenExpiry,
-              }),
         },
         select: {
           id: true,
@@ -489,7 +519,7 @@ export class AuthService {
         displayName,
         firstName,
         lastName,
-        avatarUrl: dto.avatarUrl || null,
+        avatarUrl,
         accountType: 'INDIVIDUAL',
       },
     }).catch((profileErr) => {
@@ -510,18 +540,11 @@ export class AuthService {
       });
     }
 
-    if (autoVerify) {
-      this.logger.warn(
-        `AUTO_VERIFY_EMAIL is enabled — social user ${newUser.email} was auto-verified (dev mode)`,
+    this.notification
+      .sendWelcomeEmail(newUser.email, newUser.name)
+      .catch((err) =>
+        this.logger.error(`Failed to send welcome email to ${newUser.email}: ${err?.message}`),
       );
-    } else {
-      // Fire verification email (fire-and-forget — never block registration)
-      this.notification
-        .sendVerificationEmail(newUser.email, newUser.name, rawToken)
-        .catch((err) =>
-          this.logger.error(`Failed to send verification email to ${newUser.email}: ${err?.message}`),
-        );
-    }
 
     const tokens = await this.generateTokens(newUser.id, newUser.role);
 
@@ -533,14 +556,14 @@ export class AuthService {
         role: newUser.role,
         accountType: 'INDIVIDUAL',
         companyName: null,
-        avatarUrl: dto.avatarUrl || null,
+        avatarUrl,
         isEmailVerified: newUser.isEmailVerified,
         isPhoneVerified: false,
         profileCompleted: false,
       },
       ...tokens,
       isNewUser: true,
-      requiresEmailVerification: !autoVerify,
+      requiresEmailVerification: false,
       requiresProfileCompletion: true,
     };
   }
@@ -574,6 +597,7 @@ export class AuthService {
         emailVerificationExpiry: null,
       },
     });
+    await this.redis.del(userAuthStateKey(user.id)).catch(() => undefined);
 
     // Fire welcome email (fire-and-forget)
     this.notification
@@ -623,7 +647,7 @@ export class AuthService {
 
   async refreshToken(refreshToken: string) {
     const stored = await this.prisma.refreshToken.findUnique({
-      where: { token: refreshToken },
+      where: { token: hashRefreshToken(refreshToken) },
       select: {
         id: true,
         revokedAt: true,
@@ -634,7 +658,14 @@ export class AuthService {
       },
     });
 
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+    if (!stored || stored.expiresAt < new Date()) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    if (stored.revokedAt) {
+      // Reuse of a rotated token means it was likely stolen — kill every session.
+      this.logger.warn(`Refresh token reuse detected for user ${stored.user.id}; revoking all sessions`);
+      await this.revokeAllSessions(stored.user.id);
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -642,19 +673,44 @@ export class AuthService {
       throw new UnauthorizedException('Account is disabled');
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
+    // Atomic rotation: only one concurrent request can consume this token.
+    const { count } = await this.prisma.refreshToken.updateMany({
+      where: { id: stored.id, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (count !== 1) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
 
     return this.generateTokens(stored.user.id, stored.user.role);
   }
 
   async logout(refreshToken: string) {
     await this.prisma.refreshToken.updateMany({
-      where: { token: refreshToken, revokedAt: null },
+      where: { token: hashRefreshToken(refreshToken), revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  /**
+   * Revoke every refresh token and invalidate all outstanding access tokens
+   * for a user (password change/reset, role change, refresh-token reuse).
+   */
+  async revokeAllSessions(userId: string): Promise<void> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.invalidateAccessTokens(userId);
+  }
+
+  private async invalidateAccessTokens(userId: string): Promise<void> {
+    try {
+      await this.redis.set(sessionRevokedBeforeKey(userId), Date.now(), SESSION_REVOCATION_TTL_SECONDS);
+      await this.redis.del(userAuthStateKey(userId));
+    } catch (err: any) {
+      this.logger.error(`Failed to write session revocation marker for ${userId}: ${err?.message}`);
+    }
   }
 
   async verifyAndHydrate(userId: string) {
@@ -741,11 +797,16 @@ export class AuthService {
   async updateUser(userId: string, dto: UpdateUserDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true },
+      select: { id: true, role: true },
     });
 
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    // A role change must take effect immediately, not when tokens expire.
+    if (dto.role !== undefined && dto.role !== user.role) {
+      await this.revokeAllSessions(userId);
     }
 
     return this.prisma.user.update({
@@ -869,6 +930,9 @@ export class AuthService {
       data: { passwordHash: newPasswordHash },
     });
 
+    // Sign out every other session; the caller re-authenticates with the new password.
+    await this.revokeAllSessions(userId);
+
     return { message: 'Password updated successfully' };
   }
 
@@ -941,6 +1005,8 @@ export class AuthService {
       }),
     ]);
 
+    await this.invalidateAccessTokens(user.id);
+
     return { message: 'Password reset successfully. You can now sign in with your new password.' };
   }
 
@@ -957,7 +1023,8 @@ export class AuthService {
 
     const refreshExpiration = this.configService.get<string>('JWT_REFRESH_EXPIRATION') || '7d';
 
-    const refreshToken = this.jwtService.sign(payload as object, {
+    // jti guarantees uniqueness even for tokens minted in the same second.
+    const refreshToken = this.jwtService.sign({ ...payload, jti: crypto.randomUUID() } as object, {
       secret: refreshSecret,
       expiresIn: refreshExpiration as any,
     });
@@ -967,7 +1034,7 @@ export class AuthService {
 
     await this.prisma.refreshToken.create({
       data: {
-        token: refreshToken,
+        token: hashRefreshToken(refreshToken),
         userId,
         expiresAt,
       },
@@ -1057,43 +1124,119 @@ export class AuthService {
     };
   }
 
+  /**
+   * Dev-only static OTP bypass. Requires an explicit opt-in flag and is
+   * rejected at boot in production (see env.validation.ts).
+   */
+  private isDevOtpBypassEnabled(): boolean {
+    return (
+      process.env.NODE_ENV !== 'production' &&
+      this.configService.get<string>('ALLOW_DEV_OTP_BYPASS')?.toLowerCase() === 'true'
+    );
+  }
+
+  /** Atomically increments a counter, setting its TTL on first use. Fails open to 0 if Redis is down. */
+  private async incrementCounter(key: string, ttlSeconds: number): Promise<number> {
+    const client = this.redis.getClient();
+    if (!client) return 0;
+    const results = await client.multi().incr(key).expire(key, ttlSeconds, 'NX').exec();
+    return Number(results?.[0]?.[1] ?? 0);
+  }
+
   async sendPhoneOtp(dto: SendPhoneOtpDto, userId?: string) {
     const normalizedPhone = this.normalizeUkPhone(dto.phone);
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const cacheKey = `phone_otp:${normalizedPhone}`;
 
+    // Per-phone send limits (anti SMS-pumping / toll fraud), independent of caller IP.
     try {
-      await this.redis.set(cacheKey, { otp, userId: userId || null, createdAt: Date.now() }, 300);
+      const client = this.redis.getClient();
+      if (client) {
+        const cooldownSet = await client.set(
+          `phone_otp_cooldown:${normalizedPhone}`,
+          '1',
+          'EX',
+          OTP_RESEND_COOLDOWN_SECONDS,
+          'NX',
+        );
+        if (cooldownSet !== 'OK') {
+          throw new HttpException(
+            'Please wait a minute before requesting another code',
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        }
+      }
+      const sends = await this.incrementCounter(`phone_otp_sends:${normalizedPhone}`, 3600);
+      if (sends > OTP_MAX_SENDS_PER_HOUR) {
+        throw new HttpException(
+          'Too many verification codes requested for this number. Try again later.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    } catch (err: any) {
+      if (err instanceof HttpException) throw err;
+      this.logger.error(`Redis rate-limit check failed for phone OTP: ${err?.message}`);
+    }
+
+    const otp = crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+
+    try {
+      await this.redis.set(
+        cacheKey,
+        { otpHash: this.hashOtp(normalizedPhone, otp), userId: userId || null, createdAt: Date.now() },
+        OTP_TTL_SECONDS,
+      );
+      await this.redis.del(`phone_otp_attempts:${normalizedPhone}`);
     } catch (err: any) {
       this.logger.error(`Redis set failed for phone OTP: ${err?.message}`);
+      throw new ServiceUnavailableException('Unable to send a verification code right now');
     }
 
     await this.smsService.sendVerificationOtp(normalizedPhone, otp);
-    this.logger.log(`Phone verification OTP generated for ${normalizedPhone}: ${otp}`);
+    this.logger.log(`Phone verification OTP sent to ${this.maskPhone(normalizedPhone)}`);
 
     return {
       success: true,
-      message: `Verification code sent to ${normalizedPhone}`,
+      message: `Verification code sent to ${this.maskPhone(normalizedPhone)}`,
       phone: normalizedPhone,
-      expiresSeconds: 300,
-      ...(process.env.NODE_ENV !== 'production' ? { devOtp: otp } : {}),
+      expiresSeconds: OTP_TTL_SECONDS,
+      ...(this.isDevOtpBypassEnabled() ? { devOtp: otp } : {}),
     };
   }
 
   async verifyPhoneOtp(dto: VerifyPhoneOtpDto, userId?: string) {
     const normalizedPhone = this.normalizeUkPhone(dto.phone);
     const cacheKey = `phone_otp:${normalizedPhone}`;
+    const attemptsKey = `phone_otp_attempts:${normalizedPhone}`;
 
-    let cached: any = null;
+    // Per-phone attempt cap — the code is burned after too many wrong guesses.
+    let attempts = 0;
+    try {
+      attempts = await this.incrementCounter(attemptsKey, OTP_TTL_SECONDS);
+    } catch (err: any) {
+      this.logger.error(`Redis attempt counter failed for phone OTP: ${err?.message}`);
+    }
+    if (attempts > OTP_MAX_VERIFY_ATTEMPTS) {
+      await this.redis.del(cacheKey).catch(() => undefined);
+      throw new HttpException(
+        'Too many incorrect attempts. Please request a new code.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    let cached: { otpHash?: string; userId?: string | null } | null = null;
     try {
       cached = await this.redis.get<any>(cacheKey);
     } catch (err: any) {
       this.logger.error(`Redis get failed for phone OTP: ${err?.message}`);
     }
 
+    const expectedHash = cached?.otpHash ? Buffer.from(cached.otpHash, 'hex') : null;
+    const providedHash = Buffer.from(this.hashOtp(normalizedPhone, dto.code), 'hex');
     const isValid =
-      (cached && cached.otp === dto.code) ||
-      (process.env.NODE_ENV !== 'production' && dto.code === '123456');
+      (expectedHash !== null &&
+        expectedHash.length === providedHash.length &&
+        crypto.timingSafeEqual(expectedHash, providedHash)) ||
+      (this.isDevOtpBypassEnabled() && dto.code === '123456');
 
     if (!isValid) {
       throw new BadRequestException('Invalid or expired verification code');
@@ -1101,6 +1244,7 @@ export class AuthService {
 
     try {
       await this.redis.del(cacheKey);
+      await this.redis.del(attemptsKey);
     } catch (err: any) {
       this.logger.warn(`Redis del failed for ${cacheKey}: ${err?.message}`);
     }
@@ -1128,5 +1272,13 @@ export class AuthService {
       phone: normalizedPhone,
       isPhoneVerified: true,
     };
+  }
+
+  private hashOtp(phone: string, otp: string): string {
+    return crypto.createHash('sha256').update(`${phone}:${otp}`).digest('hex');
+  }
+
+  private maskPhone(phone: string): string {
+    return phone.length > 4 ? `${'*'.repeat(phone.length - 4)}${phone.slice(-4)}` : '****';
   }
 }

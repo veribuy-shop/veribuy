@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { sanitizeProfile } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const USER_SERVICE_URL = getBackendUrl();
 
@@ -13,6 +14,7 @@ export async function GET(
 ) {
   try {
     const { userId } = await params;
+    if (!isUuid(userId)) return invalidIdResponse();
 
     if (!UUID_RE.test(userId)) {
       return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });
@@ -65,6 +67,7 @@ export async function PUT(
 ) {
   try {
     const { userId } = await params;
+    if (!isUuid(userId)) return invalidIdResponse();
 
     if (!UUID_RE.test(userId)) {
       return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });

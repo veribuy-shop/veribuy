@@ -6,11 +6,13 @@ import {
   ValidateNested,
   IsIn,
   Min,
-  Length
+  Length,
+  Max,
+  IsObject,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class ShippingAddressDto {
+export class ShippingAddressDto {
   @IsString()
   @IsNotEmpty()
   @Length(2, 100)
@@ -45,6 +47,11 @@ class ShippingAddressDto {
   @IsNotEmpty()
   @Length(2, 2)
   country: string; // ISO 3166-1 alpha-2 country code
+
+  @IsString()
+  @IsOptional()
+  @Length(0, 25)
+  phone?: string;
 }
 
 export class CreateOrderDto {
@@ -99,12 +106,15 @@ export class CreateOrderDto {
   @IsIn(['HOME', 'CLICK_AND_COLLECT'])
   deliveryMethod?: 'HOME' | 'CLICK_AND_COLLECT';
 
+  /** Sanitised server-side to a bounded set of string fields. */
   @IsOptional()
+  @IsObject()
   collectionPoint?: Record<string, any>;
 
   @IsNumber()
   @IsOptional()
   @Min(0)
+  @Max(50)
   donationAmount?: number;
 
   @IsString()

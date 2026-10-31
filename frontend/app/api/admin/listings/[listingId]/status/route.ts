@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeListing } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 
@@ -20,6 +21,8 @@ async function handleUpdateStatus(
     }
 
     const { listingId } = await params;
+
+    if (!isUuid(listingId)) return invalidIdResponse();
 
     if (!UUID_RE.test(listingId)) {
       return NextResponse.json({ error: 'Invalid listing ID format' }, { status: 400 });

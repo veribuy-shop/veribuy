@@ -1,14 +1,23 @@
-import { IsEmail, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class SocialAuthDto {
   @IsIn(['GOOGLE', 'APPLE'])
   provider: 'GOOGLE' | 'APPLE';
 
+  /**
+   * Provider-signed ID token (Google ID token / Apple identity token).
+   * The account email is derived exclusively from this verified token.
+   */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(4096)
+  idToken: string;
+
+  /** Deprecated display hint — ignored for authentication. */
+  @IsOptional()
   @IsEmail()
   @MaxLength(254)
-  @Transform(({ value }) => (typeof value === 'string' ? value.toLowerCase().trim() : value))
-  email: string;
+  email?: string;
 
   @IsOptional()
   @IsIn(['login', 'register'])
@@ -18,10 +27,6 @@ export class SocialAuthDto {
   @IsString()
   @MaxLength(100)
   name?: string;
-
-  @IsOptional()
-  @IsString()
-  token?: string;
 
   @IsOptional()
   @IsString()

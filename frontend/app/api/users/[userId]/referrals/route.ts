@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const USER_SERVICE_URL = getBackendUrl();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -11,6 +12,7 @@ export async function GET(
 ) {
   try {
     const { userId } = await params;
+    if (!isUuid(userId)) return invalidIdResponse();
 
     if (!UUID_RE.test(userId)) {
       return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });

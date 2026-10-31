@@ -15,6 +15,22 @@ export const ALLOWED_TRANSITIONS: Record<ListingStatus, ListingStatus[]> = {
   [ListingStatus.DELISTED]: [ListingStatus.ACTIVE],  // Can be reactivated by admin/seller
 };
 
+/**
+ * Transitions a listing's OWNER may perform. Everything that grants or
+ * reflects verification (UNDER_REVIEW, APPROVED, ACTIVE from review, REJECTED)
+ * is admin / TrustLens only. Re-activating (→ ACTIVE) is additionally gated on
+ * a PASSED TrustLens result and no in-flight checkout — see
+ * UlistingsService.assertSellerTransition.
+ */
+export const SELLER_TRANSITIONS: Partial<Record<ListingStatus, ListingStatus[]>> = {
+  [ListingStatus.DRAFT]: [ListingStatus.SUBMITTED, ListingStatus.DELISTED],
+  [ListingStatus.REJECTED]: [ListingStatus.SUBMITTED, ListingStatus.DELISTED],
+  [ListingStatus.ACTIVE]: [ListingStatus.INACTIVE, ListingStatus.DELISTED],
+  [ListingStatus.INACTIVE]: [ListingStatus.ACTIVE, ListingStatus.DELISTED],
+  [ListingStatus.DELISTED]: [ListingStatus.ACTIVE],
+  [ListingStatus.AUCTION_ENDED]: [ListingStatus.DELISTED],
+};
+
 export class UpdateStatusDto {
   @IsEnum(ListingStatus, {
     message: `status must be one of: ${Object.values(ListingStatus).join(', ')}`,

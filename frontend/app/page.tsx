@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import HomeContent from './home-content';
 import { organizationJsonLd, webSiteJsonLd } from '@/lib/structured-data';
+import { serializeJsonLd } from '@/lib/json-ld';
 
 export const metadata: Metadata = {
   title: 'VeriBuy — Verified Electronics Marketplace',
@@ -20,11 +21,11 @@ export default function HomePage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd()) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(organizationJsonLd()) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteJsonLd()) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(webSiteJsonLd()) }}
       />
       <HomeContent />
     </>

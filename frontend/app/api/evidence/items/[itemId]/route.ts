@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const EVIDENCE_SERVICE_URL = getBackendUrl();
 
@@ -10,6 +11,7 @@ export async function DELETE(
 ) {
   try {
     const { itemId } = await params;
+    if (!isUuid(itemId)) return invalidIdResponse();
 
     if (!itemId || typeof itemId !== 'string' || itemId.trim() === '') {
       return NextResponse.json({ error: 'Invalid evidence item ID' }, { status: 400 });

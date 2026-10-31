@@ -21,17 +21,18 @@ import { ConfigService } from '@nestjs/config';
 import { UlistingsService } from './listings.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
-import { UpdateStatusDto, ALLOWED_TRANSITIONS } from './dto/update-status.dto';
+import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateTrustLensDto } from './dto/update-trust-lens.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
-import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto } from '@veribuy/common';
+import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto, assertEmailVerified } from '@veribuy/common';
 import { DeviceType, ConditionGrade, ListingStatus } from '.prisma/veribuy-client';
 import * as crypto from 'crypto';
 
 interface AuthenticatedUser {
   userId: string;
   role: string;
+  isEmailVerified?: boolean;
 }
 
 @Controller('listings')
@@ -46,6 +47,7 @@ export class UlistingsController {
   @HttpCode(HttpStatus.CREATED)
   @Roles('BUYER', 'SELLER', 'ADMIN')
   async create(@Body() dto: CreateListingDto, @CurrentUser() user: AuthenticatedUser) {
+    assertEmailVerified(user);
     // Override sellerId from JWT — never trust client-supplied sellerId
     dto.sellerId = user.userId;
     return this.listingsService.create(dto);
@@ -92,6 +94,7 @@ export class UlistingsController {
     @Body() dto: PlaceBidDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    assertEmailVerified(user);
     return this.listingsService.placeBid(id, user.userId, dto.maxBid);
   }
 
@@ -146,21 +149,18 @@ export class UlistingsController {
       throw new ForbiddenException('You can only update your own listings');
     }
 
-    // Enforce state machine for non-admins; admins can transition any non-sold listing
-    if (user.role !== 'ADMIN') {
-      const allowed = ALLOWED_TRANSITIONS[listing.status] ?? [];
-      if (!allowed.includes(dto.status)) {
-        throw new BadRequestException(
-          `Cannot transition listing from ${listing.status} to ${dto.status}`,
-        );
-      }
-    } else {
+    // Owners use a restricted state machine — they can never self-approve or
+    // activate an unverified listing. Admins can transition any non-sold listing.
+    const isAdmin = user.role === 'ADMIN';
+    if (isAdmin) {
       if (listing.status === ListingStatus.SOLD) {
         throw new BadRequestException('Cannot modify status of a SOLD listing');
       }
+    } else {
+      await this.listingsService.assertSellerTransition(listing, dto.status);
     }
 
-    return this.listingsService.updateStatus(id, dto.status, listing.status);
+    return this.listingsService.updateStatus(id, dto.status, listing.status, isAdmin);
   }
 
   /**
@@ -208,7 +208,7 @@ export class UlistingsController {
       throw new ForbiddenException('You can only update your own listings');
     }
 
-    return this.listingsService.update(id, dto);
+    return this.listingsService.update(id, dto, user.role === 'ADMIN');
   }
 
   @Put(':id/trust-lens')

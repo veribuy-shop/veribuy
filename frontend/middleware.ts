@@ -15,7 +15,9 @@ async function verifyToken(token: string): Promise<{ valid: boolean; user?: any 
       return { valid: false };
     }
 
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret));
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
+      algorithms: ['HS256'],
+    });
 
     return {
       valid: true,

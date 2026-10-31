@@ -45,6 +45,22 @@ export class EvidenceService {
    * If a pack already exists for this listing, return it.
    * Uses upsert to avoid P2002 race conditions on concurrent first uploads.
    */
+  async assertListingOwner(listingId: string, userId: string, isAdmin: boolean): Promise<void> {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { sellerId: true, status: true },
+    });
+    if (!listing) {
+      throw new NotFoundException('Listing not found');
+    }
+    if (!isAdmin && listing.sellerId !== userId) {
+      throw new ForbiddenException('You can only add evidence to your own listings');
+    }
+    if (listing.status === 'SOLD') {
+      throw new BadRequestException('Evidence cannot be changed on a sold listing');
+    }
+  }
+
   async createEvidencePack(dto: CreateEvidencePackDto) {
     const pack = await this.prisma.evidencePack.upsert({
       where: { listingId: dto.listingId },
@@ -66,7 +82,11 @@ export class EvidenceService {
    * Enforces per-pack item count limit (MAX_ITEMS_PER_PACK).
    * sellerId is always taken from the dto (which was injected from JWT in the controller).
    */
-  async uploadEvidence(dto: UploadEvidenceDto, file: Express.Multer.File) {
+  async uploadEvidence(dto: UploadEvidenceDto, file: Express.Multer.File, isAdmin = false) {
+    // SECURITY: only the listing owner (or an admin) may attach evidence —
+    // uploads also fulfil TrustLens checklist items for the listing.
+    await this.assertListingOwner(dto.listingId, dto.sellerId, isAdmin);
+
     // Ensure evidence pack exists (upsert handles race conditions)
     const pack = await this.createEvidencePack({
       listingId: dto.listingId,

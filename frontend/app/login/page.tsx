@@ -18,6 +18,7 @@ import {
   ArrowRight,
   AlertCircle,
 } from 'lucide-react';
+import { SOCIAL_SIGN_IN_ENABLED } from '@/lib/social-auth';
 
 const WHY_SIGNIN = [
   { icon: ShieldCheck, label: '100% Trust Lens™ Verified Hardware' },
@@ -155,6 +156,7 @@ function LoginContent() {
         )}
 
         {/* ── Social Login Buttons (Apple & Google) ── */}
+        {SOCIAL_SIGN_IN_ENABLED && (<>
         <div className="space-y-2.5 mb-5">
           <button
             type="button"
@@ -196,6 +198,7 @@ function LoginContent() {
             or continue with email
           </span>
         </div>
+        </>)}
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>

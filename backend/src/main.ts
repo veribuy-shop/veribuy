@@ -4,7 +4,9 @@ import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AllExceptionsFilter, assertTlsInProduction } from '@veribuy/logger';
 import { getInternalApiUrl } from '@veribuy/common';
+import type { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
+import { isValidInternalToken } from './security/internal-token';
 
 async function bootstrap() {
   const port = Number(process.env.PORT || process.env.BACKEND_PORT || 3000);
@@ -20,6 +22,20 @@ async function bootstrap() {
 
   assertTlsInProduction('backend');
   const app = await NestFactory.create(AppModule);
+
+  // Behind Render's load balancer: trust a fixed number of proxy hops (default 1)
+  // so req.ip is the real client address used by the rate limiter, and can't be
+  // spoofed by prepending entries to X-Forwarded-For.
+  app.getHttpAdapter().getInstance().set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+
+  // Prometheus metrics expose internals — require the internal service token.
+  app.use('/metrics', (req: Request, res: Response, next: NextFunction) => {
+    if (!isValidInternalToken(req.headers['x-internal-service'])) {
+      res.status(404).end();
+      return;
+    }
+    next();
+  });
 
   app.use(helmet());
   app.enableCors({

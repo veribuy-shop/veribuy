@@ -7,6 +7,7 @@ import {
   Req,
   ForbiddenException,
   UnauthorizedException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, Public } from '@veribuy/common';
 import { InvoicesService } from './invoices.service';
@@ -67,8 +68,11 @@ export class InvoicesController {
    */
   @Get('order/:orderId')
   @Roles('BUYER', 'SELLER', 'ADMIN')
-  async getInvoicesByOrder(@Param('orderId') orderId: string) {
-    return this.invoicesService.getInvoicesByOrder(orderId);
+  async getInvoicesByOrder(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @CurrentUser() user: JwtUser,
+  ) {
+    return this.invoicesService.getInvoicesByOrderForUser(orderId, user.userId, user.role === 'ADMIN');
   }
 
   /**

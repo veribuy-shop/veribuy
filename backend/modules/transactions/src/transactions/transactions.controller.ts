@@ -21,11 +21,12 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
-import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, PaginationDto, Public, RoyalMailServiceTier } from '@veribuy/common';
+import { JwtAuthGuard, RolesGuard, Roles, CurrentUser, PaginationDto, Public, RoyalMailServiceTier, assertEmailVerified } from '@veribuy/common';
 
 interface AuthenticatedUser {
   userId: string;
   role: string;
+  isEmailVerified?: boolean;
 }
 
 /** Timing-safe comparison for internal service tokens. */
@@ -101,6 +102,7 @@ export class TransactionsController {
   @Post('orders')
   @Roles('BUYER', 'SELLER', 'ADMIN')
   createOrder(@Body() createOrderDto: CreateOrderDto, @CurrentUser() user: AuthenticatedUser) {
+    assertEmailVerified(user);
     if (createOrderDto.buyerId !== user.userId && user.role !== 'ADMIN') {
       throw new ForbiddenException('You can only create orders for yourself');
     }

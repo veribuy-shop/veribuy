@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeOrder } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -19,6 +20,8 @@ export async function PATCH(
     }
 
     const { orderId } = await params;
+
+    if (!isUuid(orderId)) return invalidIdResponse();
     const body = await request.json();
     const { status } = body;
 
@@ -93,6 +96,8 @@ export async function DELETE(
     }
 
     const { orderId } = await params;
+
+    if (!isUuid(orderId)) return invalidIdResponse();
 
     // Validate UUID format
     if (!UUID_RE.test(orderId)) {

@@ -56,6 +56,8 @@ const SENSITIVE_KEYS = new Set([
   'accesstoken',
   'authorization',
   'x-internal-service',
+  'idtoken',
+  'otp',
   'secret',
   'apikey',
   'api_key',

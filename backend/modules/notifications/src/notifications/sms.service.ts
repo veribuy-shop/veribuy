@@ -39,7 +39,7 @@ export class SmsService {
   // ─── Verification OTP ────────────────────────────────────────────────────────
 
   async sendVerificationOtp(to: string, otp: string): Promise<void> {
-    await this.send(to, `Your VeriBuy verification code is: ${otp}. It expires in 10 minutes.`);
+    await this.send(to, `Your VeriBuy verification code is: ${otp}. It expires in 5 minutes. Never share this code.`);
   }
 
   // ─── Order Notifications ─────────────────────────────────────────────────────
@@ -72,13 +72,13 @@ export class SmsService {
 
   private async send(to: string, body: string): Promise<void> {
     if (!this.client) {
-      this.logger.warn(`SMS skipped (no Twilio config): to=${to} body="${body.substring(0, 40)}..."`);
+      this.logger.warn(`SMS skipped (no Twilio config): to=***${to.slice(-4)}`);
       return;
     }
 
     try {
       await this.client.messages.create({ from: this.from, to, body });
-      this.logger.log(`SMS sent: to=${to}`);
+      this.logger.log(`SMS sent: to=***${to.slice(-4)}`);
     } catch (err: any) {
       this.logger.error(`Failed to send SMS to ${to}: ${err?.message}`);
     }

@@ -22,7 +22,7 @@ import { NotificationsService } from './notifications.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ContactUsDto } from './dto/contact-us.dto';
 import { RequestCallbackDto } from './dto/request-callback.dto';
-import { JwtAuthGuard, RolesGuard, Public, CurrentUser, PaginationDto } from '@veribuy/common';
+import { JwtAuthGuard, RolesGuard, Public, CurrentUser, PaginationDto, assertEmailVerified } from '@veribuy/common';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -97,18 +97,16 @@ export class NotificationsController {
   @Post('messages')
   async createMessage(
     @Body() dto: CreateMessageDto,
-    @CurrentUser() user: { userId: string; role: string },
+    @CurrentUser() user: { userId: string; role: string; isEmailVerified?: boolean },
   ) {
-    return this.notificationsService.createMessage(
-      {
-        senderId: user.userId,
-        recipientId: dto.recipientId,
-        listingId: dto.listingId,
-        subject: dto.subject,
-        content: dto.content,
-      },
-      dto.emailContext,
-    );
+    assertEmailVerified(user);
+    return this.notificationsService.createMessage({
+      senderId: user.userId,
+      recipientId: dto.recipientId,
+      listingId: dto.listingId,
+      subject: dto.subject,
+      content: dto.content,
+    });
   }
 
   // Get all messages for a user

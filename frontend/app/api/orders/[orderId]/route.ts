@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { sanitizeOrder, sanitizePublicProfile, sanitizeListing } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 const LISTING_SERVICE_URL = getBackendUrl();
@@ -21,6 +22,8 @@ export async function GET(
     }
 
     const { orderId } = await params;
+
+    if (!isUuid(orderId)) return invalidIdResponse();
 
     // Validate UUID format
     if (!UUID_RE.test(orderId)) {

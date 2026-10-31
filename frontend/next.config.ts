@@ -57,9 +57,13 @@ const nextConfig: NextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com", // Allow Next.js hydration + Stripe SDK
+              // 'unsafe-eval' is only needed by the dev server (React Refresh). 'unsafe-inline'
+              // remains for Next.js inline bootstrap scripts until nonce-based CSP is adopted.
+              process.env.NODE_ENV === 'development'
+                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com"
+                : "script-src 'self' 'unsafe-inline' https://js.stripe.com",
               "style-src 'self' 'unsafe-inline'", // Allow inline styles (Tailwind)
-              "img-src 'self' data: https: http:",
+              "img-src 'self' data: blob: https:",
               "font-src 'self' data:",
               // In production the Next.js server calls backend services directly (server-side);
               // the browser only needs to connect to this origin + Stripe.

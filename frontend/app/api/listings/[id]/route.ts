@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { sanitizeListing, sanitizePublicListing } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -12,6 +13,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    if (!isUuid(id)) return invalidIdResponse();
 
     if (!UUID_RE.test(id)) {
       return NextResponse.json({ error: 'Invalid listing ID format' }, { status: 400 });
@@ -59,6 +61,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    if (!isUuid(id)) return invalidIdResponse();
 
     if (!UUID_RE.test(id)) {
       return NextResponse.json({ error: 'Invalid listing ID format' }, { status: 400 });
@@ -103,6 +106,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    if (!isUuid(id)) return invalidIdResponse();
 
     if (!UUID_RE.test(id)) {
       return NextResponse.json({ error: 'Invalid listing ID format' }, { status: 400 });

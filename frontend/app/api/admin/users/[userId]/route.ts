@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeUser } from '@/lib/sanitize';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const AUTH_SERVICE_URL = getBackendUrl();
 
@@ -20,6 +21,8 @@ export async function PATCH(
     }
 
     const { userId } = await params;
+
+    if (!isUuid(userId)) return invalidIdResponse();
 
     if (!UUID_RE.test(userId)) {
       return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });
@@ -66,6 +69,8 @@ export async function DELETE(
     }
 
     const { userId } = await params;
+
+    if (!isUuid(userId)) return invalidIdResponse();
 
     if (!UUID_RE.test(userId)) {
       return NextResponse.json({ error: 'Invalid user ID format' }, { status: 400 });

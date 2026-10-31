@@ -8,7 +8,7 @@ import { PrismaService } from '../../../../src/database/prisma.service';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
-import { ALLOWED_TRANSITIONS } from './dto/update-status.dto';
+import { ALLOWED_TRANSITIONS, SELLER_TRANSITIONS } from './dto/update-status.dto';
 import { Listing, ListingStatus, TrustLensStatus, ReviewStatus, IntegrityFlag, ListingFormat } from '.prisma/veribuy-client';
 import {
   PaginationDto,
@@ -107,7 +107,7 @@ export class UlistingsService {
         brand: dto.brand,
         model: dto.model,
         price: isAuction ? (buyItNowPrice ?? startingBid ?? dto.price) : dto.price,
-        currency: dto.currency || 'GBP',
+        currency: 'GBP', // Orders settle in GBP only — never trust a client currency
         conditionGrade: dto.conditionGrade,
         color: dto.color || null,
         storageCapacity: dto.storageCapacity || null,
@@ -438,6 +438,39 @@ export class UlistingsService {
     };
   }
 
+  /**
+   * Enforces the owner-facing listing state machine. Owners can submit,
+   * pause, relist and delist — but can only (re)activate a listing that has
+   * passed TrustLens verification and is not reserved by an in-flight checkout.
+   */
+  async assertSellerTransition(
+    listing: Pick<Listing, 'id' | 'status' | 'trustLensStatus'>,
+    target: ListingStatus,
+  ): Promise<void> {
+    const allowed = SELLER_TRANSITIONS[listing.status] ?? [];
+    if (!allowed.includes(target)) {
+      throw new BadRequestException(
+        `Cannot transition listing from ${listing.status} to ${target}`,
+      );
+    }
+
+    if (target === ListingStatus.ACTIVE) {
+      if (listing.trustLensStatus !== TrustLensStatus.PASSED) {
+        throw new BadRequestException(
+          'This listing must pass TrustLens verification before it can go live',
+        );
+      }
+      const pendingCheckouts = await this.prisma.order.count({
+        where: { listingId: listing.id, status: 'PENDING' },
+      });
+      if (pendingCheckouts > 0) {
+        throw new BadRequestException(
+          'A buyer is currently checking out this listing. Please try again later.',
+        );
+      }
+    }
+  }
+
   /** Returns raw listing WITH imei/serial — for owner or internal use only */
   async findOneRaw(id: string): Promise<Listing> {
     const listing = await this.prisma.listing.findUnique({
@@ -620,13 +653,21 @@ export class UlistingsService {
   }
 
   /** User-facing status update with state machine validation */
-  async updateStatus(id: string, status: ListingStatus, currentStatus: ListingStatus): Promise<Listing> {
+  async updateStatus(
+    id: string,
+    status: ListingStatus,
+    currentStatus: ListingStatus,
+    isAdmin = false,
+  ): Promise<Listing> {
     // Atomic update: only update if current status hasn't changed concurrently
     const updateData: Record<string, unknown> = {
       status,
       publishedAt: status === ListingStatus.ACTIVE ? new Date() : undefined,
     };
-    if (status === ListingStatus.ACTIVE) {
+    // Only an administrator activation counts as a verification decision.
+    // Owners can only re-activate listings that already PASSED (enforced upstream).
+    const adminActivation = isAdmin && status === ListingStatus.ACTIVE;
+    if (adminActivation) {
       updateData.trustLensStatus = TrustLensStatus.PASSED;
     }
 
@@ -641,7 +682,7 @@ export class UlistingsService {
       );
     }
 
-    if (status === ListingStatus.ACTIVE) {
+    if (adminActivation) {
       await this.prisma.verificationRequest.updateMany({
         where: { listingId: id, status: { not: ReviewStatus.PASSED } },
         data: {
@@ -734,22 +775,48 @@ export class UlistingsService {
     }
   }
 
-  async update(id: string, dto: UpdateListingDto): Promise<Listing> {
+  async update(id: string, dto: UpdateListingDto, isAdmin = false): Promise<Listing> {
     try {
       const current = await this.prisma.listing.findUnique({ where: { id } });
       if (!current) {
         throw new NotFoundException('Listing not found');
       }
+      if (current.status === ListingStatus.SOLD) {
+        throw new BadRequestException('Sold listings cannot be edited');
+      }
 
-      // Enforce the same state machine used by the dedicated status endpoint, so the
-      // generic PATCH can't bypass an invalid transition.
-      if (dto.status !== undefined && dto.status !== current.status) {
-        const allowed = ALLOWED_TRANSITIONS[current.status] ?? [];
-        if (!allowed.includes(dto.status)) {
-          throw new BadRequestException(
-            `Cannot transition listing from ${current.status} to ${dto.status}`,
-          );
+      // Same state machines as the dedicated status endpoint, so the generic
+      // PATCH can't be used to bypass verification.
+      let targetStatus = dto.status !== undefined && dto.status !== current.status ? dto.status : undefined;
+      if (targetStatus !== undefined) {
+        if (isAdmin) {
+          const allowed = ALLOWED_TRANSITIONS[current.status] ?? [];
+          if (!allowed.includes(targetStatus)) {
+            throw new BadRequestException(
+              `Cannot transition listing from ${current.status} to ${targetStatus}`,
+            );
+          }
+        } else {
+          await this.assertSellerTransition(current, targetStatus);
         }
+      }
+
+      // Changing what the buyer is told about the device invalidates the
+      // verification it earned (bait-and-switch protection). Price changes are fine.
+      const changed = <K extends keyof Listing>(key: K, value: unknown) =>
+        value !== undefined && (value || null) !== (current[key] || null);
+      const materialChange =
+        changed('title', dto.title) ||
+        changed('description', dto.description) ||
+        changed('conditionGrade', dto.conditionGrade) ||
+        changed('color', dto.color) ||
+        changed('storageCapacity', dto.storageCapacity);
+      const requiresReverification =
+        !isAdmin &&
+        materialChange &&
+        current.trustLensStatus === TrustLensStatus.PASSED;
+      if (requiresReverification) {
+        targetStatus = ListingStatus.UNDER_REVIEW;
       }
 
       const listing = await this.prisma.listing.update({
@@ -758,9 +825,10 @@ export class UlistingsService {
           ...(dto.title !== undefined && { title: dto.title }),
           ...(dto.description !== undefined && { description: dto.description }),
           ...(dto.price !== undefined && { price: dto.price }),
-          ...(dto.currency !== undefined && { currency: dto.currency }),
+          // Orders are settled in GBP only; listing currency is fixed.
           ...(dto.conditionGrade !== undefined && { conditionGrade: dto.conditionGrade }),
-          ...(dto.status !== undefined && { status: dto.status }),
+          ...(targetStatus !== undefined && { status: targetStatus }),
+          ...(requiresReverification && { trustLensStatus: TrustLensStatus.REQUIRES_REVIEW }),
           ...(dto.color !== undefined && { color: dto.color || null }),
           ...(dto.storageCapacity !== undefined && { storageCapacity: dto.storageCapacity || null }),
         },

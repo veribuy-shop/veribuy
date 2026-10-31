@@ -9,6 +9,7 @@ import { getCachedImeiStatus } from '@/lib/redis';
  * only returned to admins via the trust-lens service directly.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const TRUST_LENS_SERVICE_URL = getBackendUrl();
 const LISTING_SERVICE_URL = getBackendUrl();
@@ -61,6 +62,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    if (!isUuid(id)) return invalidIdResponse();
 
     if (!UUID_RE.test(id)) {
       return NextResponse.json({ error: 'Invalid listing ID format' }, { status: 400 });

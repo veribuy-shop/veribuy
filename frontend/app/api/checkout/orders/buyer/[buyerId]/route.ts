@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { sanitizeOrder, sanitizePaginated } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -19,6 +20,8 @@ export async function GET(
     }
 
     const { buyerId } = await params;
+
+    if (!isUuid(buyerId)) return invalidIdResponse();
 
     if (!UUID_RE.test(buyerId)) {
       return NextResponse.json({ error: 'Invalid buyer ID format' }, { status: 400 });

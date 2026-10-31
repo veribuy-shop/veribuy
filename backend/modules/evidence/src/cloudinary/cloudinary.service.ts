@@ -29,7 +29,8 @@ export class CloudinaryService {
     mimeType: string,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const resourceType = mimeType.startsWith('video/') ? 'video' : 'auto';
+      const isImage = mimeType.startsWith('image/');
+      const resourceType = mimeType.startsWith('video/') ? 'video' : isImage ? 'image' : 'auto';
 
       const uploadStream = cloudinary.uploader.upload_stream(
         {
@@ -37,6 +38,12 @@ export class CloudinaryService {
           public_id: publicId,
           resource_type: resourceType,
           overwrite: true,
+          // PRIVACY: re-encode images on ingest. Cloudinary strips EXIF/GPS and
+          // other embedded metadata from transformed assets, so the stored
+          // original no longer carries the seller's location or device details.
+          ...(isImage
+            ? { transformation: [{ quality: 'auto:best' }], image_metadata: false }
+            : {}),
         },
         (error: UploadApiErrorResponse | undefined, result: UploadApiResponse | undefined) => {
           if (error) {

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
@@ -18,21 +18,46 @@ export class NotificationsService {
 
   // Create a new in-app message.
   // Pass emailContext to also fire an email notification to the recipient.
-  async createMessage(
-    data: {
-      senderId: string;
-      recipientId: string;
-      listingId?: string;
-      subject?: string;
-      content: string;
-    },
-    emailContext?: {
-      senderName?: string;
-      recipientEmail?: string;
-      recipientName?: string;
-      listingTitle?: string;
-    },
-  ) {
+  /**
+   * SECURITY: recipient email, names and listing title are resolved from the
+   * database — never from the request — so this endpoint can't be abused to
+   * send platform-branded email to arbitrary addresses.
+   */
+  async createMessage(data: {
+    senderId: string;
+    recipientId: string;
+    listingId?: string;
+    subject?: string;
+    content: string;
+  }) {
+    if (data.senderId === data.recipientId) {
+      throw new BadRequestException('You cannot message yourself');
+    }
+
+    const [recipient, sender, listing] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: data.recipientId },
+        select: { email: true, name: true, isActive: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: data.senderId },
+        select: { name: true },
+      }),
+      data.listingId
+        ? this.prisma.listing.findUnique({
+            where: { id: data.listingId },
+            select: { title: true },
+          })
+        : Promise.resolve(null),
+    ]);
+
+    if (!recipient || !recipient.isActive) {
+      throw new NotFoundException('Recipient not found');
+    }
+    if (data.listingId && !listing) {
+      throw new NotFoundException('Listing not found');
+    }
+
     const message = await this.prisma.message.create({
       data: {
         senderId: data.senderId,
@@ -49,21 +74,19 @@ export class NotificationsService {
     );
 
     // Fire email notification (fire-and-forget — never block the response)
-    if (emailContext?.recipientEmail) {
-      this.email
-        .sendContactSellerEmail({
-          sellerEmail: emailContext.recipientEmail,
-          sellerName: emailContext.recipientName ?? '',
-          buyerName: emailContext.senderName ?? '',
-          listingTitle: emailContext.listingTitle ?? '',
-          subject: data.subject || 'New message',
-          message: data.content,
-          listingId: data.listingId || '',
-        })
-        .catch((err) =>
-          this.logger.error(`Contact-seller email failed: ${err?.message}`),
-        );
-    }
+    this.email
+      .sendContactSellerEmail({
+        sellerEmail: recipient.email,
+        sellerName: recipient.name ?? '',
+        buyerName: sender?.name ?? '',
+        listingTitle: listing?.title ?? '',
+        subject: data.subject || 'New message',
+        message: data.content,
+        listingId: data.listingId || '',
+      })
+      .catch((err) =>
+        this.logger.error(`Contact-seller email failed: ${err?.message}`),
+      );
 
     return message;
   }

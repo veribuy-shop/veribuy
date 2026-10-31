@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeTrustLens, sanitizePaginated } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { isUuid, invalidIdResponse } from '@/lib/validate-id';
 
 const TRUST_LENS_SERVICE_URL = getBackendUrl();
 
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const listingId = searchParams.get('listingId');
+    if (listingId !== null && !isUuid(listingId)) return invalidIdResponse();
 
     let url = `${TRUST_LENS_SERVICE_URL}/trust-lens`;
     if (listingId) {
@@ -56,6 +58,7 @@ export async function DELETE(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const listingId = searchParams.get('listingId');
+    if (listingId !== null && !isUuid(listingId)) return invalidIdResponse();
 
     if (!listingId) {
       return NextResponse.json({ error: 'listingId is required' }, { status: 400 });
@@ -92,6 +95,7 @@ export async function POST(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const listingId = searchParams.get('listingId');
+    if (listingId !== null && !isUuid(listingId)) return invalidIdResponse();
     const action = searchParams.get('action');
 
     if (action === 'rerun' && listingId) {
@@ -144,6 +148,7 @@ export async function PATCH(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const listingId = searchParams.get('listingId');
+    if (listingId !== null && !isUuid(listingId)) return invalidIdResponse();
 
     if (!listingId) {
       return NextResponse.json(

@@ -32,6 +32,9 @@ describe('UlistingsService', () => {
       verificationRequest: {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      order: {
+        count: jest.fn().mockResolvedValue(0),
+      },
     };
 
     redis = {
@@ -384,6 +387,93 @@ describe('UlistingsService', () => {
     });
   });
 
+  describe('seller listing controls (verification bypass protection)', () => {
+    const base = { id: 'lst-1', trustLensStatus: 'PENDING' } as any;
+
+    it('forbids a seller from moving their own listing into review or approval', async () => {
+      await expect(
+        service.assertSellerTransition({ ...base, status: 'SUBMITTED' }, 'UNDER_REVIEW' as any),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.assertSellerTransition({ ...base, status: 'UNDER_REVIEW' }, 'ACTIVE' as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('forbids reactivating a listing that never passed TrustLens', async () => {
+      await expect(
+        service.assertSellerTransition({ ...base, status: 'DELISTED' }, 'ACTIVE' as any),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('forbids reactivating while a buyer is checking out', async () => {
+      prisma.order.count.mockResolvedValueOnce(1);
+      await expect(
+        service.assertSellerTransition(
+          { ...base, status: 'INACTIVE', trustLensStatus: 'PASSED' },
+          'ACTIVE' as any,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('allows pausing and reactivating a verified listing', async () => {
+      await expect(
+        service.assertSellerTransition({ ...base, status: 'ACTIVE', trustLensStatus: 'PASSED' }, 'INACTIVE' as any),
+      ).resolves.toBeUndefined();
+      await expect(
+        service.assertSellerTransition({ ...base, status: 'INACTIVE', trustLensStatus: 'PASSED' }, 'ACTIVE' as any),
+      ).resolves.toBeUndefined();
+    });
+
+    it('does not mark verification PASSED when a seller reactivates', async () => {
+      prisma.listing.updateMany.mockResolvedValue({ count: 1 });
+      prisma.listing.findUnique.mockResolvedValue({ id: 'lst-1', sellerId: 'seller-1', status: 'ACTIVE' });
+
+      await service.updateStatus('lst-1', 'ACTIVE' as any, 'INACTIVE' as any, false);
+
+      expect(prisma.listing.updateMany).toHaveBeenCalledWith({
+        where: { id: 'lst-1', status: 'INACTIVE' },
+        data: expect.not.objectContaining({ trustLensStatus: 'PASSED' }),
+      });
+      expect(prisma.verificationRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('sends a verified listing back to review when the seller changes its description', async () => {
+      prisma.listing.findUnique.mockResolvedValue({
+        id: 'lst-1',
+        status: 'ACTIVE',
+        trustLensStatus: 'PASSED',
+        title: 'iPhone 14',
+        description: 'Mint condition',
+        conditionGrade: 'A',
+      });
+      prisma.listing.update.mockResolvedValue({ id: 'lst-1' });
+
+      await service.update('lst-1', { description: 'Mint condition, no scratches' } as any, false);
+
+      expect(prisma.listing.update).toHaveBeenCalledWith({
+        where: { id: 'lst-1' },
+        data: expect.objectContaining({ status: 'UNDER_REVIEW', trustLensStatus: 'REQUIRES_REVIEW' }),
+      });
+    });
+
+    it('lets the seller change only the price without re-review', async () => {
+      prisma.listing.findUnique.mockResolvedValue({
+        id: 'lst-1',
+        status: 'ACTIVE',
+        trustLensStatus: 'PASSED',
+        price: 500,
+      });
+      prisma.listing.update.mockResolvedValue({ id: 'lst-1' });
+
+      await service.update('lst-1', { price: 450 } as any, false);
+
+      expect(prisma.listing.update).toHaveBeenCalledWith({
+        where: { id: 'lst-1' },
+        data: expect.not.objectContaining({ status: expect.anything() }),
+      });
+    });
+  });
+
   describe('updateStatus', () => {
     it('should update listing status to ACTIVE, set trustLensStatus to PASSED, and update verification request', async () => {
       prisma.listing.updateMany.mockResolvedValue({ count: 1 });
@@ -400,7 +490,7 @@ describe('UlistingsService', () => {
         name: 'Seller One',
       });
 
-      const result = await service.updateStatus('lst-100', 'ACTIVE' as any, 'UNDER_REVIEW' as any);
+      const result = await service.updateStatus('lst-100', 'ACTIVE' as any, 'UNDER_REVIEW' as any, true);
 
       expect(prisma.listing.updateMany).toHaveBeenCalledWith({
         where: { id: 'lst-100', status: 'UNDER_REVIEW' },

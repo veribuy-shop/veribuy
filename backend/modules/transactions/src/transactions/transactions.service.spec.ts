@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
 import { TransactionsService, getBuyerProtectionFeeRate } from './transactions.service';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
@@ -46,13 +46,21 @@ describe('TransactionsService', () => {
       order: {
         create: jest.fn(),
         findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn((args: any) => prisma.order.findUnique(args)),
         findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+        count: jest.fn().mockResolvedValue(0),
       },
       listing: {
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      refundRecord: {
+        create: jest.fn().mockResolvedValue({ id: 'rr-1' }),
       },
       user: {
         findUnique: jest.fn(),
@@ -63,6 +71,7 @@ describe('TransactionsService', () => {
       escrowRecord: {
         create: jest.fn(),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
       },
       referral: {
@@ -260,8 +269,10 @@ describe('TransactionsService', () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue({
           ...tamperListing,
           format: 'AUCTION',
+          status: 'AUCTION_ENDED',
           price: 500,
           currentBid: 650,
+          highestBidderId: 'buyer-1',
         });
         prisma.order.create.mockResolvedValue({ id: 'ord-auction' });
 
@@ -277,6 +288,114 @@ describe('TransactionsService', () => {
             data: expect.objectContaining({ amount: 650, protectionFee: 32.5 }),
           }),
         );
+      });
+    });
+
+    describe('auction purchase rules', () => {
+      const auction = {
+        id: 'listing-1',
+        sellerId: 'seller-1',
+        title: 'iPhone 15 Pro',
+        price: 500,
+        quantity: 1,
+        deviceType: 'SMARTPHONE',
+        format: 'AUCTION',
+        currentBid: 650,
+      };
+
+      it('rejects a non-winner buying an ended auction', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({
+          ...auction,
+          status: 'AUCTION_ENDED',
+          highestBidderId: 'someone-else',
+        });
+
+        await expect(
+          service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1' }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockPaymentIntents.create).not.toHaveBeenCalled();
+      });
+
+      it('rejects buying a running auction that has no Buy It Now price', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({
+          ...auction,
+          status: 'ACTIVE',
+          auctionEndsAt: new Date(Date.now() + 3600_000).toISOString(),
+        });
+
+        await expect(
+          service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1' }),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('charges the Buy It Now price on a running auction', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({
+          ...auction,
+          status: 'ACTIVE',
+          buyItNowPrice: 900,
+          auctionEndsAt: new Date(Date.now() + 3600_000).toISOString(),
+        });
+        prisma.order.create.mockResolvedValue({ id: 'ord-bin' });
+
+        await service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1' });
+
+        expect(prisma.order.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ amount: 900 }) }),
+        );
+      });
+    });
+
+    describe('currency and reservation', () => {
+      const listing = {
+        id: 'listing-1',
+        sellerId: 'seller-1',
+        title: 'iPhone 15 Pro',
+        price: 500,
+        quantity: 1,
+        deviceType: 'SMARTPHONE',
+        status: 'ACTIVE',
+      };
+
+      it('always charges in GBP even if the client asks for another currency', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
+        prisma.order.create.mockResolvedValue({ id: 'ord-ccy' });
+
+        await service.createOrder({
+          buyerId: 'buyer-1',
+          sellerId: 'seller-1',
+          listingId: 'listing-1',
+          currency: 'ZAR',
+        });
+
+        expect(mockPaymentIntents.create).toHaveBeenCalledWith(
+          expect.objectContaining({ currency: 'gbp' }),
+        );
+        expect(prisma.order.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ currency: 'GBP' }) }),
+        );
+      });
+
+      it('refuses checkout when another buyer already holds the listing', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({ ...listing, status: 'INACTIVE' });
+        prisma.listing.updateMany.mockResolvedValueOnce({ count: 0 });
+
+        await expect(
+          service.createOrder({ buyerId: 'buyer-2', sellerId: 'seller-1', listingId: 'listing-1' }),
+        ).rejects.toThrow(ConflictException);
+        expect(mockPaymentIntents.create).not.toHaveBeenCalled();
+      });
+
+      it('rejects donations above the cap', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
+
+        await expect(
+          service.createOrder({
+            buyerId: 'buyer-1',
+            sellerId: 'seller-1',
+            listingId: 'listing-1',
+            donationAmount: 10_000,
+          }),
+        ).rejects.toThrow(BadRequestException);
       });
     });
 
@@ -506,13 +625,20 @@ describe('TransactionsService', () => {
         ).rejects.toThrow(ForbiddenException);
       });
 
-      it('allows ADMIN to resolve a dispute', async () => {
+      it('allows ADMIN to resolve a dispute in the seller\'s favour', async () => {
         mockOrderAt('DISPUTED');
-        prisma.order.update.mockResolvedValue({ id: 'ord-1', status: 'REFUNDED' });
+
+        await expect(
+          service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'ADMIN'),
+        ).resolves.toBeDefined();
+      });
+
+      it('refuses an ADMIN refund when there is no escrow to return', async () => {
+        mockOrderAt('DISPUTED');
 
         await expect(
           service.updateOrderStatus('ord-1', { status: 'REFUNDED' as any }, 'ADMIN'),
-        ).resolves.toBeDefined();
+        ).rejects.toThrow(BadRequestException);
       });
 
       it('forbids an unrelated third party from touching the order', async () => {
@@ -670,6 +796,87 @@ describe('TransactionsService', () => {
         BadRequestException,
       );
     });
+
+  describe('payment and refund integrity', () => {
+    const paidIntent = {
+      id: 'pi_test_123',
+      status: 'succeeded',
+      amount: 52500,
+      currency: 'gbp',
+      payment_method: { billing_details: { name: 'Jane Buyer' } },
+    };
+
+    it('does not create a second escrow when a concurrent confirmation already won', async () => {
+      mockPaymentIntents.retrieve.mockResolvedValueOnce(paidIntent);
+      prisma.order.findUnique.mockResolvedValue({
+        id: 'ord-race',
+        paymentIntentId: 'pi_test_123',
+        amount: 500,
+        totalAmount: 525,
+        currency: 'GBP',
+        status: 'PENDING',
+        escrowId: null,
+      });
+      prisma.order.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      await service.confirmPayment('ord-race', 'pi_test_123');
+
+      expect(prisma.escrowRecord.create).not.toHaveBeenCalled();
+    });
+
+    it('auto-refunds a late payment when the listing has since been sold', async () => {
+      const refunds = { create: jest.fn().mockResolvedValue({ id: 're_1', status: 'succeeded' }) };
+      (service as any).stripe.refunds = refunds;
+      mockPaymentIntents.retrieve.mockResolvedValueOnce(paidIntent);
+      prisma.order.findUnique.mockResolvedValue({
+        id: 'ord-late',
+        paymentIntentId: 'pi_test_123',
+        listingId: 'list-1',
+        amount: 500,
+        totalAmount: 525,
+        currency: 'GBP',
+        status: 'CANCELLED',
+      });
+      prisma.listing.updateMany.mockResolvedValueOnce({ count: 0 }); // listing no longer reservable
+
+      await expect(service.confirmPayment('ord-late', 'pi_test_123')).rejects.toThrow(ConflictException);
+      expect(refunds.create).toHaveBeenCalledWith(
+        expect.objectContaining({ payment_intent: 'pi_test_123' }),
+        expect.objectContaining({ idempotencyKey: 'refund-unfulfillable-ord-late' }),
+      );
+      expect(prisma.escrowRecord.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to refund an order whose escrow was already released', async () => {
+      prisma.order.findUnique.mockResolvedValue({ id: 'ord-done', status: 'COMPLETED', escrowId: 'esc-1' });
+
+      await expect(service.refundOrder('ord-done')).rejects.toThrow(BadRequestException);
+    });
+
+    it('routes an ADMIN dispute resolution to REFUNDED through Stripe', async () => {
+      const refunds = { create: jest.fn().mockResolvedValue({ id: 're_2', status: 'succeeded' }) };
+      (service as any).stripe.refunds = refunds;
+      prisma.order.findUnique.mockResolvedValue({
+        id: 'ord-disp',
+        buyerId: 'buyer-1',
+        sellerId: 'seller-1',
+        listingId: 'list-1',
+        status: 'DISPUTED',
+        escrowId: 'esc-1',
+        totalAmount: 525,
+        currency: 'GBP',
+      });
+      prisma.escrowRecord.findUnique.mockResolvedValue({ id: 'esc-1', status: 'DISPUTED', providerRef: 'pi_test_123' });
+      prisma.order.update.mockResolvedValue({ id: 'ord-disp', status: 'REFUNDED' });
+
+      await service.updateOrderStatus('ord-disp', { status: 'REFUNDED' as any }, 'ADMIN');
+
+      expect(refunds.create).toHaveBeenCalledWith(
+        { payment_intent: 'pi_test_123' },
+        { idempotencyKey: 'refund-order-ord-disp' },
+      );
+    });
+  });
   });
 });
 

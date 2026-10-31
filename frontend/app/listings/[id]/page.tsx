@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import ListingDetailContent from './listing-detail-content';
 import { productJsonLd } from '@/lib/structured-data';
 import { getBackendUrl } from '@/lib/backend-url';
+import { serializeJsonLd } from '@/lib/json-ld';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
@@ -105,7 +106,7 @@ export default async function ListingPage({
       {jsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
         />
       )}
       <ListingDetailContent id={id} />

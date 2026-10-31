@@ -2,9 +2,9 @@ import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TerminusModule } from '@nestjs/terminus';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-import { RedisModule } from '@veribuy/redis-cache';
+import { RedisModule, RedisService } from '@veribuy/redis-cache';
 import { HttpLoggerMiddleware } from '@veribuy/logger';
 import { AuthModule } from '../modules/auth/src/auth/auth.module';
 import { UsersModule } from '../modules/users/src/users/users.module';
@@ -20,6 +20,8 @@ import { NotificationsModule } from '../modules/notifications/src/notifications/
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './database/prisma.module';
 import { validateEnv } from './config/env.validation';
+import { RedisThrottlerStorage } from './security/redis-throttler.storage';
+import { ClientAwareThrottlerGuard } from './security/client-aware-throttler.guard';
 
 @Module({
   imports: [
@@ -28,7 +30,13 @@ import { validateEnv } from './config/env.validation';
       envFilePath: ['.env', '../.env'],
       validate: validateEnv,
     }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    ThrottlerModule.forRootAsync({
+      inject: [RedisService],
+      useFactory: (redis: RedisService) => ({
+        throttlers: [{ ttl: 60000, limit: 100 }],
+        storage: new RedisThrottlerStorage(redis),
+      }),
+    }),
     PrometheusModule.register({ path: '/metrics', defaultMetrics: { enabled: true } }),
     TerminusModule,
     RedisModule,
@@ -46,7 +54,7 @@ import { validateEnv } from './config/env.validation';
     TransactionsModule,
     NotificationsModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+  providers: [{ provide: APP_GUARD, useClass: ClientAwareThrottlerGuard }],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

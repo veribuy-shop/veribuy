@@ -88,6 +88,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ received: true });
   } catch (error) {
+    // A non-2xx response makes Stripe retry the event with backoff, so a
+    // transient backend failure can't leave a paid order stuck in PENDING.
     console.error('[Stripe Webhook] Error processing webhook:', error);
     return NextResponse.json(
       { error: 'Webhook processing failed' },
@@ -96,13 +98,19 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/** Thrown for transient failures so the POST handler returns 5xx and Stripe retries. */
+class RetryableWebhookError extends Error {}
+
+type OrderLookup = Record<string, any> | null;
+
 /**
  * Look up an order by its Stripe PaymentIntent ID.
- * Returns null if not found or if the request fails.
+ * Returns null if no order exists; throws RetryableWebhookError on transient failure.
  */
-async function fetchOrderByPaymentIntentId(paymentIntentId: string): Promise<Record<string, any> | null> {
+async function fetchOrderByPaymentIntentId(paymentIntentId: string): Promise<OrderLookup> {
+  let response: Response;
   try {
-    const response = await fetch(
+    response = await fetch(
       `${TRANSACTION_SERVICE_URL}/transactions/orders/by-payment-intent/${encodeURIComponent(paymentIntentId)}`,
       {
         method: 'GET',
@@ -113,177 +121,94 @@ async function fetchOrderByPaymentIntentId(paymentIntentId: string): Promise<Rec
         signal: AbortSignal.timeout(8000),
       }
     );
-
-    if (response.status === 404) {
-      return null;
-    }
-
-    if (!response.ok) {
-      console.error('[Stripe Webhook] Failed to fetch order by paymentIntentId:', response.status);
-      return null;
-    }
-
-    return await response.json();
   } catch (err) {
-    console.error('[Stripe Webhook] Error fetching order:', err);
+    throw new RetryableWebhookError(`Order lookup failed: ${(err as Error).message}`);
+  }
+
+  if (response.status === 404) {
     return null;
   }
+  if (!response.ok) {
+    throw new RetryableWebhookError(`Order lookup returned ${response.status}`);
+  }
+  return response.json();
 }
 
 /**
- * Update the status of an order via the transaction service.
- * Uses the x-internal-service confirm-payment endpoint so no user JWT is needed
- * for payment confirmation (the order ownership was already established at creation).
+ * Call an internal transaction endpoint. 5xx / network errors are retryable;
+ * 4xx means the backend rejected the transition on purpose (e.g. already
+ * handled) and retrying would not help, so it is logged and acknowledged.
  */
-async function confirmOrderPayment(orderId: string, paymentIntentId: string): Promise<boolean> {
+async function callInternal(path: string, method: 'POST' | 'PATCH', payload: unknown, label: string): Promise<void> {
+  let response: Response;
   try {
-    const response = await fetch(
-      `${TRANSACTION_SERVICE_URL}/transactions/orders/${orderId}/confirm-payment/internal`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-service': getInternalServiceToken(),
-        },
-        body: JSON.stringify({ paymentIntentId }),
-        signal: AbortSignal.timeout(8000),
-      }
-    );
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      console.error('[Stripe Webhook] confirm-payment failed:', response.status, data);
-      return false;
-    }
-
-    return true;
+    response = await fetch(`${TRANSACTION_SERVICE_URL}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-internal-service': getInternalServiceToken(),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
+    });
   } catch (err) {
-    console.error('[Stripe Webhook] Error confirming payment:', err);
-    return false;
+    throw new RetryableWebhookError(`${label} failed: ${(err as Error).message}`);
   }
-}
 
-/**
- * Cancel an order via the transaction service.
- * Uses x-internal-service header — transaction-service needs this endpoint
- * accessible internally (it already is: ESCROW_HELD → CANCELLED is allowed).
- */
-async function cancelOrder(orderId: string): Promise<boolean> {
-  try {
-    const response = await fetch(
-      `${TRANSACTION_SERVICE_URL}/transactions/orders/${orderId}/status/internal`,
-      {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-service': getInternalServiceToken(),
-        },
-        body: JSON.stringify({ status: 'CANCELLED' }),
-        signal: AbortSignal.timeout(8000),
-      }
-    );
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      console.error('[Stripe Webhook] cancel order failed:', response.status, data);
-      return false;
-    }
-
-    return true;
-  } catch (err) {
-    console.error('[Stripe Webhook] Error cancelling order:', err);
-    return false;
+  if (response.status >= 500) {
+    throw new RetryableWebhookError(`${label} returned ${response.status}`);
   }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    console.warn(`[Stripe Webhook] ${label} rejected:`, response.status, data);
+    return;
+  }
+  console.log(`[Stripe Webhook] ${label} succeeded`);
 }
 
 async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   console.log('[Stripe Webhook] Payment succeeded:', paymentIntent.id);
 
-  // Look up the order by paymentIntentId
   const order = await fetchOrderByPaymentIntentId(paymentIntent.id);
-
   if (!order) {
     console.warn('[Stripe Webhook] No order found for paymentIntentId:', paymentIntent.id);
     return;
   }
 
-  // Only process if still in PENDING — the frontend confirm-payment call may
-  // have already advanced the order to PAYMENT_RECEIVED / ESCROW_HELD.
-  if (order.status !== 'PENDING') {
-    console.log(
-      `[Stripe Webhook] Order ${order.id} already in status ${order.status} — skipping confirm-payment`
-    );
+  // PENDING is the normal case. CANCELLED means the checkout expired before a
+  // slow (3DS/BNPL) payment completed — the backend revives or auto-refunds it.
+  if (order.status !== 'PENDING' && order.status !== 'CANCELLED') {
+    console.log(`[Stripe Webhook] Order ${order.id} already in status ${order.status} — skipping`);
     return;
   }
 
-  const ok = await confirmOrderPayment(order.id, paymentIntent.id);
-  if (ok) {
-    console.log(`[Stripe Webhook] Order ${order.id} confirmed via webhook`);
-  } else {
-    console.error(`[Stripe Webhook] Failed to confirm order ${order.id} via webhook`);
-  }
+  await callInternal(
+    `/transactions/orders/${encodeURIComponent(order.id)}/confirm-payment/internal`,
+    'POST',
+    { paymentIntentId: paymentIntent.id },
+    `confirm-payment for order ${order.id}`,
+  );
 }
 
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
-  console.log('[Stripe Webhook] Payment failed:', paymentIntent.id);
-
-  const order = await fetchOrderByPaymentIntentId(paymentIntent.id);
-
-  if (!order) {
-    console.warn('[Stripe Webhook] No order found for failed paymentIntentId:', paymentIntent.id);
-    return;
-  }
-
-  // Only cancel orders that are still PENDING (haven't been manually resolved)
-  if (order.status !== 'PENDING') {
-    console.log(
-      `[Stripe Webhook] Order ${order.id} in status ${order.status} — not cancelling on payment failure`
-    );
-    return;
-  }
-
-  const ok = await cancelOrder(order.id);
-  if (ok) {
-    console.log(`[Stripe Webhook] Order ${order.id} cancelled due to payment failure`);
-  } else {
-    console.error(`[Stripe Webhook] Failed to cancel order ${order.id} after payment failure`);
-  }
-}
-
-/**
- * Update an order to REFUNDED status via the transaction service.
- * Used when Stripe fires a charge.refunded event (e.g. dispute resolved in dashboard).
- */
-async function refundOrder(orderId: string): Promise<boolean> {
-  try {
-    const response = await fetch(
-      `${TRANSACTION_SERVICE_URL}/transactions/orders/${orderId}/status/internal`,
-      {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-service': getInternalServiceToken(),
-        },
-        body: JSON.stringify({ status: 'REFUNDED' }),
-        signal: AbortSignal.timeout(8000),
-      }
-    );
-
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      console.error('[Stripe Webhook] refund order failed:', response.status, data);
-      return false;
-    }
-
-    return true;
-  } catch (err) {
-    console.error('[Stripe Webhook] Error refunding order:', err);
-    return false;
-  }
+  // A declined attempt is not terminal: the buyer can retry with another card on
+  // the same PaymentIntent. Cancelling here would strand a later successful
+  // payment, so the order stays PENDING until it succeeds, is cancelled, or expires.
+  console.log(
+    '[Stripe Webhook] Payment attempt failed (order left pending for retry):',
+    paymentIntent.id,
+    paymentIntent.last_payment_error?.code ?? '',
+  );
 }
 
 async function handleChargeRefunded(charge: Stripe.Charge) {
   console.log('[Stripe Webhook] Charge refunded:', charge.id);
+
+  // Partial refunds (e.g. goodwill adjustments) don't end the order.
+  if (!charge.refunded) {
+    console.log(`[Stripe Webhook] Charge ${charge.id} only partially refunded — order unchanged`);
+    return;
+  }
 
   if (!charge.payment_intent) {
     console.warn('[Stripe Webhook] No payment intent associated with charge');
@@ -294,7 +219,6 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     typeof charge.payment_intent === 'string' ? charge.payment_intent : charge.payment_intent.id;
 
   const order = await fetchOrderByPaymentIntentId(paymentIntentId);
-
   if (!order) {
     console.warn('[Stripe Webhook] No order found for refunded paymentIntentId:', paymentIntentId);
     return;
@@ -306,19 +230,18 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
     return;
   }
 
-  const ok = await refundOrder(order.id);
-  if (ok) {
-    console.log(`[Stripe Webhook] Order ${order.id} marked as REFUNDED via webhook`);
-  } else {
-    console.error(`[Stripe Webhook] Failed to mark order ${order.id} as REFUNDED`);
-  }
+  await callInternal(
+    `/transactions/orders/${encodeURIComponent(order.id)}/status/internal`,
+    'PATCH',
+    { status: 'REFUNDED' },
+    `mark order ${order.id} REFUNDED`,
+  );
 }
 
 async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) {
   console.log('[Stripe Webhook] Payment intent canceled:', paymentIntent.id);
 
   const order = await fetchOrderByPaymentIntentId(paymentIntent.id);
-
   if (!order) {
     console.warn('[Stripe Webhook] No order found for canceled paymentIntentId:', paymentIntent.id);
     return;
@@ -332,10 +255,10 @@ async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) 
     return;
   }
 
-  const ok = await cancelOrder(order.id);
-  if (ok) {
-    console.log(`[Stripe Webhook] Order ${order.id} cancelled due to payment intent cancellation`);
-  } else {
-    console.error(`[Stripe Webhook] Failed to cancel order ${order.id} after PI cancellation`);
-  }
+  await callInternal(
+    `/transactions/orders/${encodeURIComponent(order.id)}/status/internal`,
+    'PATCH',
+    { status: 'CANCELLED' },
+    `cancel order ${order.id}`,
+  );
 }

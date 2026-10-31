@@ -101,6 +101,9 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
     if (String(config.AUTO_VERIFY_EMAIL ?? '').toLowerCase() === 'true') {
       errors.push('AUTO_VERIFY_EMAIL must not be enabled in production.');
     }
+    if (String(config.ALLOW_DEV_OTP_BYPASS ?? '').toLowerCase() === 'true') {
+      errors.push('ALLOW_DEV_OTP_BYPASS must not be enabled in production.');
+    }
 
     const origins = get('ALLOWED_ORIGINS');
     if (!origins) {

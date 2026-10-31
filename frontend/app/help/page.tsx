@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { faqPageJsonLd } from '@/lib/structured-data';
 import { getBuyerProtectionFeePercent } from '@/lib/fees';
+import { serializeJsonLd } from '@/lib/json-ld';
 
 const rawFaqs = [
   {
@@ -91,7 +92,7 @@ export default function HelpPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqPageJsonLd(rawFaqs)) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqPageJsonLd(rawFaqs)) }}
       />
       <div className="min-h-screen bg-white">
         {/* Hero */}

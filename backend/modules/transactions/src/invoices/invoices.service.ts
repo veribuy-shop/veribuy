@@ -177,6 +177,22 @@ export class InvoicesService {
   }
 
   /**
+   * Invoices for an order, visible only to the order's buyer, seller or an admin.
+   */
+  async getInvoicesByOrderForUser(orderId: string, requesterId: string, isAdmin: boolean): Promise<any[]> {
+    if (!isAdmin) {
+      const order = await this.prisma.order.findUnique({
+        where: { id: orderId },
+        select: { buyerId: true, sellerId: true },
+      });
+      if (!order || (order.buyerId !== requesterId && order.sellerId !== requesterId)) {
+        throw new NotFoundException('Order not found');
+      }
+    }
+    return this.getInvoicesByOrder(orderId);
+  }
+
+  /**
    * Get a single invoice by ID, with ownership check.
    */
   async getInvoice(invoiceId: string, requesterId: string, isAdmin: boolean): Promise<any> {

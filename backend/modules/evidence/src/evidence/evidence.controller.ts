@@ -111,6 +111,7 @@ export class EvidenceController {
     @Body() dto: CreateEvidencePackDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    await this.evidenceService.assertListingOwner(dto.listingId, user.userId, user.role === 'ADMIN');
     return this.evidenceService.createEvidencePack({ ...dto, sellerId: user.userId });
   }
 
@@ -165,7 +166,7 @@ export class EvidenceController {
     // Override sellerId from JWT
     const enrichedDto = { ...dto, sellerId: user.userId };
 
-    return this.evidenceService.uploadEvidence(enrichedDto, file);
+    return this.evidenceService.uploadEvidence(enrichedDto, file, user.role === 'ADMIN');
   }
 
   /**

@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { NotificationService } from './notification.service';
+import { SocialTokenVerifierService } from './social-token-verifier.service';
 import { NotificationsModule } from '../../../notifications/src/notifications/notifications.module';
 
 @Module({
@@ -30,7 +31,7 @@ import { NotificationsModule } from '../../../notifications/src/notifications/no
     NotificationsModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, NotificationService],
+  providers: [AuthService, JwtStrategy, NotificationService, SocialTokenVerifierService],
   exports: [AuthService],
 })
 export class AuthModule {}

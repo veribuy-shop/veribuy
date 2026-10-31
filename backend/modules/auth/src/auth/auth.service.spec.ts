@@ -6,6 +6,7 @@ import {
   ConflictException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
@@ -13,6 +14,7 @@ import { PrismaService } from '../../../../src/database/prisma.service';
 import { RedisService } from '@veribuy/redis-cache';
 import { NotificationService } from './notification.service';
 import { SmsService } from '../../../notifications/src/notifications/sms.service';
+import { SocialTokenVerifierService } from './social-token-verifier.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -22,6 +24,7 @@ describe('AuthService', () => {
   let notificationService: any;
   let smsService: any;
   let redisService: any;
+  let socialVerifier: any;
 
   beforeEach(async () => {
     prisma = {
@@ -41,6 +44,7 @@ describe('AuthService', () => {
         create: jest.fn().mockResolvedValue({ id: 'rt-1', token: 'mock-rt' }),
         findUnique: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         deleteMany: jest.fn(),
       },
       referral: {
@@ -64,10 +68,16 @@ describe('AuthService', () => {
 
     notificationService = {
       sendVerificationEmail: jest.fn().mockResolvedValue(true),
+      sendWelcomeEmail: jest.fn().mockResolvedValue(true),
+    };
+
+    socialVerifier = {
+      verify: jest.fn(),
     };
 
     smsService = {
       sendOtp: jest.fn().mockResolvedValue(true),
+      sendVerificationOtp: jest.fn().mockResolvedValue(undefined),
       verifyOtp: jest.fn().mockResolvedValue(true),
     };
 
@@ -75,6 +85,7 @@ describe('AuthService', () => {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue(undefined),
       del: jest.fn().mockResolvedValue(undefined),
+      getClient: jest.fn().mockReturnValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -86,6 +97,7 @@ describe('AuthService', () => {
         { provide: NotificationService, useValue: notificationService },
         { provide: SmsService, useValue: smsService },
         { provide: RedisService, useValue: redisService },
+        { provide: SocialTokenVerifierService, useValue: socialVerifier },
       ],
     }).compile();
 
@@ -313,7 +325,43 @@ describe('AuthService', () => {
   });
 
   describe('socialLogin', () => {
+    const verifiedAs = (email: string) =>
+      socialVerifier.verify.mockResolvedValue({ provider: 'GOOGLE', subject: 'google-sub-1', email });
+
+    it('authenticates only from the verified ID token, never a client-supplied email', async () => {
+      socialVerifier.verify.mockRejectedValue(new UnauthorizedException('Invalid identity token'));
+
+      await expect(
+        service.socialLogin({
+          provider: 'GOOGLE',
+          idToken: 'forged-token',
+          email: 'admin@veribuy.shop',
+          action: 'login',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(jwtService.sign).not.toHaveBeenCalled();
+    });
+
+    it('uses the token email even if the request names a different account', async () => {
+      verifiedAs('attacker@example.com');
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.socialLogin({
+          provider: 'GOOGLE',
+          idToken: 'valid-token',
+          email: 'victim@example.com',
+          action: 'login',
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { email: 'attacker@example.com' } }),
+      );
+    });
+
     it('should throw ConflictException if user tries to register with an existing email', async () => {
+      verifiedAs('alex@example.com');
       prisma.user.findUnique.mockResolvedValue({
         id: 'usr-existing',
         name: 'Existing User',
@@ -324,27 +372,12 @@ describe('AuthService', () => {
       });
 
       await expect(
-        service.socialLogin({
-          provider: 'GOOGLE',
-          email: 'alex@example.com',
-          action: 'register',
-        }),
+        service.socialLogin({ provider: 'GOOGLE', idToken: 'valid-token', action: 'register' }),
       ).rejects.toThrow(ConflictException);
     });
 
-    it('should throw NotFoundException if user tries to log in but account does not exist', async () => {
-      prisma.user.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.socialLogin({
-          provider: 'GOOGLE',
-          email: 'newuser@example.com',
-          action: 'login',
-        }),
-      ).rejects.toThrow(NotFoundException);
-    });
-
     it('should throw ForbiddenException if existing user tries to log in with unverified email', async () => {
+      verifiedAs('unverified@example.com');
       prisma.user.findUnique.mockResolvedValue({
         id: 'usr-unverified',
         name: 'Unverified User',
@@ -355,22 +388,12 @@ describe('AuthService', () => {
       });
 
       await expect(
-        service.socialLogin({
-          provider: 'GOOGLE',
-          email: 'unverified@example.com',
-          action: 'login',
-        }),
+        service.socialLogin({ provider: 'GOOGLE', idToken: 'valid-token', action: 'login' }),
       ).rejects.toThrow(ForbiddenException);
     });
 
-    it('should register a new social user, require verification when AUTO_VERIFY_EMAIL=false, and flag required profile completion', async () => {
-      configService.get.mockImplementation((key: string) => {
-        if (key === 'AUTO_VERIFY_EMAIL') return 'false';
-        if (key === 'JWT_ACCESS_SECRET') return 'test-access-secret';
-        if (key === 'JWT_REFRESH_SECRET') return 'test-refresh-secret';
-        return null;
-      });
-
+    it('registers a new social user as email-verified (provider verified it) and flags profile completion', async () => {
+      verifiedAs('social.new@example.com');
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue({
         id: 'usr-new-social',
@@ -378,24 +401,30 @@ describe('AuthService', () => {
         email: 'social.new@example.com',
         role: 'BUYER',
         referralCode: 'VB-XYZ123',
-        isEmailVerified: false,
+        isEmailVerified: true,
       });
       prisma.profile.create.mockResolvedValue({ id: 'prof-1' });
 
       const result = await service.socialLogin({
         provider: 'GOOGLE',
-        email: 'social.new@example.com',
+        idToken: 'valid-token',
         name: 'New Social User',
         action: 'register',
       });
 
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ email: 'social.new@example.com', isEmailVerified: true }),
+        }),
+      );
       expect(result.isNewUser).toBe(true);
-      expect(result.requiresEmailVerification).toBe(true);
+      expect(result.requiresEmailVerification).toBe(false);
       expect(result.requiresProfileCompletion).toBe(true);
-      expect(notificationService.sendVerificationEmail).toHaveBeenCalled();
+      expect(notificationService.sendVerificationEmail).not.toHaveBeenCalled();
     });
 
     it('should successfully log in verified social user and compute profile completion', async () => {
+      verifiedAs('verified@example.com');
       prisma.user.findUnique.mockResolvedValue({
         id: 'usr-verified',
         name: 'Verified User',
@@ -416,16 +445,94 @@ describe('AuthService', () => {
       prisma.address.findFirst.mockResolvedValue({ id: 'addr-1' });
       prisma.user.update.mockResolvedValue({});
 
-      const result = await service.socialLogin({
-        provider: 'GOOGLE',
-        email: 'verified@example.com',
-        action: 'login',
-      });
+      const result = await service.socialLogin({ provider: 'GOOGLE', idToken: 'valid-token', action: 'login' });
 
       expect(result.isNewUser).toBe(false);
       expect(result.requiresEmailVerification).toBe(false);
       expect(result.user.profileCompleted).toBe(true);
       expect(result.requiresProfileCompletion).toBe(false);
+    });
+  });
+
+  describe('session security', () => {
+    it('stores refresh tokens hashed, never in plaintext', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'usr-1', name: 'A', email: 'a@example.com', role: 'BUYER',
+        isActive: true, isEmailVerified: true,
+        passwordHash: await bcrypt.hash('Password1!', 4),
+      });
+      prisma.profile.findUnique.mockResolvedValue(null);
+      prisma.user.update.mockResolvedValue({});
+
+      const result = await service.login({ email: 'a@example.com', password: 'Password1!' });
+
+      const stored = prisma.refreshToken.create.mock.calls[0][0].data.token;
+      expect(stored).not.toBe(result.refreshToken);
+      expect(stored).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('revokes every session when a rotated refresh token is reused', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-old',
+        revokedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+        user: { id: 'usr-1', role: 'BUYER', isActive: true },
+      });
+
+      await expect(service.refreshToken('stolen-token')).rejects.toThrow(UnauthorizedException);
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'usr-1', revokedAt: null } }),
+      );
+      expect(redisService.set).toHaveBeenCalledWith('auth:revoked-before:usr-1', expect.any(Number), expect.any(Number));
+    });
+
+    it('revokes all sessions after a password change', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'usr-1', passwordHash: await bcrypt.hash('OldPass1!', 4) });
+      prisma.user.update.mockResolvedValue({});
+
+      await service.changePassword('usr-1', { currentPassword: 'OldPass1!', newPassword: 'NewPass1!' });
+
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'usr-1', revokedAt: null } }),
+      );
+    });
+
+    it('locks sign-in for an account after repeated failures', async () => {
+      redisService.get.mockResolvedValueOnce(10);
+
+      await expect(service.login({ email: 'a@example.com', password: 'whatever' })).rejects.toMatchObject({
+        status: 429,
+      });
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('does not reveal account state before the password is proven', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'usr-1', name: 'A', email: 'a@example.com', role: 'BUYER',
+        isActive: false, isEmailVerified: false,
+        passwordHash: await bcrypt.hash('Password1!', 4),
+      });
+
+      await expect(service.login({ email: 'a@example.com', password: 'wrong' })).rejects.toThrow(
+        'Invalid credentials',
+      );
+    });
+  });
+
+  describe('phone OTP', () => {
+    it('never echoes the OTP unless the dev bypass flag is set', async () => {
+      const result = await service.sendPhoneOtp({ phone: '07123456789' } as any);
+      expect(result).not.toHaveProperty('devOtp');
+      const stored = redisService.set.mock.calls.find((c: any[]) => c[0].startsWith('phone_otp:'))[1];
+      expect(stored).not.toHaveProperty('otp');
+      expect(stored.otpHash).toMatch(/^[0-9a-f]{64}$/);
+    });
+
+    it('rejects the static dev code without the explicit bypass flag', async () => {
+      redisService.get.mockResolvedValue(null);
+      await expect(
+        service.verifyPhoneOtp({ phone: '07123456789', code: '123456' } as any),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

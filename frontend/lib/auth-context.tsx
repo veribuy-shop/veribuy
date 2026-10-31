@@ -43,7 +43,7 @@ interface AuthContextType {
     payload?: {
       email?: string;
       name?: string;
-      token?: string;
+      idToken?: string;
       referralCode?: string;
       action?: 'login' | 'register';
     },
@@ -194,20 +194,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     payload?: {
       email?: string;
       name?: string;
-      token?: string;
+      idToken?: string;
       referralCode?: string;
       action?: 'login' | 'register';
     },
     redirectTo?: string,
   ) => {
-    if (!payload?.email) {
-      throw new Error(`Please enter your ${provider === 'GOOGLE' ? 'Google' : 'Apple'} email address to continue.`);
+    // The backend authenticates social sign-in only from a provider-signed ID token.
+    if (!payload?.idToken) {
+      throw new Error(`${provider === 'GOOGLE' ? 'Google' : 'Apple'} sign-in is not available right now.`);
     }
-
-    const email = payload.email.toLowerCase().trim();
-    const cleanNameFromEmail = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    const defaultName =
-      payload?.name?.trim() || cleanNameFromEmail || (provider === 'GOOGLE' ? 'Google User' : 'Apple User');
 
     const response = await fetch('/api/auth/social', {
       method: 'POST',
@@ -215,9 +211,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       credentials: 'include',
       body: JSON.stringify({
         provider,
-        email,
-        name: defaultName,
-        token: payload?.token,
+        idToken: payload.idToken,
+        name: payload?.name?.trim() || undefined,
         referralCode: payload?.referralCode,
         action: payload?.action,
       }),
