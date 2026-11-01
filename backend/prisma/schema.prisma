@@ -47,10 +47,11 @@ model User {
   notifications        NotificationLog[]
   sentMessages         Message[]             @relation("SenderMessages")
   receivedMessages     Message[]             @relation("RecipientMessages")
+  buyerInvoices        Invoice[]             @relation("BuyerInvoices")
+  sellerInvoices       Invoice[]             @relation("SellerInvoices")
 
   @@index([role])
   @@index([isActive])
-  @@index([referralCode])
   @@index([referredById])
   @@index([createdAt])
   @@index([deletedAt])
@@ -68,9 +69,7 @@ model RefreshToken {
   revokedAt DateTime? @map("revoked_at")
   createdAt DateTime  @default(now()) @map("created_at")
 
-  @@index([userId])
   @@index([expiresAt])
-  @@index([revokedAt])
   @@index([userId, revokedAt])
   @@map("refresh_tokens")
 }
@@ -177,18 +176,22 @@ model Listing {
   evidencePack        EvidencePack?
   messages            Message[]
 
-  @@index([sellerId])
-  @@index([status])
-  @@index([deviceType])
   @@index([trustLensStatus])
   @@index([format, status])
-  @@index([auctionEndsAt])
   @@index([publishedAt])
   @@index([createdAt])
   @@index([sellerId, status])
   @@index([deviceType, status])
   @@index([status, createdAt(sort: Desc)])
+  @@index([status, price])
+  @@index([status, bidCount(sort: Desc)])
+  @@index([status, auctionEndsAt])
   @@index([sellerId, createdAt(sort: Desc)])
+  // Trigram indexes back the case-insensitive `contains` search (ILIKE '%q%').
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "listings_title_trgm_idx")
+  @@index([brand(ops: raw("gin_trgm_ops"))], type: Gin, map: "listings_brand_trgm_idx")
+  @@index([model(ops: raw("gin_trgm_ops"))], type: Gin, map: "listings_model_trgm_idx")
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "listings_description_trgm_idx")
   @@map("listings")
 }
 
@@ -202,7 +205,6 @@ model Bid {
   maxBid    Decimal? @db.Decimal(10, 2) @map("max_bid")
   createdAt DateTime @default(now()) @map("created_at")
 
-  @@index([listingId])
   @@index([bidderId])
   @@index([listingId, amount(sort: Desc)])
   @@map("bids")
@@ -235,8 +237,9 @@ model Offer {
   updatedAt DateTime    @updatedAt @map("updated_at")
 
   @@index([listingId, status])
-  @@index([buyerId, status])
-  @@index([sellerId, status])
+  @@index([buyerId, createdAt(sort: Desc)])
+  @@index([sellerId, createdAt(sort: Desc)])
+  @@index([status, expiresAt])
   @@map("offers")
 }
 
@@ -258,7 +261,6 @@ model VerificationRequest {
   createdAt            DateTime             @default(now()) @map("created_at")
   updatedAt            DateTime             @updatedAt @map("updated_at")
 
-  @@index([status])
   @@index([createdAt])
   @@index([status, createdAt])
   @@map("verification_requests")
@@ -275,8 +277,6 @@ model EvidenceChecklist {
   fulfilledAt           DateTime?             @map("fulfilled_at")
   createdAt             DateTime              @default(now()) @map("created_at")
 
-  @@index([verificationRequestId])
-  @@index([fulfilled])
   @@index([verificationRequestId, type, fulfilled])
   @@map("evidence_checklists")
 }
@@ -319,7 +319,6 @@ model ImeiRegistry {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  @@index([imei])
   @@index([isFlagged])
   @@index([firstSellerId])
   @@index([lastSellerId])
@@ -355,7 +354,6 @@ model EvidenceItem {
   metadata  Json?
   createdAt DateTime     @default(now()) @map("created_at")
 
-  @@index([packId])
   @@index([type])
   @@index([createdAt])
   @@index([packId, createdAt(sort: Asc)])
@@ -386,7 +384,7 @@ model Order {
   currency           String      @default("GBP")
   status             OrderStatus @default(PENDING)
   escrowId           String?     @map("escrow_id")
-  paymentIntentId    String?     @map("payment_intent_id")
+  paymentIntentId    String?     @unique @map("payment_intent_id")
   trackingNumber     String?     @map("tracking_number")
   parcelWeightGrams  Int?        @map("parcel_weight_grams")
   parcelFormat       String?     @map("parcel_format")
@@ -411,12 +409,9 @@ model Order {
   rating          Rating?
   referralReward  Referral?             @relation("QualifyingOrder")
 
-  @@index([buyerId])
-  @@index([sellerId])
   @@index([listingId])
-  @@index([status])
-  @@index([paymentIntentId])
   @@index([createdAt])
+  @@index([status, createdAt])
   @@index([buyerId, status])
   @@index([sellerId, status])
   @@index([buyerId, createdAt(sort: Desc)])
@@ -451,7 +446,9 @@ model Invoice {
   invoiceType   InvoiceType @default(RECEIPT) @map("invoice_type")
   status        OrderStatus @map("status")
   buyerId       String      @map("buyer_id")
+  buyer         User        @relation("BuyerInvoices", fields: [buyerId], references: [id], onDelete: Restrict)
   sellerId      String      @map("seller_id")
+  seller        User        @relation("SellerInvoices", fields: [sellerId], references: [id], onDelete: Restrict)
   amount        Decimal     @db.Decimal(10, 2)
   protectionFee Decimal?    @db.Decimal(10, 2) @map("protection_fee")
   shippingFee   Decimal?    @db.Decimal(10, 2) @map("shipping_fee")
@@ -466,8 +463,6 @@ model Invoice {
   updatedAt     DateTime    @updatedAt @map("updated_at")
 
   @@unique([orderId, invoiceType], name: "invoices_order_id_type_key")
-  @@index([orderId])
-  @@index([buyerId])
   @@index([sellerId])
   @@index([createdAt])
   @@index([buyerId, createdAt(sort: Desc)])
@@ -519,7 +514,6 @@ model NotificationLog {
   error     String?
   createdAt DateTime            @default(now()) @map("created_at")
 
-  @@index([userId])
   @@index([status])
   @@index([createdAt])
   @@index([userId, status])
@@ -545,12 +539,11 @@ model Message {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@index([recipientId])
-  @@index([senderId])
   @@index([listingId])
   @@index([recipientId, isRead])
   @@index([recipientId, createdAt(sort: Desc)])
   @@index([senderId, createdAt(sort: Desc)])
+  @@index([senderId, recipientId, createdAt])
   @@map("messages")
 }
 
@@ -714,10 +707,9 @@ model Referral {
   qualifiedAt       DateTime?      @map("qualified_at")
   paidAt            DateTime?      @map("paid_at")
   createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
+  updatedAt         DateTime       @default(now()) @updatedAt @map("updated_at")
 
   @@index([referrerId])
-  @@index([referredId])
   @@index([status])
   @@index([createdAt])
   @@map("referrals")

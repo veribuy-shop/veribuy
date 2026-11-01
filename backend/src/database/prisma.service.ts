@@ -17,6 +17,13 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     const poolConfig: PoolConfig = {
       connectionString: cleanUrl,
       ssl: isProd ? { rejectUnauthorized: false } : undefined,
+      // Keep max * instance count below the database plan's connection limit.
+      max: Number(process.env.DATABASE_POOL_MAX) || 10,
+      idleTimeoutMillis: 30_000,
+      // Fail fast under pool exhaustion instead of queueing requests indefinitely.
+      connectionTimeoutMillis: 5_000,
+      // Stop a runaway query from holding a connection.
+      statement_timeout: Number(process.env.DATABASE_STATEMENT_TIMEOUT_MS) || 30_000,
     };
     super({ adapter: new PrismaPg(poolConfig) });
   }

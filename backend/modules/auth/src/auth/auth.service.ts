@@ -9,6 +9,8 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -62,10 +64,12 @@ const OTP_RESEND_COOLDOWN_SECONDS = 60;
 const OTP_MAX_SENDS_PER_HOUR = 5;
 // Longest access-token lifetime we expect; revocation markers live at least this long.
 const SESSION_REVOCATION_TTL_SECONDS = 24 * 60 * 60;
+const REFRESH_TOKEN_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
+  private pruneTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private prisma: PrismaService,
@@ -76,6 +80,35 @@ export class AuthService {
     private redis: RedisService,
     private socialTokenVerifier: SocialTokenVerifierService,
   ) {}
+
+  /**
+   * Every login and refresh adds a row, so prune hourly to keep the table
+   * bounded. Delete is idempotent, so concurrent instances are safe.
+   */
+  onModuleInit() {
+    if (process.env.NODE_ENV === 'test') return;
+    this.pruneTimer = setInterval(() => {
+      this.pruneExpiredRefreshTokens().catch((err) =>
+        this.logger.warn(`Refresh token prune failed: ${(err as Error).message}`),
+      );
+    }, REFRESH_TOKEN_PRUNE_INTERVAL_MS);
+    this.pruneTimer.unref?.();
+  }
+
+  onModuleDestroy() {
+    if (this.pruneTimer) clearInterval(this.pruneTimer);
+  }
+
+  /**
+   * Expired tokens are rejected before any revocation or reuse check, so
+   * removing them changes no refresh outcome.
+   */
+  async pruneExpiredRefreshTokens(): Promise<number> {
+    const { count } = await this.prisma.refreshToken.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    return count;
+  }
 
   async register(dto: RegisterDto) {
     const passwordHash = await bcrypt.hash(dto.password, 12);

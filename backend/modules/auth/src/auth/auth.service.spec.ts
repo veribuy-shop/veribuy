@@ -531,6 +531,18 @@ describe('AuthService', () => {
     });
   });
 
+  describe('pruneExpiredRefreshTokens', () => {
+    it('deletes only tokens past their expiry and returns the count', async () => {
+      prisma.refreshToken.deleteMany.mockResolvedValue({ count: 3 });
+
+      await expect(service.pruneExpiredRefreshTokens()).resolves.toBe(3);
+
+      expect(prisma.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { expiresAt: { lt: expect.any(Date) } },
+      });
+    });
+  });
+
   describe('phone OTP', () => {
     it('never echoes the OTP unless the dev bypass flag is set', async () => {
       const result = await service.sendPhoneOtp({ phone: '07123456789' } as any);
