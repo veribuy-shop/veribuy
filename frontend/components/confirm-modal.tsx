@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { AlertTriangle, XCircle, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type ConfirmVariant = 'danger' | 'warning';
+type ConfirmVariant = 'danger' | 'warning' | 'success';
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -37,6 +37,12 @@ const variantConfig: Record<ConfirmVariant, {
     iconColor: 'text-amber-600',
     buttonBg: 'bg-amber-600',
     icon: AlertTriangle,
+  },
+  success: {
+    iconBg: 'bg-emerald-50',
+    iconColor: 'text-emerald-700',
+    buttonBg: 'bg-emerald-700',
+    icon: CheckCircle2,
   },
 };
 

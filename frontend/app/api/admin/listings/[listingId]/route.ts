@@ -3,6 +3,7 @@ import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeListing } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 
@@ -41,7 +42,7 @@ export async function PATCH(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to update listing' },
+        { error: friendlyApiError(data, 'Failed to update listing') },
         { status: response.status }
       );
     }
@@ -85,7 +86,7 @@ export async function DELETE(
     if (!response.ok) {
       const data = await response.json();
       return NextResponse.json(
-        { error: data.message || 'Failed to delete listing' },
+        { error: friendlyApiError(data, 'Failed to delete listing') },
         { status: response.status }
       );
     }

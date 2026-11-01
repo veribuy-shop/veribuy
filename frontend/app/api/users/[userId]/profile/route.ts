@@ -3,6 +3,7 @@ import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-aut
 import { sanitizeProfile } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const USER_SERVICE_URL = getBackendUrl();
 
@@ -46,7 +47,7 @@ export async function GET(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch profile' },
+        { error: friendlyApiError(data, 'Failed to fetch profile') },
         { status: response.status }
       );
     }
@@ -101,7 +102,7 @@ export async function PUT(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to update profile' },
+        { error: friendlyApiError(data, 'Failed to update profile') },
         { status: response.status }
       );
     }

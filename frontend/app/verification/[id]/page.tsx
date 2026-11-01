@@ -271,7 +271,7 @@ function VerificationReportContent({ id }: { id: string }) {
             Hardware Verification Report
           </h1>
           <p className="text-slate-600 text-sm md:text-base mt-1.5">
-            Cryptographically sealed diagnostic audit powered by VeriBuy
+            Verification checks and evidence recorded by VeriBuy
           </p>
         </div>
 

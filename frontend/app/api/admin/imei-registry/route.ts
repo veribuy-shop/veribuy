@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const BACKEND_URL = getBackendUrl();
 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     if (!response.ok) {
       const error = await response.json();
       return NextResponse.json(
-        { error: error.message || 'Failed to fetch IMEI registry' },
+        { error: friendlyApiError(error, 'Failed to fetch IMEI registry') },
         { status: response.status }
       );
     }

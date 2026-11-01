@@ -347,6 +347,54 @@ export default function OrderConfirmationPage() {
           )}
         </div>
 
+        {/* Next step: the one thing this person needs to do now, above everything else */}
+        {(() => {
+          const shortId = order.id.substring(0, 8).toUpperCase();
+          let next: { title: string; body: string; href?: string; cta?: string; tone: 'action' | 'info' } | null = null;
+          if (isBuyer) {
+            if (order.status === 'SHIPPED') {
+              next = { title: 'Has your parcel arrived?', body: 'Confirm delivery to start your 48-hour inspection window.', href: `/orders/${order.id}/tracking#actions`, cta: 'Confirm delivery', tone: 'action' };
+            } else if (order.status === 'DELIVERED') {
+              next = { title: 'Check your device', body: 'If it matches the listing, release payment to the seller. If not, report a problem before releasing.', href: `/orders/${order.id}/tracking#actions`, cta: 'Release payment or report a problem', tone: 'action' };
+            } else if (order.status === 'ESCROW_HELD' || order.status === 'PAYMENT_RECEIVED') {
+              next = { title: 'Waiting for the seller to post your item', body: `Your payment for order #${shortId} is held in escrow. We'll message you when it ships.`, tone: 'info' };
+            } else if (order.status === 'DISPUTED') {
+              next = { title: 'Dispute under review', body: 'Payment stays in escrow until the dispute is resolved.', href: `/orders/${order.id}/tracking`, cta: 'View dispute', tone: 'info' };
+            }
+          } else if (isSeller) {
+            if (order.status === 'ESCROW_HELD') {
+              next = { title: 'Post the item', body: 'Print the label or use the Post Office QR code, then confirm dispatch with the tracking number.', href: '#dispatch', cta: 'Confirm dispatch', tone: 'action' };
+            } else if (order.status === 'SHIPPED' || order.status === 'DELIVERED') {
+              next = { title: 'Waiting for the buyer', body: 'Payment is released when the buyer confirms the device matches the listing.', tone: 'info' };
+            } else if (order.status === 'DISPUTED') {
+              next = { title: 'The buyer reported a problem', body: 'Check your messages and reply to the buyer. Payment stays in escrow until it is resolved.', href: '/messages', cta: 'Open messages', tone: 'action' };
+            }
+          }
+          if (!next) return null;
+          return (
+            <section
+              aria-labelledby="next-step-heading"
+              className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5 mb-6 border ${
+                next.tone === 'action' ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-slate-200'
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Next step</p>
+                <h2 id="next-step-heading" className="text-base font-bold text-slate-900">{next.title}</h2>
+                <p className="text-sm text-slate-600">{next.body}</p>
+              </div>
+              {next.href && next.cta && (
+                <Link
+                  href={next.href}
+                  className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                >
+                  {next.cta}
+                </Link>
+              )}
+            </section>
+          );
+        })()}
+
         {/* Escrow & Delivery Milestones Stepper */}
         {order.status !== 'CANCELLED' && order.status !== 'REFUNDED' && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
@@ -633,28 +681,6 @@ export default function OrderConfirmationPage() {
             </div>
           )}
 
-        {/* Buyer next step: confirming receipt / releasing escrow lives on the tracking page */}
-        {isBuyer && (order.status === 'SHIPPED' || order.status === 'DELIVERED') && (
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
-            <div>
-              <p className="text-sm font-semibold text-emerald-900">
-                {order.status === 'SHIPPED' ? 'Has your parcel arrived?' : 'Inspected your device?'}
-              </p>
-              <p className="text-xs text-emerald-800">
-                {order.status === 'SHIPPED'
-                  ? 'Confirm delivery to start your 48-hour inspection window.'
-                  : 'Release escrow to the seller once the device matches its Trust Lens certificate.'}
-              </p>
-            </div>
-            <Link
-              href={`/orders/${order.id}/tracking`}
-              className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl"
-            >
-              {order.status === 'SHIPPED' ? 'Confirm delivery' : 'Review & release escrow'}
-            </Link>
-          </div>
-        )}
-
         {/* Buyer Tracking Link */}
         {isBuyer && order.trackingNumber && (
           <div className="flex flex-wrap items-center justify-between gap-3 bg-blue-50/70 border border-blue-100 rounded-xl p-3.5 mb-6">
@@ -820,7 +846,7 @@ export default function OrderConfirmationPage() {
 
         {/* Seller Dispatch Confirmation Action */}
         {isSeller && order.status === 'ESCROW_HELD' && (
-          <div className="bg-white rounded-2xl border border-blue-200 p-6 mb-6 shadow-sm">
+          <div id="dispatch" className="bg-white rounded-2xl border border-blue-200 p-6 mb-6 shadow-sm scroll-mt-24">
             <h2 className="text-base font-bold text-slate-900 mb-1">Confirm Package Dispatched</h2>
             <p className="text-xs text-slate-500 mb-4">
               Once dropped off at the Post Office counter or scanned by Royal Mail, confirm dispatch below.
@@ -835,6 +861,7 @@ export default function OrderConfirmationPage() {
                 id="tracking-number"
                 type="text"
                 placeholder="Royal Mail Tracking Number"
+                aria-label="Royal Mail tracking number"
                 value={trackingInput}
                 onChange={(e) => setTrackingInput(e.target.value)}
                 maxLength={100}
@@ -863,7 +890,7 @@ export default function OrderConfirmationPage() {
             href={`/orders/${order.id}/tracking`}
             className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition shadow-sm"
           >
-            View Live Tracking Timeline &rarr;
+            Timeline, delivery &amp; disputes &rarr;
           </Link>
         </div>
       </div>

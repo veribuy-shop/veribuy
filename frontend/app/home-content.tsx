@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { ListingCard } from '@/components/listing-card';
+import { ListingCard, type ListingCardProps } from '@/components/listing-card';
 import {
   ShieldCheck,
   ArrowRight,
@@ -71,32 +71,37 @@ const verificationSteps = [
 const comparisonPoints = [
   {
     feature: 'IMEI & GSMA Blacklist Verification',
-    veribuy: 'Automated on 100% of listings before going live',
-    others: 'None (high risk of blacklisted or stolen items)',
+    veribuy: 'Automated IMEI check on every phone listing before it goes live',
+    others: 'Usually none — buyers have to check themselves',
   },
   {
     feature: 'Payment Security',
-    veribuy: '100% Escrow holding until you inspect the device',
-    others: 'Bank transfer / cash with zero buyer protection',
+    veribuy: 'Payment held in escrow until you confirm the device arrived as described',
+    others: 'Often bank transfer or cash, with no buyer protection',
   },
   {
     feature: 'Money-Back Guarantee',
     veribuy: '48-hour (2 days) full refund guarantee on misrepresented items',
-    others: 'Sold as seen (no returns, no recourse)',
+    others: 'Often sold as seen',
   },
   {
     feature: 'Seller Fees',
-    veribuy: '0% seller commission (sellers keep 100% payout)',
-    others: '10% – 15% platform fees eating into profits',
+    veribuy: '0% seller commission (buyers pay a Buyer Protection fee)',
+    others: 'Varies by platform',
   },
   {
     feature: 'Hardware Evidence & Audit Trail',
     veribuy: 'Timestamped photo evidence & battery health records',
-    others: 'Generic stock photos and undisclosed defects',
+    others: 'Photos and condition are up to the seller',
   },
 ];
 
-const featuredListings = [
+/**
+ * Example cards shown while the marketplace has few live listings. They are
+ * labelled "Example" on the card and link to the matching category — never
+ * presented as real stock or with invented "was" prices.
+ */
+const exampleListings: ListingCardProps[] = [
   {
     id: '1',
     href: '/browse?category=smartphones',
@@ -105,10 +110,10 @@ const featuredListings = [
     conditionGrade: 'A' as const,
     conditionLabel: 'Pristine / Battery 94%',
     price: 799,
-    originalPrice: 1199,
     brand: 'Apple',
     model: 'iPhone 14 Pro Max',
     format: 'FIXED_PRICE' as const,
+    example: true,
   },
   {
     id: '2',
@@ -118,10 +123,10 @@ const featuredListings = [
     conditionGrade: 'A' as const,
     conditionLabel: 'Like New / Unlocked',
     price: 699,
-    originalPrice: 1249,
     brand: 'Samsung',
     model: 'Galaxy S23 Ultra',
     format: 'FIXED_PRICE' as const,
+    example: true,
   },
   {
     id: '3',
@@ -131,10 +136,10 @@ const featuredListings = [
     conditionGrade: 'A' as const,
     conditionLabel: 'Flawless Casing / 100% Battery',
     price: 1399,
-    originalPrice: 1999,
     brand: 'Apple',
     model: 'MacBook Pro 14"',
     format: 'FIXED_PRICE' as const,
+    example: true,
   },
   {
     id: '4',
@@ -144,12 +149,33 @@ const featuredListings = [
     conditionGrade: 'B' as const,
     conditionLabel: 'Good Condition / Box Included',
     price: 489,
-    originalPrice: 699,
     brand: 'Apple',
     model: 'iPad Air',
     format: 'FIXED_PRICE' as const,
+    example: true,
   },
 ];
+
+const GRADE_LABEL: Record<'A' | 'B' | 'C', string> = { A: 'Pristine', B: 'Good', C: 'Fair' };
+
+interface FeaturedListing {
+  id: string;
+  title: string;
+  brand: string;
+  model: string;
+  price: number | string;
+  currency: string;
+  conditionGrade?: 'A' | 'B' | 'C';
+  trustLensStatus?: string;
+  format?: 'FIXED_PRICE' | 'AUCTION';
+  startingBid?: number | null;
+  currentBid?: number | null;
+  bidCount?: number;
+  auctionEndsAt?: string | null;
+  buyItNowPrice?: number | null;
+  imageUrl?: string;
+  seller?: { city?: string | null };
+}
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -159,6 +185,27 @@ export default function HomeContent() {
   const { user } = useAuth();
   const router = useRouter();
   const [heroSearch, setHeroSearch] = useState('');
+  const [featuredListings, setFeaturedListings] = useState<FeaturedListing[] | null>(null);
+
+  // Show real, currently active listings only — never placeholder products.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/listings?status=ACTIVE&limit=12&sortBy=createdAt&sortOrder=desc')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        const rows: FeaturedListing[] = Array.isArray(data) ? data : (data?.data ?? []);
+        // Only feature listings with a photo; the rest of the row is filled
+        // with labelled example cards so the homepage never shows placeholders.
+        setFeaturedListings(rows.filter((row) => Boolean(row.imageUrl)).slice(0, 4));
+      })
+      .catch(() => {
+        if (!cancelled) setFeaturedListings([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleHeroSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -300,40 +347,70 @@ export default function HomeContent() {
       </section>
 
       {/* ============================================================ */}
-      {/* FEATURED VERIFIED LISTINGS                                    */}
+      {/* LATEST LISTINGS (live data, topped up with labelled examples) */}
       {/* ============================================================ */}
-      <section
-        aria-labelledby="listings-heading"
-        className="max-w-6xl mx-auto px-4 pb-16"
-      >
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Just Verified</span>
+      {featuredListings !== null && (
+        <section
+          aria-labelledby="listings-heading"
+          className="max-w-6xl mx-auto px-4 pb-16"
+        >
+          <div className="flex items-end justify-between gap-4 mb-8">
+            <div>
+              <h2
+                id="listings-heading"
+                className="text-2xl sm:text-3xl font-black text-[var(--color-text)] tracking-tight"
+              >
+                {featuredListings.length > 0 ? 'Latest Listings' : 'What You\u2019ll Find on VeriBuy'}
+              </h2>
+              {featuredListings.length < 4 && (
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                  Cards marked &ldquo;Example&rdquo; show the kind of devices listed here, not items currently for sale.
+                </p>
+              )}
             </div>
-            <h2
-              id="listings-heading"
-              className="text-2xl sm:text-3xl font-black text-[var(--color-text)] tracking-tight"
+            <Link
+              href="/browse"
+              className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--color-green)] hover:underline shrink-0"
             >
-              Featured Verified Devices
-            </h2>
+              View all
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </Link>
           </div>
-          <Link
-            href="/browse"
-            className="inline-flex items-center gap-1.5 text-sm font-bold text-[var(--color-green)] hover:underline"
-          >
-            View All ({featuredListings.length}+)
-            <ArrowRight className="w-4 h-4" aria-hidden="true" />
-          </Link>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {featuredListings.map((listing) => (
-            <ListingCard key={listing.id} {...listing} />
-          ))}
-        </div>
-      </section>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              ...featuredListings.map((listing): ListingCardProps => {
+                const grade = listing.conditionGrade ?? 'B';
+                return {
+                  id: listing.id,
+                  href: `/listings/${listing.id}`,
+                  title: listing.title,
+                  imageUrl: listing.imageUrl,
+                  conditionGrade: grade,
+                  conditionLabel: GRADE_LABEL[grade],
+                  price: Number(listing.price),
+                  currency: listing.currency,
+                  verified: listing.trustLensStatus === 'PASSED',
+                  brand: listing.brand,
+                  model: listing.model,
+                  location: listing.seller?.city ?? undefined,
+                  format: listing.format,
+                  startingBid: listing.startingBid ?? undefined,
+                  currentBid: listing.currentBid ?? undefined,
+                  bidsCount: listing.bidCount ?? 0,
+                  auctionEndTime: listing.auctionEndsAt ?? undefined,
+                  buyItNowPrice: listing.buyItNowPrice ?? undefined,
+                };
+              }),
+              ...exampleListings,
+            ]
+              .slice(0, 4)
+              .map((card) => (
+                <ListingCard key={card.id} {...card} />
+              ))}
+          </div>
+        </section>
+      )}
 
       {/* ============================================================ */}
       {/* LIVE ONLINE AUCTIONS BANNER                                   */}

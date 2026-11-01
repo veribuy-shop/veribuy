@@ -49,7 +49,9 @@ import {
   Users,
   Coins,
   Tag,
+  Mail,
 } from 'lucide-react';
+import { useUnreadMessages } from '@/lib/unread-messages';
 import { PhoneVerificationModal } from '@/components/phone-verification-modal';
 import {
   AreaChart,
@@ -212,6 +214,7 @@ function buildSalesChart(orders: Order[]): { date: string; revenue: number }[] {
 function DashboardContent() {
   const router = useRouter();
   const { user, logout, authFetch } = useAuth();
+  const unreadMessages = useUnreadMessages(user?.id);
   const searchParams = useSearchParams();
   const validTabs: NavId[] = ['dashboard', 'listings', 'purchases', 'sales', 'earnings', 'referrals', 'analytics', 'profile', 'settings'];
   const initialTab = validTabs.includes(searchParams.get('tab') as NavId) ? (searchParams.get('tab') as NavId) : 'dashboard';
@@ -563,8 +566,25 @@ function DashboardContent() {
         <Link href="/" className="flex items-center gap-2">
           <BrandLogo />
         </Link>
+        <div className="flex items-center gap-2">
+        <Link
+          href="/messages"
+          aria-label={unreadMessages > 0 ? `Messages, ${unreadMessages} unread` : 'Messages'}
+          className={cn(
+            'relative p-2 rounded-xl',
+            isDarkMode ? 'bg-neutral-800 text-neutral-300' : 'bg-slate-100 text-slate-700'
+          )}
+        >
+          <Mail className="w-5 h-5" aria-hidden="true" />
+          {unreadMessages > 0 && (
+            <span aria-hidden="true" className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-[18px] text-center">
+              {unreadMessages > 99 ? '99+' : unreadMessages}
+            </span>
+          )}
+        </Link>
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
+          aria-expanded={sidebarOpen}
           aria-label="Toggle navigation menu"
           className={cn(
             'p-2 rounded-xl',
@@ -573,6 +593,7 @@ function DashboardContent() {
         >
           {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
+        </div>
       </div>
 
       {/* Sidebar Navigation */}
@@ -680,6 +701,24 @@ function DashboardContent() {
                 </button>
               );
             })}
+            <Link
+              href="/messages"
+              aria-label={unreadMessages > 0 ? `Messages, ${unreadMessages} unread` : 'Messages'}
+              className={cn(
+                'w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-150',
+                isDarkMode ? 'text-neutral-400 hover:text-white hover:bg-neutral-800/60' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              )}
+            >
+              <span className="flex items-center gap-3">
+                <Mail className={cn('w-4 h-4', isDarkMode ? 'text-neutral-400' : 'text-slate-500')} aria-hidden="true" />
+                <span>Messages</span>
+              </span>
+              {unreadMessages > 0 && (
+                <span aria-hidden="true" className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-600 text-white">
+                  {unreadMessages}
+                </span>
+              )}
+            </Link>
             <Link
               href="/offers"
               className={cn(

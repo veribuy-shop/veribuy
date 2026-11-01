@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeUser, sanitizePaginated } from '@/lib/sanitize';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const AUTH_SERVICE_URL = getBackendUrl();
 
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     if (!response.ok) {
       const error = await response.json();
       return NextResponse.json(
-        { error: error.message || 'Failed to fetch users' },
+        { error: friendlyApiError(error, 'Failed to fetch users') },
         { status: response.status }
       );
     }

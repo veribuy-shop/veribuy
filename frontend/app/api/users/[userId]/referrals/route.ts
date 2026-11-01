@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const USER_SERVICE_URL = getBackendUrl();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,7 +44,7 @@ export async function GET(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch referral data' },
+        { error: friendlyApiError(data, 'Failed to fetch referral data') },
         { status: response.status }
       );
     }

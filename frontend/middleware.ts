@@ -158,6 +158,7 @@ export const config = {
     '/seller-verification/:path*',
     '/verification/:path*',
     '/offers/:path*',
+    '/messages/:path*',
 
     // Admin routes
     '/admin/:path*',

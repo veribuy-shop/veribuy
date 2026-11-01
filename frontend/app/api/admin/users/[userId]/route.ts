@@ -3,6 +3,7 @@ import { getBackendUrl } from '@/lib/backend-url';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeUser } from '@/lib/sanitize';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const AUTH_SERVICE_URL = getBackendUrl();
 
@@ -41,7 +42,7 @@ export async function PATCH(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to update user' },
+        { error: friendlyApiError(data, 'Failed to update user') },
         { status: response.status }
       );
     }
@@ -85,7 +86,7 @@ export async function DELETE(
     if (!response.ok) {
       const data = await response.json();
       return NextResponse.json(
-        { error: data.message || 'Failed to delete user' },
+        { error: friendlyApiError(data, 'Failed to delete user') },
         { status: response.status }
       );
     }

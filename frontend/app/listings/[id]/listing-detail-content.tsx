@@ -257,17 +257,6 @@ const DEVICE_TYPE_ICON: Record<DeviceType, typeof Smartphone> = {
   SMARTWATCH: Watch,
 };
 
-/** Rough retail price estimates by brand tier for savings display. */
-function estimateRetailPrice(price: number, brand: string): number | null {
-  const lower = brand.toLowerCase();
-  let multiplier = 1.35;
-  if (lower === 'apple' || lower === 'samsung') multiplier = 1.45;
-  else if (lower === 'google' || lower === 'sony') multiplier = 1.4;
-  else if (lower === 'huawei' || lower === 'oneplus') multiplier = 1.3;
-  const retail = Math.round((price * multiplier) / 10) * 10;
-  return retail > price ? retail : null;
-}
-
 const VIEWER_ID_KEY = 'vb_viewer_id';
 
 function getViewerId(): string {
@@ -491,10 +480,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
   // Royal Mail shipping is added at checkout.
   const protectionFee = calculateProtectionFee(numericPrice);
   const buyerPrice = buyerFacingPrice(numericPrice);
-  const estimatedRetail = estimateRetailPrice(numericPrice, listing.brand);
-  const savingsPercent = estimatedRetail
-    ? Math.round(((estimatedRetail - buyerPrice) / estimatedRetail) * 100)
-    : null;
   const DeviceIcon = DEVICE_TYPE_ICON[listing.deviceType] || Smartphone;
 
   // Group evidence by type, and preserve any other uploaded evidence images
@@ -803,6 +788,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                     type="button"
                     onClick={() => setSelectedImageIndex(index)}
                     aria-pressed={selectedImageIndex === index}
+                    aria-label={`Show photo ${index + 1}`}
                     className={cn(
                       'flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden border-2 transition-all bg-[var(--color-surface-alt)] p-1 flex items-center justify-center',
                       selectedImageIndex === index
@@ -905,17 +891,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
                     Includes {formatPrice(protectionFee, listing.currency)} Buyer Protection ({getBuyerProtectionFeePercent()}%).
                     {listing.freeShipping ? ' Free UK delivery.' : ' Royal Mail shipping calculated at checkout.'}
                   </p>
-
-                  {estimatedRetail && savingsPercent && savingsPercent > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span className="text-xs text-gray-400 line-through">
-                        MSRP {formatPrice(estimatedRetail, listing.currency)}
-                      </span>
-                      <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
-                        Save {formatPrice(estimatedRetail - buyerPrice, listing.currency)} ({savingsPercent}%)
-                      </span>
-                    </div>
-                  )}
 
                   {/* Delivery & Stock indicators */}
                   <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100">
@@ -1290,7 +1265,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                 </div>
                 <div className="inline-flex items-center gap-1.5 text-xs text-gray-400 font-medium">
                   <ShieldCheck className="w-4 h-4 text-[var(--color-green)]" />
-                  Cryptographically Verified Record
+                  Recorded by Trust Lens
                 </div>
               </div>
             )}

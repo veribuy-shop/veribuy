@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 
@@ -17,7 +18,7 @@ export async function GET() {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch listing options' },
+        { error: friendlyApiError(data, 'Failed to fetch listing options') },
         { status: response.status }
       );
     }

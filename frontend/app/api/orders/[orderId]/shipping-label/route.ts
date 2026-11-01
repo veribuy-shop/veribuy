@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,7 +37,7 @@ export async function GET(
       // rather than its raw JSON body.
       const body = await response.json().catch(() => null);
       return NextResponse.json(
-        { error: body?.message || 'Failed to generate shipping label' },
+        { error: friendlyApiError(body, 'Failed to generate shipping label') },
         { status: response.status }
       );
     }

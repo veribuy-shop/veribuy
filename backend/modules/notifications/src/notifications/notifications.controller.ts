@@ -65,7 +65,7 @@ export class NotificationsController {
     },
   ) {
     this.verifyInternalToken(internalToken);
-    return this.notificationsService.createMessage(body);
+    return this.notificationsService.createMessage({ ...body, isSystem: true });
   }
 
   // ─── Public: Contact Us form ─────────────────────────────────────────────────

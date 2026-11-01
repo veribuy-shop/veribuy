@@ -271,7 +271,7 @@ function AdminDashboardContent() {
         withTimeout(authFetch('/api/admin/users')),
         withTimeout(authFetch('/api/admin/listings?status=ALL&limit=100')),
         withTimeout(authFetch('/api/admin/orders?limit=100&enrich=true')),
-        withTimeout(authFetch('/api/trust-lens?limit=1000')),
+        withTimeout(authFetch('/api/trust-lens?limit=100')),
         withTimeout(authFetch('/api/admin/imei-registry?limit=100')),
         withTimeout(authFetch('/api/admin/health')),
       ]);
@@ -503,6 +503,16 @@ function AdminDashboardContent() {
   // Metrics & Core Calculations
   const activeListingsCount = listings.filter((l) => l.status === 'ACTIVE').length;
   const pendingVerifications = verifications.filter((v) => ['PENDING', 'IN_PROGRESS', 'REQUIRES_REVIEW'].includes(v.status));
+  // Listings waiting on an admin that have no open verification request (e.g.
+  // a listing flagged REQUIRES_REVIEW, or a material edit sent back to review).
+  const pendingListingIds = new Set(pendingVerifications.map((v) => v.listingId));
+  const listingsAwaitingReview = listings.filter(
+    (l) =>
+      !pendingListingIds.has(l.id) &&
+      (l.trustLensStatus === 'REQUIRES_REVIEW' || l.trustLensStatus === 'PENDING' || l.status === 'UNDER_REVIEW'),
+  );
+  const reviewQueueCount = pendingVerifications.length + listingsAwaitingReview.length;
+  const listingTitleById = new Map(listings.map((l) => [l.id, l.title]));
   const flaggedImeis = imeiRegistry.filter((i) => i.isFlagged);
 
   const paidOrders = orders.filter((o) =>
@@ -597,7 +607,7 @@ function AdminDashboardContent() {
 
   const navItems: { id: TabId; label: string; icon: any; count?: number; alert?: boolean }[] = [
     { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
-    { id: 'verification', label: 'Verification Queue', icon: ClipboardCheck, count: pendingVerifications.length, alert: pendingVerifications.length > 0 },
+    { id: 'verification', label: 'Verification Queue', icon: ClipboardCheck, count: reviewQueueCount, alert: reviewQueueCount > 0 },
     { id: 'listings', label: 'Listings Moderation', icon: Store, count: listings.length },
     { id: 'orders', label: 'Orders & Escrow', icon: Wallet, count: orders.length },
     { id: 'users', label: 'User Directory', icon: Users, count: users.length },
@@ -917,7 +927,7 @@ function AdminDashboardContent() {
                 <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
                   Pending Verification
                 </span>
-                <p className="text-2xl font-bold text-amber-600">{pendingVerifications.length}</p>
+                <p className="text-2xl font-bold text-amber-600">{reviewQueueCount}</p>
                 <button
                   onClick={() => setActiveTab('verification')}
                   className="text-xs text-emerald-600 hover:underline mt-2 inline-flex items-center gap-1 font-semibold"
@@ -1018,15 +1028,19 @@ function AdminDashboardContent() {
                   onClick={() => setActiveTab('verification')}
                   className="text-xs text-emerald-600 hover:text-emerald-700 font-semibold"
                 >
-                  View All ({pendingVerifications.length})
+                  View All ({reviewQueueCount})
                 </button>
               </div>
 
-              {pendingVerifications.length === 0 ? (
+              {reviewQueueCount === 0 ? (
                 <div className={cn('text-center py-8 text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
                   <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
                   All Trust Lens™ verification checks are clear. Zero backlog.
                 </div>
+              ) : pendingVerifications.length === 0 ? (
+                <p className={cn('text-xs py-4', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
+                  {listingsAwaitingReview.length} listing{listingsAwaitingReview.length === 1 ? '' : 's'} awaiting manual review — open the Verification Queue.
+                </p>
               ) : (
                 <div className="space-y-3">
                   {pendingVerifications.slice(0, 3).map((v) => (
@@ -1047,7 +1061,7 @@ function AdminDashboardContent() {
                           </span>
                         </div>
                         <p className={cn('text-sm font-semibold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Listing Target: {v.listingId}
+                          {listingTitleById.get(v.listingId) ?? `Listing ${v.listingId.substring(0, 8)}`}
                         </p>
                       </div>
 
@@ -1091,6 +1105,38 @@ function AdminDashboardContent() {
                 Automated carrier checks, blacklist scans, and manual reviews.
               </p>
 
+              {listingsAwaitingReview.length > 0 && (
+                <div className="mb-6">
+                  <h4 className={cn('text-sm font-bold mb-3', isDarkMode ? 'text-white' : 'text-slate-900')}>
+                    Listings awaiting review ({listingsAwaitingReview.length})
+                  </h4>
+                  <ul className="space-y-3">
+                    {listingsAwaitingReview.map((l) => (
+                      <li
+                        key={l.id}
+                        className={cn(
+                          'p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3',
+                          isDarkMode ? 'bg-neutral-950/70 border-neutral-800' : 'bg-amber-50/60 border-amber-200'
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className={cn('text-sm font-bold truncate', isDarkMode ? 'text-white' : 'text-slate-900')}>{l.title}</p>
+                          <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
+                            Listing {l.status.replace(/_/g, ' ').toLowerCase()} · Trust Lens {l.trustLensStatus.replace(/_/g, ' ').toLowerCase()}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/admin/review/${l.id}`}
+                          className="shrink-0 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl text-center"
+                        >
+                          Review listing
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {verifications.length === 0 ? (
                 <div className={cn('text-center py-12 text-sm', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
                   <ClipboardCheck className="w-10 h-10 text-slate-400 mx-auto mb-3" />
@@ -1130,7 +1176,7 @@ function AdminDashboardContent() {
                           )}
                         </div>
                         <p className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Listing Target: {v.listingId}
+                          {listingTitleById.get(v.listingId) ?? `Listing ${v.listingId.substring(0, 8)}`}
                         </p>
                         {v.conditionGrade && (
                           <span className={cn('text-xs block mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>

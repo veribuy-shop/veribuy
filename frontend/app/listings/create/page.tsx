@@ -203,6 +203,15 @@ function useObjectURLs(files: File[]): string[] {
   return urlsRef.current;
 }
 
+/** Fields never written to the local draft: files can't be serialised and device identifiers stay off disk. */
+const NON_DRAFT_FIELDS = new Set<string>(['deviceImages', 'screenImages', 'settingsScreenshot', 'imei', 'serialNumber']);
+
+function draftableFields(data: Partial<ListingFormData>): Partial<ListingFormData> {
+  return Object.fromEntries(
+    Object.entries(data).filter(([key]) => !NON_DRAFT_FIELDS.has(key)),
+  ) as Partial<ListingFormData>;
+}
+
 export default function CreateListingPage() {
   const router = useRouter();
   const { user, authFetch } = useAuth();
@@ -296,6 +305,53 @@ export default function CreateListingPage() {
       }
     })();
   }, [user?.id]);
+
+  // Local draft: a refresh or accidental navigation shouldn't lose a long form.
+  // Photos (File objects) can't be stored, and IMEI/serial numbers are left
+  // out on purpose, so only the typed text fields and the current step persist.
+  const draftKey = user?.id ? `vb:listing-draft:${user.id}` : null;
+  const [draftRestored, setDraftRestored] = useState(false);
+  const draftLoaded = useRef(false);
+
+  useEffect(() => {
+    if (!draftKey || draftLoaded.current) return;
+    draftLoaded.current = true;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as { step?: number; data?: Partial<ListingFormData> };
+      if (!draft?.data) return;
+      setFormData(prev => ({ ...prev, ...draftableFields(draft.data!) }));
+      if (draft.step && draft.step >= 1 && draft.step <= STEPS.length) setCurrentStep(draft.step);
+      setDraftRestored(true);
+    } catch {
+      // Corrupt or blocked storage — start with a blank form.
+    }
+  }, [draftKey]);
+
+  useEffect(() => {
+    if (!draftKey || !draftLoaded.current) return;
+    const timer = setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          draftKey,
+          JSON.stringify({ step: currentStep, data: draftableFields(formData), savedAt: Date.now() }),
+        );
+      } catch {
+        // Storage full or blocked — drafts are a convenience only.
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [draftKey, formData, currentStep]);
+
+  const clearDraft = () => {
+    if (!draftKey) return;
+    try {
+      window.localStorage.removeItem(draftKey);
+    } catch {
+      // ignore
+    }
+  };
 
   // PERF-06: useObjectURLs must be called after formData is declared so the
   // initial empty arrays are accessible on first render.
@@ -608,6 +664,7 @@ export default function CreateListingPage() {
       // For IMEI-verified smartphones, route to the dedicated Verification Report
       // stage so the seller sees the live check run and the pass/fail outcome.
       // Other device types keep going to the listing detail page.
+      clearDraft();
       if (formData.deviceType === 'SMARTPHONE' && formData.imei) {
         router.push(`/verification/${listing.id}`);
       } else {
@@ -694,6 +751,22 @@ export default function CreateListingPage() {
 
         {/* Form Content */}
         <div className="bg-white rounded-xl border border-[var(--color-border)] p-8 mb-6">
+          {draftRestored && (
+            <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-alt)] text-sm text-[var(--color-text)]">
+              <span>We restored your unfinished listing. Photos, IMEI and serial number need adding again.</span>
+              <button
+                type="button"
+                onClick={() => {
+                  clearDraft();
+                  window.location.reload();
+                }}
+                className="text-sm font-semibold text-[var(--color-green)] hover:underline"
+              >
+                Start over
+              </button>
+            </div>
+          )}
+
           {error && (
             <div role="alert" className="mb-6 p-4 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-xl">
               <p className="text-sm text-[var(--color-danger)]">{error}</p>

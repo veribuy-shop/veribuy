@@ -3,6 +3,7 @@ import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeOrder } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -40,7 +41,7 @@ export async function GET(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch order' },
+        { error: friendlyApiError(data, 'Failed to fetch order') },
         { status: response.status }
       );
     }
@@ -98,7 +99,7 @@ export async function PATCH(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to update order status' },
+        { error: friendlyApiError(data, 'Failed to update order status') },
         { status: response.status }
       );
     }
@@ -143,7 +144,7 @@ export async function DELETE(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to delete pending order' },
+        { error: friendlyApiError(data, 'Failed to delete pending order') },
         { status: response.status }
       );
     }

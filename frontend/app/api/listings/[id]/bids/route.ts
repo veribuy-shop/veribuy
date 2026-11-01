@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,7 +36,7 @@ export async function POST(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to place bid' },
+        { error: friendlyApiError(data, 'Failed to place bid') },
         { status: response.status }
       );
     }
@@ -73,7 +74,7 @@ export async function GET(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch bid history' },
+        { error: friendlyApiError(data, 'Failed to fetch bid history') },
         { status: response.status }
       );
     }

@@ -81,6 +81,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   const [submitting, setSubmitting] = useState(false);
   const [reviewNotes, setReviewNotes] = useState('');
   const [confirmReject, setConfirmReject] = useState(false);
+  const [confirmApprove, setConfirmApprove] = useState(false);
   const [selectedIntegrityFlags, setSelectedIntegrityFlags] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [listingNotFound, setListingNotFound] = useState(false);
@@ -164,14 +165,12 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   };
 
   const handleApprove = async () => {
-    if (!listing || !verification) return;
-
-    if (evidence.length === 0) {
-      if (!confirm('Warning: This listing has 0 uploaded evidence images. Are you sure you want to approve it?')) {
-        return;
-      }
+    if (!listing) return;
+    if (!verification) {
+      setError('This listing has no Trust Lens verification request yet. Use "Re-run Check" to create one, then approve.');
+      return;
     }
-    
+
     setSubmitting(true);
     setError(null);
     try {
@@ -190,7 +189,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
         router.push('/admin?tab=verification');
       } else {
         const data = await response.json().catch(() => ({}));
-        setError(data.message || data.error || 'Failed to approve verification');
+        setError(data.error || data.message || 'Failed to approve verification');
       }
     } catch (error) {
       console.error('Failed to approve:', error);
@@ -224,7 +223,11 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
   };
 
   const handleReject = async () => {
-    if (!listing || !verification) return;
+    if (!listing) return;
+    if (!verification) {
+      setError('This listing has no Trust Lens verification request yet. Use "Re-run Check" to create one, then reject.');
+      return;
+    }
     
     if (!reviewNotes.trim()) {
       setError('Please provide review notes explaining why this listing was rejected');
@@ -415,7 +418,7 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
               {submitting ? 'Processing...' : 'Reject'}
             </button>
             <button
-              onClick={handleApprove}
+              onClick={() => setConfirmApprove(true)}
               disabled={submitting}
               className="px-6 py-2 bg-[var(--color-green)] text-white rounded-md hover:opacity-90 disabled:opacity-50 text-sm font-medium"
             >
@@ -423,6 +426,25 @@ export default function ReviewPage({ params }: { params: Promise<{ id: string }>
             </button>
           </div>
         </div>
+
+        <ConfirmModal
+          isOpen={confirmApprove}
+          onClose={() => setConfirmApprove(false)}
+          onConfirm={async () => {
+            await handleApprove();
+            setConfirmApprove(false);
+          }}
+          title="Approve this listing?"
+          description={
+            evidence.length === 0
+              ? 'Warning: this listing has no evidence photos. Approving marks it as verified and puts it live for buyers straight away.'
+              : 'The listing will be marked as verified and go live for buyers straight away. Check the IMEI, photos and condition grade before approving.'
+          }
+          confirmLabel="Approve and publish"
+          isLoading={submitting}
+          loadingLabel="Approving…"
+          variant="success"
+        />
 
         <ConfirmModal
           isOpen={confirmReject}

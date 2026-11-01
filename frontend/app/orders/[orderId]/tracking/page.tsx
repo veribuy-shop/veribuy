@@ -576,6 +576,7 @@ export default function OrderTrackingPage() {
           );
         })()}
 
+        <div id="actions" className="scroll-mt-24" aria-hidden="true" />
         {isBuyer && order.status === 'SHIPPED' && (
           <div className="bg-gradient-to-br from-blue-50 via-white to-white border border-blue-200 rounded-3xl p-6 md:p-8 shadow-sm">
             <div className="flex items-start gap-4">

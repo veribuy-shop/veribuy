@@ -153,7 +153,7 @@ export class OffersService {
 
   private async notify(senderId: string, recipientId: string, listingId: string, subject: string, content: string) {
     await this.prisma.message
-      .create({ data: { senderId, recipientId, listingId, subject, content } })
+      .create({ data: { senderId, recipientId, listingId, subject, content, isSystem: true } })
       .catch((err) => this.logger.warn(`Failed to record offer message: ${(err as Error).message}`));
   }
 }

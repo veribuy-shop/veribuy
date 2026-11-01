@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const NOTIFICATION_SERVICE_URL = getBackendUrl();
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { message: data.message || 'Failed to submit callback request.' },
+        { message: friendlyApiError(data, 'Failed to submit callback request.') },
         { status: response.status },
       );
     }

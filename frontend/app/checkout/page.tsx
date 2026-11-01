@@ -121,6 +121,48 @@ function CheckoutForm({
 
   // Cardholder name state
   const [cardholderName, setCardholderName] = useState(user?.name || '');
+  const [addressPrefilled, setAddressPrefilled] = useState(false);
+  const prefillDone = useRef(false);
+  // Read through a ref so the parent's new callback identity on each render
+  // doesn't restart the profile fetch.
+  const onPostcodeChangeRef = useRef(onPostcodeChange);
+  onPostcodeChangeRef.current = onPostcodeChange;
+
+  // Pre-fill the delivery address from the buyer's saved profile. Only empty
+  // fields are filled, so anything the buyer has already typed is kept.
+  useEffect(() => {
+    if (!user?.id || prefillDone.current) return;
+    let cancelled = false;
+    fetch(`/api/users/${user.id}/profile`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((profile) => {
+        if (cancelled || !profile) return;
+        prefillDone.current = true;
+        const addr = profile.address;
+        const profileName = [profile.firstName, profile.lastName].filter(Boolean).join(' ') || user.name || '';
+        setShippingAddress((prev) => ({
+          ...prev,
+          name: prev.name || profileName,
+          line1: prev.line1 || addr?.line1 || '',
+          line2: prev.line2 || addr?.line2 || '',
+          city: prev.city || addr?.city || '',
+          state: prev.state || addr?.state || addr?.city || '',
+          postal_code: prev.postal_code || addr?.postalCode || '',
+        }));
+        setCardholderName((prev) => prev || profileName);
+        if (addr?.postalCode) {
+          onPostcodeChangeRef.current(addr.postalCode);
+          setLookupPostcode(addr.postalCode);
+        }
+        if (addr?.line1) setAddressPrefilled(true);
+      })
+      .catch(() => {
+        // Pre-fill is a convenience; the buyer can always type the address.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.name]);
 
   // Click & Collect lookup state
   const [lookupPostcode, setLookupPostcode] = useState(shippingAddress.postal_code || 'SW1A 1AA');
@@ -201,7 +243,7 @@ function CheckoutForm({
     }
   };
 
-  const validateForm = (): boolean => {
+  const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
 
     if (!shippingAddress.name || shippingAddress.name.trim().length < 2) {
@@ -241,11 +283,34 @@ function CheckoutForm({
     if (!cardholderName || cardholderName.trim().length < 2) {
       errors.cardholderName = 'Name on card is required and must match your payment card';
     } else if (!/^[a-zA-Z\s\-'.]+$/.test(cardholderName.trim())) {
-      errors.cardholderName = 'Please enter a valid cardholder name (letters, spaces, and hyphens only)';
+      errors.cardholderName = 'The name on card contains characters your bank will not accept.';
     }
 
     setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return errors;
+  };
+
+  // Move the buyer to the first field that needs attention, in page order.
+  const focusFirstError = (errors: Record<string, string>) => {
+    const fieldOrder: [string, string][] = [
+      ['name', deliveryMethod === 'CLICK_AND_COLLECT' ? 'collector-name' : 'shipping-name'],
+      ['collectionPoint', 'collection-postcode'],
+      ['line1', 'shipping-line1'],
+      ['city', 'shipping-city'],
+      ['state', 'shipping-state'],
+      ['postal_code', 'shipping-postal'],
+      ['country', 'shipping-country'],
+      ['cardholderName', 'cardholder-name'],
+    ];
+    const first = fieldOrder.find(([key]) => errors[key]);
+    if (!first) return;
+    // Wait a frame so the error styles have rendered before scrolling.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(first[1]);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      (el as HTMLElement).focus({ preventScroll: true });
+    });
   };
 
   // The server-priced order amount is authoritative (e.g. an auction's winning
@@ -274,8 +339,15 @@ function CheckoutForm({
       return;
     }
 
-    if (!validateForm()) {
-      setError('Please fix the errors in the form before proceeding.');
+    const errors = validateForm();
+    const errorCount = Object.keys(errors).length;
+    if (errorCount > 0) {
+      setError(
+        errorCount === 1
+          ? `Please fix 1 field: ${Object.values(errors)[0]}`
+          : `Please fix ${errorCount} highlighted fields before paying.`,
+      );
+      focusFirstError(errors);
       return;
     }
 
@@ -390,7 +462,8 @@ function CheckoutForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    // noValidate: our own validation shows specific messages and scrolls to the field.
+    <form onSubmit={handleSubmit} noValidate className="space-y-6">
       {/* Delivery Mode Choice (Home Delivery vs Click & Collect) */}
       <div className="bg-white rounded-xl border border-[var(--color-border)] p-6">
         <div className="flex items-center justify-between mb-4">
@@ -495,6 +568,8 @@ function CheckoutForm({
                   type="text"
                   value={lookupPostcode}
                   onChange={(e) => setLookupPostcode(e.target.value.toUpperCase())}
+                  aria-describedby={validationErrors.collectionPoint ? 'error-collection-point' : undefined}
+                  aria-invalid={!!validationErrors.collectionPoint}
                   placeholder="e.g. SW1A 1AA"
                   className="flex-1 px-4 py-2 border border-[var(--color-border)] rounded-lg text-sm uppercase focus:ring-2 focus:ring-[var(--color-green)]"
                 />
@@ -510,7 +585,7 @@ function CheckoutForm({
               </div>
               {pointsError && <p className="text-xs text-[var(--color-danger)] mt-1">{pointsError}</p>}
               {validationErrors.collectionPoint && (
-                <p className="text-xs text-[var(--color-danger)] mt-1">{validationErrors.collectionPoint}</p>
+                <p id="error-collection-point" className="text-xs text-[var(--color-danger)] mt-1">{validationErrors.collectionPoint}</p>
               )}
             </div>
 
@@ -564,6 +639,12 @@ function CheckoutForm({
           </div>
         ) : (
           <div className="space-y-4 pt-2 border-t border-[var(--color-border)]/60">
+            {addressPrefilled && (
+              <p className="text-xs text-[var(--color-text-muted)] flex items-center gap-1.5">
+                <CircleCheck className="w-3.5 h-3.5 text-[var(--color-green)] shrink-0" aria-hidden="true" />
+                Filled in from your saved address. Change anything that&apos;s different for this order.
+              </p>
+            )}
             <div>
               <label htmlFor="shipping-name" className="block text-sm font-medium text-[var(--color-text)] mb-1">Full Name</label>
               <input
@@ -842,7 +923,7 @@ function CheckoutForm({
             <label htmlFor="cardholder-name" className="block text-sm font-medium text-[var(--color-text)]">
               Cardholder / Payer Name <span className="text-[var(--color-danger)]">*</span>
             </label>
-            <span className="text-xs text-[var(--color-text-muted)]">Exact name on payment method</span>
+            <span className="text-xs text-[var(--color-text-muted)]">As printed on your card</span>
           </div>
           <input
             id="cardholder-name"
@@ -871,11 +952,15 @@ function CheckoutForm({
           {validationErrors.cardholderName ? (
             <p id="error-cardholder" className="mt-1 text-sm text-[var(--color-danger)]">
               {validationErrors.cardholderName}
+              {' '}Letters, spaces, hyphens, apostrophes and full stops only.
             </p>
           ) : (
             <p id="cardholder-hint" className="mt-1.5 text-xs text-[var(--color-text-muted)] flex items-start gap-1.5">
               <ShieldCheck className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
-              <span>Please ensure the name matches your payment method for 3D Secure fraud prevention.</span>
+              <span>
+                Enter the name exactly as it appears on your card. Letters, spaces, hyphens (-), apostrophes (&apos;) and full stops only.
+                Your bank uses it for 3D Secure checks, so a mismatch can cause the payment to be declined.
+              </span>
             </p>
           )}
         </div>

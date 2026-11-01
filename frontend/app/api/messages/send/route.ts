@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const NOTIFICATION_SERVICE_URL = getBackendUrl();
 
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to send message' },
+        { error: friendlyApiError(data, 'Failed to send message') },
         { status: response.status }
       );
     }

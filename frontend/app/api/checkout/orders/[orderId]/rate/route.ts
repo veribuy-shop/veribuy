@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -48,7 +49,7 @@ export async function POST(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to submit rating' },
+        { error: friendlyApiError(data, 'Failed to submit rating') },
         { status: response.status },
       );
     }
@@ -93,7 +94,7 @@ export async function GET(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch rating' },
+        { error: friendlyApiError(data, 'Failed to fetch rating') },
         { status: response.status },
       );
     }

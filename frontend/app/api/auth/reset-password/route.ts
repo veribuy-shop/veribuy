@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const AUTH_SERVICE_URL = getBackendUrl();
 
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!response.ok) {
       return NextResponse.json(
-        { message: data.message || 'Password reset failed' },
+        { message: friendlyApiError(data, 'Password reset failed') },
         { status: response.status },
       );
     }

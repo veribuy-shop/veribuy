@@ -5,6 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { BrandLogo } from '@/components/brand-logo';
 import { useAuth } from '@/lib/auth-context';
 import { useState, useEffect, useRef } from 'react';
+import { Mail } from 'lucide-react';
+import { useUnreadMessages } from '@/lib/unread-messages';
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -14,6 +16,16 @@ export function Header() {
   const router = useRouter();
   const mobileToggleRef = useRef<HTMLButtonElement>(null);
   const mobileMenuId = 'mobile-nav-menu';
+  const unreadMessages = useUnreadMessages(user?.id);
+  const unreadLabel = unreadMessages > 0 ? `Messages, ${unreadMessages} unread` : 'Messages';
+  const unreadBadge = unreadMessages > 0 && (
+    <span
+      aria-hidden="true"
+      className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-[18px] text-center"
+    >
+      {unreadMessages > 99 ? '99+' : unreadMessages}
+    </span>
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,6 +116,18 @@ export function Header() {
 
               {user ? (
                 <>
+                  <Link
+                    href="/messages"
+                    aria-label={unreadLabel}
+                    aria-current={pathname === '/messages' ? 'page' : undefined}
+                    className="relative inline-flex items-center gap-1.5 text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors"
+                  >
+                    <span className="relative">
+                      <Mail className="w-4 h-4" aria-hidden="true" />
+                      {unreadBadge}
+                    </span>
+                    <span>Messages</span>
+                  </Link>
                   {pathname !== '/dashboard' && (
                     <Link href="/dashboard" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors">
                       Dashboard
@@ -134,6 +158,20 @@ export function Header() {
             </>
           )}
         </nav>
+
+        {/* Mobile: messages shortcut keeps the unread badge visible without opening the menu */}
+        {user && (
+          <Link
+            href="/messages"
+            aria-label={unreadLabel}
+            className="md:hidden ml-auto relative p-2 text-[var(--color-text)] hover:text-[var(--color-primary)]"
+          >
+            <span className="relative block">
+              <Mail className="w-6 h-6" aria-hidden="true" />
+              {unreadBadge}
+            </span>
+          </Link>
+        )}
 
         {/* Mobile Menu Button */}
         <button
@@ -216,6 +254,12 @@ export function Header() {
                         My Dashboard
                       </Link>
                     )}
+                    <Link href="/messages" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors py-2 text-base font-medium" onClick={() => setMobileMenuOpen(false)}>
+                      Messages{unreadMessages > 0 ? ` (${unreadMessages} unread)` : ''}
+                    </Link>
+                    <Link href="/offers" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors py-2 text-base font-medium" onClick={() => setMobileMenuOpen(false)}>
+                      Offers
+                    </Link>
                     <Link href="/dashboard?tab=settings" className="text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors py-2 text-base font-medium" onClick={() => setMobileMenuOpen(false)}>
                       Settings
                     </Link>

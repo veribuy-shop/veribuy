@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { sanitizeAuthUser } from '@/lib/sanitize';
+import { friendlyApiError } from '@/lib/api-errors';
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
       }
       // Return only the message field — never the full backend error object
       return NextResponse.json(
-        { message: data.message || 'Invalid credentials' },
+        { message: friendlyApiError(data, 'Invalid credentials') },
         { status: response.status }
       );
     }

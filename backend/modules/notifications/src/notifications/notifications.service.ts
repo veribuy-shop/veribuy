@@ -4,6 +4,23 @@ import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
 import { EmailService } from './email.service';
 
+/** Fields returned to the inbox UI — never whole user rows. */
+const MESSAGE_SELECT = {
+  id: true,
+  senderId: true,
+  recipientId: true,
+  listingId: true,
+  subject: true,
+  content: true,
+  isSystem: true,
+  isRead: true,
+  readAt: true,
+  createdAt: true,
+  sender: { select: { id: true, name: true } },
+  recipient: { select: { id: true, name: true } },
+  listing: { select: { id: true, title: true } },
+} as const;
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -29,6 +46,7 @@ export class NotificationsService {
     listingId?: string;
     subject?: string;
     content: string;
+    isSystem?: boolean;
   }) {
     if (data.senderId === data.recipientId) {
       throw new BadRequestException('You cannot message yourself');
@@ -65,6 +83,7 @@ export class NotificationsService {
         listingId: data.listingId,
         subject: data.subject,
         content: data.content,
+        isSystem: data.isSystem ?? false,
       },
     });
 
@@ -96,10 +115,12 @@ export class NotificationsService {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
+    // Automated notifications are attributed to the counterparty but were
+    // never written by them, so they only appear in the recipient's inbox.
     const where = {
       OR: [
         { recipientId: userId },
-        { senderId: userId },
+        { senderId: userId, isSystem: false },
       ],
     };
 
@@ -109,6 +130,7 @@ export class NotificationsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        select: MESSAGE_SELECT,
       }),
       this.prisma.message.count({ where }),
     ]);
@@ -136,7 +158,7 @@ export class NotificationsService {
 
     const where: any = {
       OR: [
-        { senderId: userId, recipientId: otherUserId },
+        { senderId: userId, recipientId: otherUserId, isSystem: false },
         { senderId: otherUserId, recipientId: userId },
       ],
     };
@@ -151,6 +173,7 @@ export class NotificationsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'asc' },
+        select: MESSAGE_SELECT,
       }),
       this.prisma.message.count({ where }),
     ]);
@@ -178,7 +201,7 @@ export class NotificationsService {
     const where = {
       listingId,
       OR: [
-        { senderId: userId },
+        { senderId: userId, isSystem: false },
         { recipientId: userId },
       ],
     };
@@ -189,6 +212,7 @@ export class NotificationsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
+        select: MESSAGE_SELECT,
       }),
       this.prisma.message.count({ where }),
     ]);

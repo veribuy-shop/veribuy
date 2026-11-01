@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -80,7 +81,7 @@ export async function PATCH(req: NextRequest) {
     if (!response.ok) {
       console.error('Transaction service error (update-shipping):', data);
       return NextResponse.json(
-        { error: data.message || data.error || 'Failed to update shipping' },
+        { error: friendlyApiError(data, 'Failed to update shipping') },
         { status: response.status },
       );
     }

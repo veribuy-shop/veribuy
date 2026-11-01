@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { sanitizeAuthUser } from '@/lib/sanitize';
+import { friendlyApiError } from '@/lib/api-errors';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest) {
         ? await response.json().catch(() => ({}))
         : {};
       return NextResponse.json(
-        { message: data.message || 'Registration failed' },
+        { message: friendlyApiError(data, 'Registration failed') },
         { status: response.status }
       );
     }

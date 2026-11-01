@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const AUTH_SERVICE_URL = getBackendUrl();
 
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { message: data.message || 'Email verification failed' },
+        { message: friendlyApiError(data, 'Email verification failed') },
         { status: response.status }
       );
     }

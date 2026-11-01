@@ -28,10 +28,10 @@ import { BrandLogo } from '@/components/brand-logo';
 import { SOCIAL_SIGN_IN_ENABLED } from '@/lib/social-auth';
 
 const WHY_JOIN = [
-  { icon: ShieldCheck, label: '100% Trust Lens™ Verified Hardware' },
-  { icon: Lock,        label: 'Stripe Escrow Payment Protection' },
-  { icon: Coins,       label: '0% Seller Commission (Keep 100%)' },
-  { icon: RotateCcw,  label: '48-Hour Money-Back Guarantee' },
+  { icon: ShieldCheck, label: 'Trust Lens™ checks before listings go live' },
+  { icon: Lock,        label: 'Payment held in escrow until the buyer confirms delivery' },
+  { icon: Coins,       label: '0% seller commission' },
+  { icon: RotateCcw,  label: '48-hour window for buyers to report a problem' },
 ];
 
 function AppleIcon({ className = "w-4 h-4" }: { className?: string }) {
@@ -355,9 +355,9 @@ export default function RegisterPage() {
                   <AppleIcon className="w-4 h-4 fill-white" />
                   <span>Sign up with Apple</span>
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white/15 text-white">
-                  {socialLoading === 'APPLE' ? 'Setting up...' : '⚡ Instant'}
-                </span>
+                {socialLoading === 'APPLE' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white/15 text-white">Setting up...</span>
+                )}
               </button>
 
               <button
@@ -370,9 +370,9 @@ export default function RegisterPage() {
                   <GoogleIcon className="w-4 h-4" />
                   <span>Sign up with Google</span>
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
-                  {socialLoading === 'GOOGLE' ? 'Setting up...' : '🔒 Passkey'}
-                </span>
+                {socialLoading === 'GOOGLE' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">Setting up...</span>
+                )}
               </button>
             </div>
 
@@ -695,12 +695,12 @@ export default function RegisterPage() {
                 {/* Live validation feedback */}
                 {postcodeLoading && (
                   <span className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-                    Checking Royal Mail database...
+                    Checking postcode...
                   </span>
                 )}
                 {postcodeValid === true && postcodeDetails && (
                   <span className="text-[10px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
-                    ✓ PAF Validated: {postcodeDetails}
+                    ✓ Postcode found: {postcodeDetails}
                   </span>
                 )}
                 {postcodeValid === false && (
@@ -899,14 +899,14 @@ export default function RegisterPage() {
                     {line1}{line2 ? `, ${line2}` : ''}, {city}, {postalCode}
                     {postcodeValid && (
                       <span className="block text-[10px] text-emerald-600 font-bold mt-0.5">
-                        ✓ Royal Mail PAF Validated
+                        ✓ Postcode found
                       </span>
                     )}
                   </span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-gray-200/60">
                   <span className="text-gray-500">Seller Commission:</span>
-                  <span className="font-bold text-[var(--color-green)]">0% Guaranteed</span>
+                  <span className="font-bold text-[var(--color-green)]">0%</span>
                 </div>
               </div>
             </div>
@@ -978,12 +978,9 @@ export default function RegisterPage() {
             ))}
           </div>
 
-          <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10">
-            <p className="text-xs text-emerald-100/90 leading-relaxed italic mb-3">
-              &ldquo;I sold my iPhone 14 Pro Max in 2 days. The IMEI check made the listing standout, and I kept 100% of my £750 sale price.&rdquo;
-            </p>
-            <p className="text-[11px] font-bold text-emerald-300">&mdash; David M., Manchester</p>
-          </div>
+          <p className="text-xs text-emerald-100/70 leading-relaxed">
+            Sellers pay no commission. Buyers pay a Buyer Protection fee, shown in every listing price.
+          </p>
         </div>
       </div>
 

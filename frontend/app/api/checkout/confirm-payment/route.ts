@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeOrder } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       console.error('Transaction service error:', data);
       return NextResponse.json(
-        { error: data.message || data.error || 'Failed to confirm payment' },
+        { error: friendlyApiError(data, 'Failed to confirm payment') },
         { status: response.status }
       );
     }

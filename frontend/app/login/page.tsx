@@ -21,10 +21,10 @@ import {
 import { SOCIAL_SIGN_IN_ENABLED } from '@/lib/social-auth';
 
 const WHY_SIGNIN = [
-  { icon: ShieldCheck, label: '100% Trust Lens™ Verified Hardware' },
-  { icon: Lock,        label: 'Stripe Escrow Payment Protection' },
-  { icon: RotateCcw,  label: '48-Hour Money-Back Return Guarantee' },
-  { icon: BadgeCheck,  label: '0% Seller Commission Payouts' },
+  { icon: ShieldCheck, label: 'Trust Lens™ checks before listings go live' },
+  { icon: Lock,        label: 'Payment held in escrow until you confirm delivery' },
+  { icon: RotateCcw,  label: '48-hour window to report a problem with your item' },
+  { icon: BadgeCheck,  label: '0% seller commission' },
 ];
 
 export default function LoginPage() {
@@ -168,9 +168,9 @@ function LoginContent() {
               <AppleIcon className="w-4 h-4 fill-white" />
               <span>Continue with Apple</span>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white/15 text-white">
-              {socialLoading === 'APPLE' ? 'Signing in...' : '⚡ Instant'}
-            </span>
+            {socialLoading === 'APPLE' && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-white/15 text-white">Signing in...</span>
+            )}
           </button>
 
           <button
@@ -183,9 +183,9 @@ function LoginContent() {
               <GoogleIcon className="w-4 h-4" />
               <span>Continue with Google</span>
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
-              {socialLoading === 'GOOGLE' ? 'Signing in...' : '🔒 Passkey'}
-            </span>
+            {socialLoading === 'GOOGLE' && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">Signing in...</span>
+            )}
           </button>
         </div>
 
@@ -318,21 +318,9 @@ function LoginContent() {
             ))}
           </div>
 
-          {/* Stats Row */}
-          <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10">
-            <div className="grid grid-cols-3 gap-4 text-center">
-              {[
-                { value: '50K+', label: 'Verified Devices' },
-                { value: '99.4%', label: 'Satisfaction' },
-                { value: '£0', label: 'Seller Fees' },
-              ].map((stat) => (
-                <div key={stat.label}>
-                  <p className="text-xl font-black text-emerald-300">{stat.value}</p>
-                  <p className="text-[11px] text-emerald-100/70 mt-0.5">{stat.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
+          <p className="text-xs text-emerald-100/70 leading-relaxed">
+            Sellers pay no commission. Buyers pay a Buyer Protection fee, shown in every listing price.
+          </p>
         </div>
       </div>
 

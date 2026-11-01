@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ShieldCheck, Truck, Gavel, Clock, Sparkles } from 'lucide-react';
+import { ShieldCheck, Truck, Gavel, Clock } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
 import { buyerFacingPrice } from '@/lib/fees';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,6 @@ export interface ListingCardProps {
   conditionGrade: 'A' | 'B' | 'C';
   conditionLabel: string;
   price: number;
-  originalPrice?: number;
   currency?: string;
   verified?: boolean;
   brand?: string;
@@ -28,6 +27,8 @@ export interface ListingCardProps {
   bidsCount?: number;
   auctionEndTime?: string;
   buyItNowPrice?: number;
+  /** Illustrative card, not a real listing: shows an "Example" label instead of "Verified". */
+  example?: boolean;
 }
 
 const GRADE_CONFIG = {
@@ -44,7 +45,6 @@ export function ListingCard({
   conditionGrade,
   conditionLabel,
   price,
-  originalPrice,
   currency = 'GBP',
   verified = true,
   brand,
@@ -56,6 +56,7 @@ export function ListingCard({
   bidsCount = 0,
   auctionEndTime,
   buyItNowPrice,
+  example = false,
 }: ListingCardProps) {
   const grade = GRADE_CONFIG[conditionGrade] || GRADE_CONFIG.A;
   const isAuction = format === 'AUCTION';
@@ -87,9 +88,6 @@ export function ListingCard({
   // is added at checkout. Auction bids stay on the item price (that is what
   // bidders bid), with the protection fee noted alongside.
   const displayPrice = isAuction ? activePrice : buyerFacingPrice(price);
-  const savingsPercent = originalPrice && originalPrice > displayPrice
-    ? Math.round(((originalPrice - displayPrice) / originalPrice) * 100)
-    : null;
 
   return (
     <Link
@@ -117,26 +115,24 @@ export function ListingCard({
           </div>
         )}
 
-        {/* Verification Pill - top left */}
-        {verified && (
+        {/* Example / Verification Pill - top left */}
+        {example ? (
+          <div className="absolute top-2.5 left-2.5 bg-gray-900/85 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-2xs">
+            Example
+          </div>
+        ) : verified && (
           <div className="absolute top-2.5 left-2.5 flex items-center gap-1 bg-white/95 backdrop-blur-xs border border-emerald-200 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-2xs">
             <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
             <span>Verified</span>
           </div>
         )}
 
-        {/* Top Right: Auction Pill or Savings Badge */}
-        {isAuction ? (
+        {/* Top Right: Auction Pill */}
+        {isAuction && (
           <div className="absolute top-2.5 right-2.5 flex items-center gap-1 bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
             <Gavel className="w-3 h-3 shrink-0" />
             <span>Auction</span>
           </div>
-        ) : (
-          savingsPercent && savingsPercent > 0 && (
-            <span className="absolute top-2.5 right-2.5 bg-gray-900 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md shadow-2xs">
-              Save {savingsPercent}%
-            </span>
-          )
         )}
 
         {/* Bottom Banner for Live Auction Countdown */}
@@ -208,11 +204,6 @@ export function ListingCard({
               <span className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
                 {formatPrice(displayPrice, currency)}
               </span>
-              {originalPrice && originalPrice > displayPrice && (
-                <span className="text-xs text-gray-400 line-through">
-                  {formatPrice(originalPrice, currency)}
-                </span>
-              )}
             </div>
           )}
 

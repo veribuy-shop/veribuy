@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const AUTH_SERVICE_URL = getBackendUrl();
 
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to update password' },
+        { error: friendlyApiError(data, 'Failed to update password') },
         { status: response.status },
       );
     }

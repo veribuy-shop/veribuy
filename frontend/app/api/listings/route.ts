@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeListing, sanitizePublicListing, sanitizePaginated } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to create listing' },
+        { error: friendlyApiError(data, 'Failed to create listing') },
         { status: response.status }
       );
     }
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch listings' },
+        { error: friendlyApiError(data, 'Failed to fetch listings') },
         { status: response.status }
       );
     }

@@ -3,6 +3,7 @@ import { getAccessToken, createAuthHeaders, getTokenUserId } from '@/lib/api-aut
 import { sanitizeListing, sanitizePublicListing } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -39,7 +40,7 @@ export async function GET(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to fetch listing' },
+        { error: friendlyApiError(data, 'Failed to fetch listing') },
         { status: response.status }
       );
     }
@@ -88,7 +89,7 @@ export async function PATCH(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: data.message || 'Failed to update listing' },
+        { error: friendlyApiError(data, 'Failed to update listing') },
         { status: response.status }
       );
     }
@@ -130,7 +131,7 @@ export async function DELETE(
     if (!response.ok) {
       const data = await response.json();
       return NextResponse.json(
-        { error: data.message || 'Failed to delete listing' },
+        { error: friendlyApiError(data, 'Failed to delete listing') },
         { status: response.status }
       );
     }

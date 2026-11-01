@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getBackendUrl } from '@/lib/backend-url';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 /** PATCH /api/offers/:offerId — { action: ACCEPT | DECLINE | WITHDRAW } */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ offerId: string }> }) {
@@ -20,7 +21,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     });
     const data = await response.json();
     if (!response.ok) {
-      return NextResponse.json({ error: data.message || 'Failed to update offer' }, { status: response.status });
+      return NextResponse.json({ error: friendlyApiError(data, 'Failed to update offer') }, { status: response.status });
     }
     return NextResponse.json(data);
   } catch (error) {

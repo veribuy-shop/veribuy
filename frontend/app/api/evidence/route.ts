@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken } from '@/lib/api-auth';
 import { sanitizeEvidenceItem } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const EVIDENCE_SERVICE_URL = getBackendUrl();
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { message: error.message || error.error || 'Failed to upload evidence' },
+        { message: friendlyApiError(error, 'Failed to upload evidence') },
         { status: response.status }
       );
     }
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
       }
       const error = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { message: error.message || 'Failed to fetch evidence' },
+        { message: friendlyApiError(error, 'Failed to fetch evidence') },
         { status: response.status }
       );
     }

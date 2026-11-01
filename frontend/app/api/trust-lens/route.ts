@@ -18,7 +18,11 @@ export async function GET(request: NextRequest) {
     const listingId = searchParams.get('listingId');
     if (listingId !== null && !isUuid(listingId)) return invalidIdResponse();
 
-    let url = `${TRUST_LENS_SERVICE_URL}/trust-lens`;
+    // Forward pagination (the backend caps limit at 100; it defaults to 10,
+    // which silently truncated the admin verification queue).
+    const page = Math.max(1, Number(searchParams.get('page')) || 1);
+    const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 10));
+    let url = `${TRUST_LENS_SERVICE_URL}/trust-lens?page=${page}&limit=${limit}`;
     if (listingId) {
       url = `${TRUST_LENS_SERVICE_URL}/trust-lens/${listingId}`;
     }

@@ -3,6 +3,7 @@ import { getAccessToken, createAuthHeaders, getTokenUserId, getTokenRole } from 
 import { sanitizeOrderWithPayment } from '@/lib/sanitize';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
       
       if (missingFields.length > 0) {
         return NextResponse.json(
-          { error: `Missing required address fields: ${missingFields.join(', ')}` },
+          { error: 'Please complete your delivery address (name, address line 1, town, county, postcode and country).' },
           { status: 400 }
         );
       }
@@ -139,11 +140,8 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       console.error('Transaction service error:', data || response.statusText);
-      const errMsg =
-        (data && (data.message || data.error)) ||
-        `Failed to create order (${response.status})`;
       return NextResponse.json(
-        { error: Array.isArray(errMsg) ? errMsg.join(', ') : String(errMsg) },
+        { error: friendlyApiError(data, 'We could not start checkout for this item. Please try again.') },
         { status: response.status }
       );
     }
@@ -169,7 +167,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('Error creating order:', error);
     return NextResponse.json(
-      { error: error?.message || 'Internal server error' },
+      { error: 'We could not start checkout. Please try again.' },
       { status: 500 }
     );
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAccessToken, createAuthHeaders } from '@/lib/api-auth';
 import { getBackendUrl } from '@/lib/backend-url';
 import { isUuid, invalidIdResponse } from '@/lib/validate-id';
+import { friendlyApiError } from '@/lib/api-errors';
 
 const EVIDENCE_SERVICE_URL = getBackendUrl();
 
@@ -32,7 +33,7 @@ export async function DELETE(
       let errorMessage = 'Failed to delete evidence item';
       try {
         const data = await response.json();
-        errorMessage = data.message || errorMessage;
+        errorMessage = friendlyApiError(data, errorMessage);
       } catch {
         // body may be empty on some errors
       }
