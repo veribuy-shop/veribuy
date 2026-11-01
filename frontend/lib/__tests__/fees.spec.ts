@@ -65,6 +65,12 @@ describe('Fee calculation utilities', () => {
 });
 
 describe('buyerFacingPrice', () => {
+  beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT;
+    delete process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_RATE;
+    delete process.env.BUYER_PROTECTION_FEE_PERCENT;
+  });
+
   it('adds the buyer protection fee to the seller price (shipping excluded)', () => {
     // Default 5% rate: a £120 listing is shown to buyers as £126.
     expect(buyerFacingPrice(120)).toBe(126);
