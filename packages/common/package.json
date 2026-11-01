@@ -12,6 +12,10 @@
     "./shipping": {
       "types": "./dist/shipping/index.d.ts",
       "default": "./dist/shipping/index.js"
+    },
+    "./evidence": {
+      "types": "./dist/evidence/index.d.ts",
+      "default": "./dist/evidence/index.js"
     }
   },
   "scripts": {

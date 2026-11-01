@@ -4,7 +4,7 @@ import { PrismaService } from '../../../../src/database/prisma.service';
 import { ImeiCheckWorker } from '../imei-check/imei-check.worker';
 import { ListingSyncService } from './listing-sync.service';
 import { UserSyncService } from './user-sync.service';
-import { PaginationDto, PaginatedResponse } from '@veribuy/common';
+import { PaginationDto, PaginatedResponse, getEvidenceRequirements } from '@veribuy/common';
 import { CreateVerificationRequestDto } from './dto/create-verification-request.dto';
 import { ChecklistEvidenceType, DeviceType, EvidenceType } from '.prisma/veribuy-client';
 
@@ -174,11 +174,30 @@ export class TrustLensService {
         description: string;
         required: boolean;
         fulfilled: boolean;
-      }> = [
-        { type: ChecklistEvidenceType.IMAGE, description: 'Device images (front, back, sides)', required: true, fulfilled: hasUploadedImages },
-        { type: ChecklistEvidenceType.IMAGE, description: 'Screen images (on, display condition)', required: true, fulfilled: hasUploadedImages },
-        { type: ChecklistEvidenceType.SCREENSHOT, description: 'Settings screenshot (model, storage)', required: true, fulfilled: hasUploadedScreenshots },
-      ];
+      }> = [];
+      // What to expect depends on the device: AirPods have no screen, and the
+      // settings/serial photo is optional for every device type.
+      const requirements = getEvidenceRequirements(listing.deviceType);
+      checklistItems.push({
+        type: ChecklistEvidenceType.IMAGE,
+        description: `${requirements.device.label} (${requirements.device.hint})`,
+        required: true,
+        fulfilled: hasUploadedImages,
+      });
+      if (requirements.screen.level !== 'hidden') {
+        checklistItems.push({
+          type: ChecklistEvidenceType.IMAGE,
+          description: `${requirements.screen.label} (${requirements.screen.hint})`,
+          required: requirements.screen.level === 'required',
+          fulfilled: hasUploadedImages,
+        });
+      }
+      checklistItems.push({
+        type: ChecklistEvidenceType.SCREENSHOT,
+        description: `${requirements.settings.label} (${requirements.settings.hint})`,
+        required: false,
+        fulfilled: hasUploadedScreenshots,
+      });
 
       await tx.evidenceChecklist.createMany({
         data: checklistItems.map((item) => ({

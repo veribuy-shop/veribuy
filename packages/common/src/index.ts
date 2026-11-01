@@ -21,6 +21,7 @@ export * from './swagger';
 export * from './shipping/weight-mapping';
 export * from './shipping/royal-mail-rates';
 export * from './shipping/click-and-drop-types';
+export * from './evidence/requirements';
 
 // Auction & Proxy Bidding Engine
 export * from './auction/bidding-engine';

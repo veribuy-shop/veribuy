@@ -27,6 +27,8 @@ import {
 } from 'lucide-react';
 import { buyerFacingPrice, getBuyerProtectionFeePercent } from '@/lib/fees';
 import { formatPrice } from '@/lib/currency';
+import { prepareImageForUpload } from '@/lib/prepare-image';
+import { getEvidenceRequirements } from '@veribuy/common/evidence';
 
 function validateImeiChecksum(imei: string): { valid: boolean; status: 'empty' | 'incomplete' | 'invalid' | 'valid'; message: string } {
   const clean = imei.trim().replace(/[\s-]/g, '');
@@ -189,18 +191,19 @@ const ACCESSORIES_OPTIONS = [
  * them on cleanup to prevent memory leaks from URL.createObjectURL.
  */
 function useObjectURLs(files: File[]): string[] {
-  const urlsRef = useRef<string[]>([]);
+  // State (not a ref) so the component re-renders once the URLs exist;
+  // returning a ref left previews pointing at nothing until some other update.
+  const [urls, setUrls] = useState<string[]>([]);
 
   useEffect(() => {
-    // Revoke previous URLs before creating new ones
-    urlsRef.current.forEach(url => URL.revokeObjectURL(url));
-    urlsRef.current = files.map(file => URL.createObjectURL(file));
+    const created = files.map(file => URL.createObjectURL(file));
+    setUrls(created);
     return () => {
-      urlsRef.current.forEach(url => URL.revokeObjectURL(url));
+      created.forEach(url => URL.revokeObjectURL(url));
     };
   }, [files]);
 
-  return urlsRef.current;
+  return urls;
 }
 
 /** Fields never written to the local draft: files can't be serialised and device identifiers stay off disk. */
@@ -219,7 +222,16 @@ export default function CreateListingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [uploadingFiles, setUploadingFiles] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ [key: string]: number }>({});
+  const [uploadStatus, setUploadStatus] = useState('');
+  const errorRef = useRef<HTMLDivElement>(null);
+  // The error banner sits above the form; bring it into view so it isn't missed
+  // after pressing Next/Submit at the bottom of a long step.
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [error]);
+  // Set once the listing exists so a retry after failed uploads doesn't create a duplicate.
+  const [createdListingId, setCreatedListingId] = useState<string | null>(null);
+  const uploadedFiles = useRef(new Set<File>());
   const [deviceTypeOptions, setDeviceTypeOptions] = useState<DeviceTypeOption[]>([]);
   const [showImeiGuide, setShowImeiGuide] = useState(false);
 
@@ -366,6 +378,7 @@ export default function CreateListingPage() {
   // DATA-04: Validate file type (images only) and size (max 10 MB) before
   // storing files in state. Invalid files are rejected with a visible error.
   const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+  const MAX_RESIZABLE_FILE_BYTES = 40 * 1024 * 1024; // 40 MB before in-browser resize
 
   const handleFileChange = (field: keyof ListingFormData, files: FileList | null) => {
     if (!files) return;
@@ -378,8 +391,11 @@ export default function CreateListingPage() {
         errors.push(`"${file.name}" is not an image file and was skipped.`);
         return;
       }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        errors.push(`"${file.name}" exceeds the 10 MB size limit and was skipped.`);
+      // JPEG/PNG/WebP are shrunk in the browser before upload, so only formats
+      // we can't resize (e.g. HEIC) are held to the server's 10 MB limit.
+      const resizable = /^image\/(jpe?g|png|webp)$/i.test(file.type);
+      if (file.size > (resizable ? MAX_RESIZABLE_FILE_BYTES : MAX_FILE_SIZE_BYTES)) {
+        errors.push(`"${file.name}" is too large (max ${resizable ? 40 : 10} MB) and was skipped.`);
         return;
       }
       validFiles.push(file);
@@ -406,8 +422,11 @@ export default function CreateListingPage() {
   // Only phones are verified by IMEI. Cellular tablets/watches may have one;
   // AirPods, laptops and desktops never do, so the IMEI field is hidden for them.
   const deviceHasImei = !['AIRPODS', 'LAPTOP', 'DESKTOP'].includes(formData.deviceType);
-  // AirPods have no display, so a powered-on screen photo can't be required.
-  const deviceHasScreen = formData.deviceType !== 'AIRPODS';
+  // Which photos to ask for depends on the device (AirPods have no screen, a
+  // console's screen photo is optional…). Shared with the Trust Lens checklist.
+  const evidence = getEvidenceRequirements(formData.deviceType);
+  const screenRequired = evidence.screen.level === 'required';
+  const screenShown = evidence.screen.level !== 'hidden';
 
   const validateStep = (step: number): boolean => {
     setError('');
@@ -493,13 +512,13 @@ export default function CreateListingPage() {
         return false;
       }
 
-      if (formData.deviceImages.length < 3) {
-        setError('Please upload at least 3 device images');
+      if (formData.deviceImages.length < evidence.device.minCount) {
+        setError(`Please add at least ${evidence.device.minCount} device photos`);
         return false;
       }
 
-      if (deviceHasScreen && formData.screenImages.length < 1) {
-        setError('Please upload at least 1 screen/display image');
+      if (screenRequired && formData.screenImages.length < evidence.screen.minCount) {
+        setError('Please add a photo of the screen switched on');
         return false;
       }
     }
@@ -521,18 +540,18 @@ export default function CreateListingPage() {
   const handleSubmit = async () => {
     if (!validateStep(currentStep)) return;
 
-    if (!formData.isBulkListing && (formData.deviceImages.length === 0 || (deviceHasScreen && formData.screenImages.length === 0))) {
-      setError(deviceHasScreen
-        ? 'Please upload at least 3 device images and 1 screen image before submitting'
-        : 'Please upload at least 3 device images before submitting');
-      return;
-    }
 
     setIsSubmitting(true);
     setError('');
 
     try {
-      // Step 1: Create the listing first
+      // Step 1: Create the listing — once. If photo uploads failed on an earlier
+      // attempt, the listing already exists, so a retry only sends what's missing
+      // instead of creating a duplicate listing.
+      let listing: { id: string };
+      if (createdListingId) {
+        listing = { id: createdListingId };
+      } else {
       // SEC-06: sellerId is intentionally omitted — the BFF API route derives it
       // from the verified JWT token. Never trust client-supplied identity fields.
       const isAuction = formData.format === 'AUCTION';
@@ -573,55 +592,70 @@ export default function CreateListingPage() {
         throw new Error(data.error || 'Failed to create listing');
       }
 
-      const listing = await response.json();
+      listing = await response.json();
+      setCreatedListingId(listing.id);
+      }
 
-      // Step 2: Upload all evidence files to the newly created listing
+      // Step 2: Upload evidence photos. Large photos are shrunk first, uploads
+      // run two at a time (several big parallel uploads stall on mobile data),
+      // and each gets one retry. Photos already uploaded are skipped on retry.
       const allFiles = [
         ...formData.deviceImages.map(f => ({ file: f, type: 'DEVICE_IMAGE' })),
-        ...formData.screenImages.map(f => ({ file: f, type: 'SCREEN_IMAGE' })),
+        ...(screenShown ? formData.screenImages.map(f => ({ file: f, type: 'SCREEN_IMAGE' })) : []),
         ...formData.settingsScreenshot.map(f => ({ file: f, type: 'SETTINGS_SCREENSHOT' })),
-      ];
+      ].filter(({ file }) => !uploadedFiles.current.has(file));
 
       if (allFiles.length > 0) {
         setUploadingFiles(true);
+        const failures: string[] = [];
 
-        // PERF-05: Upload all evidence files in parallel with Promise.allSettled so
-        // a single failed upload does not block the rest. Individual failures are
-        // logged but don't abort the listing creation flow.
-        const uploadResults = await Promise.allSettled(
-          allFiles.map(({ file, type }) => {
-            const uploadFormData = new FormData();
-            uploadFormData.append('file', file);
-            uploadFormData.append('listingId', listing.id);
-            // SEC-06: sellerId intentionally not appended — evidence service derives it
-            // from the JWT token forwarded by the BFF API route.
-            uploadFormData.append('type', type);
-            return authFetch('/api/evidence', {
-              method: 'POST',
-              body: uploadFormData,
-            }).then(res => {
-              if (!res.ok) throw new Error(`Upload failed for ${file.name}`);
-              return res;
-            });
-          })
-        );
-
-        const successfulUploads = uploadResults.filter((r) => r.status === 'fulfilled');
-        if (allFiles.length > 0 && successfulUploads.length === 0) {
-          throw new Error('Failed to upload device images. Please check your network connection and image formats, and try again.');
-        }
-
-        // Log any individual upload failures without failing the whole submission
-        uploadResults.forEach((result, i) => {
-          if (result.status === 'rejected') {
-            console.error(`Evidence upload error (${allFiles[i].file.name}):`, result.reason);
+        const uploadOne = async ({ file, type }: { file: File; type: string }) => {
+          const prepared = await prepareImageForUpload(file);
+          let lastError = 'Upload failed';
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const uploadFormData = new FormData();
+              uploadFormData.append('file', prepared);
+              uploadFormData.append('listingId', listing.id);
+              // SEC-06: sellerId intentionally not appended — evidence service derives it
+              // from the JWT token forwarded by the BFF API route.
+              uploadFormData.append('type', type);
+              const res = await authFetch('/api/evidence', { method: 'POST', body: uploadFormData });
+              if (res.ok) {
+                uploadedFiles.current.add(file);
+                return;
+              }
+              const data = await res.json().catch(() => ({}));
+              lastError = data.message || data.error || `Upload failed (${res.status})`;
+              // Client errors (bad format, too large) won't succeed on retry.
+              if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) break;
+            } catch {
+              lastError = 'Network problem while uploading';
+            }
           }
-        });
+          failures.push(`${file.name}: ${lastError}`);
+        };
 
-        // Mark all files as 100% in the progress tracker
-        setUploadProgress(
-          Object.fromEntries(allFiles.map(({ file }) => [file.name, 100]))
-        );
+        const queue = [...allFiles];
+        let done = 0;
+        const worker = async () => {
+          for (let next = queue.shift(); next; next = queue.shift()) {
+            await uploadOne(next);
+            done += 1;
+            setUploadStatus(`Uploading photos… ${done} of ${allFiles.length}`);
+          }
+        };
+        setUploadStatus(`Uploading photos… 0 of ${allFiles.length}`);
+        await Promise.all([worker(), worker()]);
+        setUploadStatus('');
+
+        if (failures.length > 0) {
+          console.error('Evidence upload failures:', failures);
+          throw new Error(
+            `Your listing is saved, but ${failures.length} of ${allFiles.length} photos didn't upload (${failures[0]}). ` +
+              'Check your connection and press Submit again — only the missing photos will be sent.',
+          );
+        }
       }
 
       // Step 3: Create verification request in Trust Lens
@@ -768,7 +802,7 @@ export default function CreateListingPage() {
           )}
 
           {error && (
-            <div role="alert" className="mb-6 p-4 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-xl">
+            <div ref={errorRef} role="alert" className="mb-6 scroll-mt-24 p-4 bg-[var(--color-danger)]/10 border border-[var(--color-danger)]/30 rounded-xl">
               <p className="text-sm text-[var(--color-danger)]">{error}</p>
             </div>
           )}
@@ -1532,9 +1566,11 @@ export default function CreateListingPage() {
                     </h3>
                     <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
                       <li>• IMEI required for smartphones only. Other devices: add an IMEI (cellular tablets/watches) or serial number if you have one — devices without an IMEI are reviewed manually by our team</li>
-                      <li>• At least 3 high-quality device images (various angles)</li>
-                      {deviceHasScreen && <li>• At least 1 screen/display image (powered on)</li>}
-                      <li>• Optional: Screenshots of Settings showing device info</li>
+                      <li>• At least {evidence.device.minCount} device photos: {evidence.device.hint.charAt(0).toLowerCase() + evidence.device.hint.slice(1)}</li>
+                      {screenShown && (
+                        <li>• {screenRequired ? 'At least 1' : 'Optional:'} screen photo — {evidence.screen.hint.charAt(0).toLowerCase() + evidence.screen.hint.slice(1)}</li>
+                      )}
+                      <li>• Optional: {evidence.settings.label.toLowerCase()} — {evidence.settings.hint.charAt(0).toLowerCase() + evidence.settings.hint.slice(1)}</li>
                       <li>• All images will be timestamped and stored for dispute resolution</li>
                     </ul>
                   </div>
@@ -1671,8 +1707,8 @@ export default function CreateListingPage() {
 
               <div>
                 <label htmlFor="device-images" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                  Device Images <span className="text-red-500" aria-hidden="true">*</span>
-                  <span className="sr-only">(required, minimum 3)</span>
+                  {evidence.device.label} <span className="text-red-500" aria-hidden="true">*</span>
+                  <span className="sr-only">(required, minimum {evidence.device.minCount})</span>
                 </label>
                 <input
                   id="device-images"
@@ -1684,7 +1720,7 @@ export default function CreateListingPage() {
                   aria-describedby="device-images-hint"
                 />
                 <p id="device-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  Upload clear images from multiple angles (front, back, sides).{' '}
+                  {evidence.device.hint} Large photos are resized automatically.{' '}
                   <span aria-live="polite">{formData.deviceImages.length} file(s) selected.</span>
                 </p>
                 {formData.deviceImages.length > 0 && (
@@ -1705,10 +1741,11 @@ export default function CreateListingPage() {
                 )}
               </div>
 
+              {screenShown && (
               <div>
                 <label htmlFor="screen-images" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                  Screen/Display Images{' '}
-                  {deviceHasScreen ? (
+                  {evidence.screen.label}{' '}
+                  {screenRequired ? (
                     <>
                       <span className="text-red-500" aria-hidden="true">*</span>
                       <span className="sr-only">(required, minimum 1)</span>
@@ -1727,7 +1764,7 @@ export default function CreateListingPage() {
                   aria-describedby="screen-images-hint"
                 />
                 <p id="screen-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  Show the screen powered on.{' '}
+                  {evidence.screen.hint}{' '}
                   <span aria-live="polite">{formData.screenImages.length} file(s) selected.</span>
                 </p>
                 {formData.screenImages.length > 0 && (
@@ -1747,10 +1784,11 @@ export default function CreateListingPage() {
                   </div>
                 )}
               </div>
+              )}
 
               <div>
                 <label htmlFor="settings-screenshot" className="block text-sm font-medium text-[var(--color-text)] mb-2">
-                  Settings Screenshot (Optional)
+                  {evidence.settings.label} <span className="text-xs text-[var(--color-text-muted)]">(optional)</span>
                 </label>
                 <input
                   id="settings-screenshot"
@@ -1762,7 +1800,7 @@ export default function CreateListingPage() {
                   aria-describedby="settings-screenshot-hint"
                 />
                 <p id="settings-screenshot-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
-                  Screenshot of Settings → About showing device info.{' '}
+                  {evidence.settings.hint}{' '}
                   <span aria-live="polite">{formData.settingsScreenshot.length} file(s) selected.</span>
                 </p>
                 {formData.settingsScreenshot.length > 0 && (
@@ -1812,9 +1850,13 @@ export default function CreateListingPage() {
               disabled={isSubmitting}
               className="px-6 py-3 bg-[var(--color-accent)] text-white rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
-              {isSubmitting
-                ? (uploadingFiles ? 'Uploading Images...' : 'Creating Listing...')
-                : (formData.isBulkListing ? 'Publish Business Listing' : 'Submit for Verification')}
+              <span aria-live="polite">
+                {isSubmitting
+                  ? (uploadingFiles ? (uploadStatus || 'Uploading photos…') : 'Creating listing…')
+                  : createdListingId
+                    ? 'Retry photo upload'
+                    : (formData.isBulkListing ? 'Publish Business Listing' : 'Submit for Verification')}
+              </span>
             </button>
           )}
         </div>
@@ -1822,7 +1864,9 @@ export default function CreateListingPage() {
         <p className="text-center text-sm text-[var(--color-text-muted)] mt-4">
           {formData.isBulkListing
             ? 'Bulk inventory is reviewed by our Trust & Safety team before it goes live.'
-            : 'Your IMEI will be checked automatically. Flagged listings are reviewed by an admin.'}
+            : deviceHasImei && formData.imei
+              ? 'Your IMEI will be checked automatically. Flagged listings are reviewed by an admin.'
+              : 'Our Trust & Safety team reviews your photos before the listing goes live.'}
         </p>
       </div>
     </div>
