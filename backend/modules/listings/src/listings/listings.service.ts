@@ -58,6 +58,33 @@ const PUBLIC_SELECT = {
   // imei and serialNumber intentionally excluded from public shape
 } as const;
 
+/**
+ * Name shown for a seller on public listing pages. Individuals appear as
+ * first name + last initial ("John S."), never their full name (the profile
+ * display name defaults to it at sign-up); businesses by their company name.
+ */
+export function publicSellerName(profile: {
+  accountType?: string | null;
+  companyName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+} | null | undefined): string {
+  if (!profile) return 'Verified Seller';
+  if (profile.accountType === 'BUSINESS' && profile.companyName?.trim()) {
+    return profile.companyName.trim();
+  }
+  let first = profile.firstName?.trim() || '';
+  let last = profile.lastName?.trim() || '';
+  if (!first) {
+    const parts = (profile.displayName || '').trim().split(/\s+/).filter(Boolean);
+    first = parts[0] || '';
+    last = parts.slice(1).join(' ');
+  }
+  if (!first) return 'Verified Seller';
+  return last ? `${first} ${last.charAt(0).toUpperCase()}.` : first;
+}
+
 @Injectable()
 export class UlistingsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(UlistingsService.name);
@@ -401,6 +428,8 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
               displayName: true,
               firstName: true,
               lastName: true,
+              accountType: true,
+              companyName: true,
               avatarUrl: true,
               sellerRating: true,
               createdAt: true,
@@ -432,7 +461,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
           const city = p.address?.city || 'London';
           const country = p.address?.country || 'UK';
           const location = `${city}, ${country}`;
-          const displayName = p.displayName || (p.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : 'Verified Seller');
+          const displayName = publicSellerName(p);
           sellersMap.set(p.userId, {
             displayName,
             avatarUrl: p.avatarUrl,
@@ -589,12 +618,12 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
             accountType: true,
             companyName: true,
             createdAt: true,
+            // Postcode is deliberately not selected: only the city/county is public.
             address: {
               select: {
                 city: true,
                 state: true,
                 country: true,
-                postalCode: true,
               },
             },
           },
@@ -605,11 +634,8 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
       const city = profile?.address?.city || 'London';
       const country = profile?.address?.country || 'UK';
       const state = profile?.address?.state || '';
-      const postalCode = profile?.address?.postalCode || '';
       const location = city && country ? `${city}, ${country}` : city || country || 'United Kingdom';
-      const displayName = profile?.accountType === 'BUSINESS' && profile?.companyName
-        ? profile.companyName
-        : (profile?.displayName || (profile?.firstName ? `${profile.firstName} ${profile.lastName || ''}`.trim() : 'Verified Seller'));
+      const displayName = publicSellerName(profile);
 
       return {
         displayName,
@@ -621,7 +647,6 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         city,
         country,
         state,
-        postalCode,
         sellerRating: profile?.sellerRating ?? 5.0,
       };
     } catch {
