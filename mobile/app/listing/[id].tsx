@@ -1,8 +1,12 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { calculateMinimumNextBid, formatAuctionCountdown } from '@veribuy/common/auction';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -12,7 +16,7 @@ import {
   View,
 } from 'react-native';
 
-import { Input, Screen } from '@/src/components/ui';
+import { Button, Input, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
 import { buyerFacingPrice, calculateBuyerProtectionFee, getBuyerProtectionFeePercent } from '@/src/lib/fees';
@@ -51,9 +55,23 @@ export default function ListingDetailScreen() {
   const [offerSuccess, setOfferSuccess] = useState(false);
   const [offerError, setOfferError] = useState('');
 
+  const [bidModalVisible, setBidModalVisible] = useState(false);
+  const [maxBid, setMaxBid] = useState('');
+  const [bidSubmitting, setBidSubmitting] = useState(false);
+  const [bidResult, setBidResult] = useState('');
+  const [bidError, setBidError] = useState('');
+  const [, setCountdownTick] = useState(0);
+
+  // Keep an auction's time left current while it's on screen.
+  const auctionEndsAt = listing?.auctionEndsAt;
+  useEffect(() => {
+    if (!auctionEndsAt) return;
+    const timer = setInterval(() => setCountdownTick((tick) => tick + 1), 1000);
+    return () => clearInterval(timer);
+  }, [auctionEndsAt]);
+
   const load = useCallback(async () => {
     if (!id) return;
-    setLoading(true);
     setLoadError('');
     try {
       const l = await listingsService.get(id);
@@ -80,9 +98,11 @@ export default function ListingDetailScreen() {
     }
   }, [id, user?.id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   const requireSignIn = (): boolean => {
     if (isAuthenticated) return true;
@@ -119,6 +139,51 @@ export default function ListingDetailScreen() {
       setOfferError(e?.message || 'Your offer was not sent. Please try again.');
     } finally {
       setOfferSubmitting(false);
+    }
+  };
+
+  const openBidModal = () => {
+    if (!listing || !requireSignIn()) return;
+    setMaxBid(String(calculateMinimumNextBid(Number(listing.currentBid), Number(listing.startingBid), listing.bidCount ?? 0)));
+    setBidResult('');
+    setBidError('');
+    setBidModalVisible(true);
+  };
+
+  const submitBid = async () => {
+    if (!listing) return;
+    const amount = Math.round(parseFloat(maxBid) * 100) / 100;
+    const minimum = calculateMinimumNextBid(Number(listing.currentBid), Number(listing.startingBid), listing.bidCount ?? 0);
+    if (!Number.isFinite(amount) || amount < minimum) {
+      setBidError(`Your maximum bid must be at least ${formatPrice(minimum, listing.currency)}.`);
+      return;
+    }
+    // Bids are binding, so a stray digit must not go through unseen.
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(`Bid up to ${formatPrice(amount, listing.currency)}?`, 'This bid is binding if you win.', [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Confirm bid', onPress: () => resolve(true) },
+      ]);
+    });
+    if (!confirmed) return;
+
+    setBidSubmitting(true);
+    setBidError('');
+    try {
+      await listingsService.placeBid(listing.id, amount);
+      const updated = await listingsService.get(listing.id);
+      setListing(updated);
+      // What they just bid may now be under the minimum, so start them from there.
+      setMaxBid(String(calculateMinimumNextBid(Number(updated.currentBid), Number(updated.startingBid), updated.bidCount ?? 0)));
+      setBidResult(
+        updated.highestBidderId === user?.id
+          ? `You’re the highest bidder at ${formatPrice(Number(updated.currentBid), updated.currency)}. We’ll only bid as much as needed, up to your maximum.`
+          : `Another bidder’s maximum is higher, so the bid is now ${formatPrice(Number(updated.currentBid), updated.currency)}. You can bid again.`,
+      );
+    } catch (e: any) {
+      setBidError(e?.message || 'Your bid was not placed. Please try again.');
+    } finally {
+      setBidSubmitting(false);
     }
   };
 
@@ -167,6 +232,10 @@ export default function ListingDetailScreen() {
   const isOwn = user?.id === listing.sellerId;
   const isAuction = listing.format === 'AUCTION';
   const isActive = listing.status === 'ACTIVE';
+  const countdown = formatAuctionCountdown(listing.auctionEndsAt);
+  const isHighestBidder = !!user?.id && listing.highestBidderId === user.id;
+  const wonAuction = isAuction && isHighestBidder && (listing.status === 'AUCTION_ENDED' || countdown.isEnded);
+  const minimumBid = calculateMinimumNextBid(Number(listing.currentBid), Number(listing.startingBid), listing.bidCount ?? 0);
   const verified = listing.trustLensStatus === 'PASSED';
   const grade = listing.conditionGrade ? `Grade ${listing.conditionGrade} · ${GRADE_LABEL[listing.conditionGrade] ?? ''}` : null;
   const specs = [listing.storageCapacity, listing.color].filter(Boolean).join(' · ');
@@ -239,7 +308,7 @@ export default function ListingDetailScreen() {
                 {formatPrice(Number(listing.currentBid ?? listing.startingBid ?? askingPrice), currency)}
               </Text>
               <Text className="text-xs text-text-muted mt-1">
-                {listing.bidCount ? `${listing.bidCount} bid${listing.bidCount === 1 ? '' : 's'}` : 'Starting bid'} · Buyer Protection and shipping added at checkout.
+                {countdown.formattedText} · {wonAuction ? 'You won · ' : isHighestBidder ? 'You’re the highest bidder · ' : ''}{listing.bidCount ? `${listing.bidCount} bid${listing.bidCount === 1 ? '' : 's'}` : 'Starting bid'} · Buyer Protection and shipping added at checkout.
               </Text>
             </>
           ) : (
@@ -327,7 +396,25 @@ export default function ListingDetailScreen() {
         style={Platform.OS === 'web' ? { position: 'fixed' as any } : undefined}
       >
         {isOwn ? (
-          <Text className="flex-1 text-center text-xs font-bold text-text-muted">This is your listing.</Text>
+          listing.status === 'SOLD' ? (
+            <Text className="flex-1 text-center text-xs font-bold text-text-muted">You sold this listing.</Text>
+          ) : (
+            <TouchableOpacity
+              onPress={() => router.push(`/listing/edit/${listing.id}`)}
+              accessibilityRole="button"
+              className="flex-1 bg-[#232F3E] rounded-xl py-3.5 items-center"
+            >
+              <Text className="text-white font-black text-sm">Edit listing</Text>
+            </TouchableOpacity>
+          )
+        ) : wonAuction ? (
+          <TouchableOpacity
+            onPress={onBuyNow}
+            accessibilityRole="button"
+            className="flex-1 bg-[#2D7A4F] rounded-xl py-3.5 items-center"
+          >
+            <Text className="text-white font-black text-sm">You won · Complete purchase</Text>
+          </TouchableOpacity>
         ) : !isActive && hasPendingCheckout ? (
           <TouchableOpacity
             onPress={() => router.push({ pathname: '/checkout', params: { listingId: listing.id } })}
@@ -339,9 +426,30 @@ export default function ListingDetailScreen() {
         ) : !isActive ? (
           <Text className="flex-1 text-center text-xs font-bold text-text-muted">This item is no longer available.</Text>
         ) : isAuction ? (
-          <Text className="flex-1 text-center text-xs font-bold text-text-muted">
-            Bidding in the app is coming soon — bid on veribuy.shop.
-          </Text>
+          countdown.isEnded ? (
+            <Text className="flex-1 text-center text-xs font-bold text-text-muted">This auction has ended.</Text>
+          ) : (
+            <>
+              {Number(listing.buyItNowPrice) > Number(listing.currentBid ?? 0) ? (
+                <TouchableOpacity
+                  onPress={onBuyNow}
+                  accessibilityRole="button"
+                  className="flex-1 bg-[#F5F5F0] border border-borderc rounded-xl py-3.5 items-center"
+                >
+                  <Text className="text-text font-black text-xs">
+                    Buy now · {formatPrice(buyerFacingPrice(Number(listing.buyItNowPrice)), currency)}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity
+                onPress={openBidModal}
+                accessibilityRole="button"
+                className="flex-1 bg-[#2D7A4F] rounded-xl py-3.5 items-center"
+              >
+                <Text className="text-white font-black text-sm">Place a bid</Text>
+              </TouchableOpacity>
+            </>
+          )
         ) : (
           <>
             <TouchableOpacity
@@ -377,6 +485,41 @@ export default function ListingDetailScreen() {
         </View>
       </Modal>
 
+      {/* Place a bid */}
+      <Modal visible={bidModalVisible} transparent animationType="slide" onRequestClose={() => setBidModalVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 bg-black/60 justify-end">
+          <View className="bg-white rounded-t-3xl p-6 pb-10">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text className="text-xl font-bold text-text">Place a bid</Text>
+              <TouchableOpacity onPress={() => setBidModalVisible(false)} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8}>
+                <Ionicons name="close" size={24} color="#565959" />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-sm text-text-muted mb-1">
+              Current bid {formatPrice(Number(listing.currentBid ?? listing.startingBid ?? 0), currency)} · {countdown.formattedText}
+            </Text>
+            <Text className="text-[13px] text-text-muted mb-4 leading-[18px]">
+              Enter the most you’d pay. We bid for you, only as much as needed. Bids are binding, and Buyer Protection and postage are added if you win.
+            </Text>
+            <Input
+              label={`Your maximum bid (at least ${formatPrice(minimumBid, currency)})`}
+              value={maxBid}
+              onChangeText={(text) => {
+                setMaxBid(text);
+                setBidError('');
+                setBidResult('');
+              }}
+              keyboardType="decimal-pad"
+              error={bidError || undefined}
+            />
+            {bidResult ? <Text accessibilityLiveRegion="polite" className="text-sm text-emerald-800 mb-3 leading-5">{bidResult}</Text> : null}
+            <Button onPress={submitBid} loading={bidSubmitting}>
+              Confirm bid
+            </Button>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Make an offer */}
       <Modal visible={offerModalVisible} transparent animationType="slide" onRequestClose={() => setOfferModalVisible(false)}>
         <View className="flex-1 bg-black/60 justify-end">
@@ -394,8 +537,15 @@ export default function ListingDetailScreen() {
                 <Text className="text-xs text-text-muted text-center mt-1 mb-4">
                   The seller can accept or decline. If they accept, you’ll have 48 hours to pay at your offer price.
                 </Text>
-                <TouchableOpacity onPress={() => setOfferModalVisible(false)} accessibilityRole="button" className="bg-[#232F3E] px-6 py-3 rounded-xl">
-                  <Text className="text-white font-black text-xs">Done</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setOfferModalVisible(false);
+                    router.push('/offers');
+                  }}
+                  accessibilityRole="button"
+                  className="bg-[#232F3E] px-6 py-3 rounded-xl"
+                >
+                  <Text className="text-white font-black text-xs">See your offers</Text>
                 </TouchableOpacity>
               </View>
             ) : (

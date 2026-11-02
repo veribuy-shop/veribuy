@@ -45,6 +45,10 @@ export default function OrderDetailScreen() {
   const [showProblemForm, setShowProblemForm] = useState(false);
   const [problemReason, setProblemReason] = useState('');
   const [problemError, setProblemError] = useState('');
+  const [rating, setRating] = useState<{ rating: number; comment?: string | null } | null>(null);
+  const [stars, setStars] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingError, setRatingError] = useState('');
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,6 +67,10 @@ export default function OrderDetailScreen() {
       setOrder(o);
       if (o?.trackingNumber) {
         setTrackingInput(o.trackingNumber);
+      }
+      if (o?.status === 'COMPLETED') {
+        // Best effort: the order is still worth showing if this fails.
+        ordersService.rating(id).then(setRating).catch(() => {});
       }
     } catch (e: any) {
       // Never show a sample order in place of the real one.
@@ -129,6 +137,24 @@ export default function OrderDetailScreen() {
       await load();
     } catch (e: any) {
       setProblemError(e?.message || 'We could not send your report. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRate = async () => {
+    if (!stars) {
+      setRatingError('Choose from 1 to 5 stars.');
+      return;
+    }
+    setBusy(true);
+    setRatingError('');
+    try {
+      const comment = ratingComment.trim();
+      await ordersService.rate(id, { rating: stars, ...(comment ? { comment } : {}) });
+      setRating({ rating: stars, comment });
+    } catch (e: any) {
+      setRatingError(e?.message || 'Your rating was not sent. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -664,6 +690,61 @@ export default function OrderDetailScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {isCompleted && (rating || !isSellerView) ? (
+          <View className="bg-surface border border-borderc rounded-2xl p-4 mb-4">
+            <Text className="text-[15px] font-semibold text-text">
+              {rating ? (isSellerView ? 'The buyer’s rating' : 'Your rating') : 'Rate this seller'}
+            </Text>
+            {!rating ? (
+              <Text className="text-[13px] text-text-muted mt-1 leading-[18px]">
+                How did it go? Your rating helps other buyers.
+              </Text>
+            ) : null}
+            <View className="flex-row mt-2.5" accessibilityRole={rating ? undefined : 'radiogroup'}>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <Pressable
+                  key={value}
+                  disabled={!!rating}
+                  onPress={() => {
+                    setStars(value);
+                    setRatingError('');
+                  }}
+                  accessibilityRole={rating ? undefined : 'radio'}
+                  accessibilityLabel={`${value} ${value === 1 ? 'star' : 'stars'}`}
+                  accessibilityState={{ selected: (rating?.rating ?? stars) === value }}
+                  className="w-11 h-11 items-center justify-center"
+                >
+                  <Ionicons
+                    name={value <= (rating?.rating ?? stars) ? 'star' : 'star-outline'}
+                    size={28}
+                    color="#FF9900"
+                  />
+                </Pressable>
+              ))}
+            </View>
+            {rating ? (
+              rating.comment ? (
+                <Text className="text-[13px] text-text-muted mt-2 leading-[18px]">“{rating.comment}”</Text>
+              ) : null
+            ) : (
+              <View className="mt-3">
+                <Input
+                  label="Add a comment (optional)"
+                  placeholder="e.g. Quick to post, exactly as described."
+                  value={ratingComment}
+                  onChangeText={setRatingComment}
+                  multiline
+                  maxLength={1000}
+                  error={ratingError || undefined}
+                />
+                <Button onPress={onRate} loading={busy}>
+                  Send rating
+                </Button>
+              </View>
+            )}
+          </View>
+        ) : null}
 
         {canReportProblem ? (
           <View className="bg-surface border border-borderc rounded-2xl p-4 mb-4">

@@ -939,6 +939,70 @@ export class EmailService {
     });
   }
 
+  async sendOutbidEmail(data: {
+    bidderEmail: string;
+    bidderName: string;
+    listingTitle: string;
+    listingId: string;
+    newCurrentBid: number;
+  }): Promise<void> {
+    const bodyHtml = `
+      <p style="margin-top:0;">Hi <strong>${this.escape(data.bidderName)}</strong>,</p>
+      <p>Someone outbid you on <strong>${this.escape(data.listingTitle)}</strong>. The current bid is <strong>£${Number(data.newCurrentBid).toFixed(2)}</strong>.</p>
+      <p style="margin-bottom:0;">If you still want it, place a higher maximum bid before the auction ends.</p>
+    `;
+
+    const html = this.buildEmailTemplate({
+      title: 'You’ve Been Outbid',
+      previewText: `The bid on ${data.listingTitle} is now £${Number(data.newCurrentBid).toFixed(2)}.`,
+      badgeText: 'Outbid',
+      badgeType: 'info',
+      bodyHtml,
+      cta: {
+        label: 'View Auction',
+        url: `${this.appUrl}/listings/${data.listingId}`,
+      },
+    });
+
+    await this.send({
+      to: data.bidderEmail,
+      subject: 'You’ve been outbid — VeriBuy',
+      html,
+    });
+  }
+
+  async sendAuctionWonEmail(data: {
+    winnerEmail: string;
+    winnerName: string;
+    listingTitle: string;
+    listingId: string;
+    winningBid: number;
+  }): Promise<void> {
+    const bodyHtml = `
+      <p style="margin-top:0;">Hi <strong>${this.escape(data.winnerName)}</strong>,</p>
+      <p>You won <strong>${this.escape(data.listingTitle)}</strong> with a bid of <strong>£${Number(data.winningBid).toFixed(2)}</strong>.</p>
+      <p style="margin-bottom:0;">Complete your purchase to confirm delivery and payment. Buyer Protection and Royal Mail shipping are added at checkout.</p>
+    `;
+
+    const html = this.buildEmailTemplate({
+      title: 'You Won the Auction',
+      previewText: `You won ${data.listingTitle}. Complete your purchase.`,
+      badgeText: 'Auction won',
+      badgeType: 'success',
+      bodyHtml,
+      cta: {
+        label: 'Complete Purchase',
+        url: `${this.appUrl}/listings/${data.listingId}`,
+      },
+    });
+
+    await this.send({
+      to: data.winnerEmail,
+      subject: 'You won the auction — VeriBuy',
+      html,
+    });
+  }
+
   async sendListingStatusEmail(data: {
     sellerEmail: string;
     sellerName: string;

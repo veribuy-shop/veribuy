@@ -278,6 +278,9 @@ export class TransactionsService implements OnModuleInit {
         }
       } else if (!(Number(listing.buyItNowPrice) > 0)) {
         throw new BadRequestException('This auction is still running and has no Buy It Now price');
+      } else if (Number(listing.currentBid) >= Number(listing.buyItNowPrice)) {
+        // Bidders have already offered more, so the seller must not lose the difference.
+        throw new BadRequestException('Bidding has passed the Buy It Now price. Place a bid instead.');
       }
     }
     // Ensure the client cannot redirect funds by supplying a mismatched sellerId

@@ -25,6 +25,7 @@ import { LogoutDto } from './dto/logout.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { DeleteAccountDto } from './dto/delete-account.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SendPhoneOtpDto } from './dto/send-phone-otp.dto';
@@ -182,6 +183,17 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(user.userId, dto);
+  }
+
+  // Password re-entry plus a tight limit: this cannot be undone.
+  @Post('me/delete')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 900000 } })
+  async deleteOwnAccount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.authService.deleteOwnAccount(user.userId, dto.password);
   }
 
   // 3 forgot-password requests per hour per IP (anti-abuse; safe response always returned)

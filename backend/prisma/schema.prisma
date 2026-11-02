@@ -33,6 +33,7 @@ model User {
   // ── Relations ──────────────────────────────────────────────────────────
   refreshTokens        RefreshToken[]
   profile              Profile?
+  listingDraft         ListingDraft?
   referrer             User?                 @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referredUsers        User[]                @relation("UserReferrals")
   referralsGiven       Referral[]            @relation("ReferrerReferrals")
@@ -208,6 +209,18 @@ model Bid {
   @@index([bidderId])
   @@index([listingId, amount(sort: Desc)])
   @@map("bids")
+}
+
+/// A seller's unfinished listing, so it can be continued on web or in the app.
+/// Never holds photos, IMEI or serial numbers.
+model ListingDraft {
+  userId    String   @id @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data      Json
+  step      Int      @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("listing_drafts")
 }
 
 enum OfferStatus {

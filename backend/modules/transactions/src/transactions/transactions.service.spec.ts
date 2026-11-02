@@ -338,6 +338,20 @@ describe('TransactionsService', () => {
         ).rejects.toThrow(BadRequestException);
       });
 
+      it('rejects Buy It Now once bidding has reached that price', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({
+          ...auction,
+          status: 'ACTIVE',
+          auctionEndsAt: new Date(Date.now() + 3600_000).toISOString(),
+          buyItNowPrice: 320,
+          currentBid: 510,
+        });
+
+        await expect(
+          service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1' }),
+        ).rejects.toThrow('Bidding has passed the Buy It Now price');
+      });
+
       it('lets the winner check out even though the client sends the display price', async () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue({
           ...auction,

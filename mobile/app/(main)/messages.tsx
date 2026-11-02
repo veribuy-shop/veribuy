@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { shortDate, shortName } from '@/src/lib/format';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, View, Pressable } from 'react-native';
 
@@ -23,6 +23,10 @@ function threadTitle(thread: Thread, userId?: string): string {
   return shortName(last.senderId === userId ? last.recipient?.name : last.sender?.name);
 }
 
+function unreadIn(thread: Thread, userId?: string): boolean {
+  return thread.messages.some((m) => m.recipientId === userId && !m.isRead);
+}
+
 function threadIcon(thread: Thread): keyof typeof Ionicons.glyphMap {
   return thread.lastMessage.isSystem ? 'notifications-outline' : 'person-outline';
 }
@@ -39,9 +43,11 @@ export default function MessagesScreen() {
       const res = await messagesService.mine(user.id, { limit: 100 });
       const map = new Map<string, Thread>();
       for (const m of res.data) {
+        // Automated notices form one thread, and a sender never sees their own.
+        if (m.isSystem && m.senderId === user.id) continue;
         const otherId = m.senderId === user.id ? (m as any).recipientId : m.senderId;
         if (!otherId) continue;
-        const key = otherId + (m.listingId ? `:${m.listingId}` : '');
+        const key = m.isSystem ? 'system' : otherId + (m.listingId ? `:${m.listingId}` : '');
         const existing = map.get(key);
         if (existing) {
           existing.messages.push(m);
@@ -64,9 +70,11 @@ export default function MessagesScreen() {
     }
   }, [user]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   if (!isAuthenticated) {
     return (
@@ -83,12 +91,14 @@ export default function MessagesScreen() {
       <Text className="text-[28px] font-bold text-text mb-3">Messages</Text>
       <FlatList
         data={threads}
-        keyExtractor={(item) => item.otherUserId + (item.listingId || '')}
+        keyExtractor={(item) => (item.lastMessage.isSystem ? 'system' : item.otherUserId + (item.listingId || ''))}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
         renderItem={({ item }) => (
           <Pressable
             onPress={() =>
-              router.push({
+              item.lastMessage.isSystem
+                ? router.push('/updates')
+                : router.push({
                 pathname: '/conversation/[otherUserId]',
                 params: {
                   otherUserId: item.otherUserId,
@@ -113,7 +123,12 @@ export default function MessagesScreen() {
                 {item.lastMessage.listing?.title ? (
                   <Text className="text-xs text-text-subtle mt-0.5" numberOfLines={1}>{item.lastMessage.listing.title}</Text>
                 ) : null}
-                <Text className="text-sm text-text-muted mt-0.5" numberOfLines={1}>{item.lastMessage.content}</Text>
+                <Text
+                  className={`text-sm mt-0.5 ${unreadIn(item, user?.id) ? 'font-semibold text-text' : 'text-text-muted'}`}
+                  numberOfLines={1}
+                >
+                  {item.lastMessage.content}
+                </Text>
               </View>
             </View>
           </Pressable>

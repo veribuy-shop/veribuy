@@ -26,6 +26,7 @@ import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateTrustLensDto } from './dto/update-trust-lens.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { PlaceBidDto } from './dto/place-bid.dto';
+import { SaveListingDraftDto } from './dto/save-listing-draft.dto';
 import { JwtAuthGuard, RolesGuard, Roles, Public, CurrentUser, PaginationDto, assertEmailVerified } from '@veribuy/common';
 import { DeviceType, ConditionGrade, ListingStatus } from '.prisma/veribuy-client';
 import * as crypto from 'crypto';
@@ -60,6 +61,23 @@ export class UlistingsController {
     // Override sellerId from JWT — never trust client-supplied sellerId
     dto.sellerId = user.userId;
     return this.listingsService.create(dto);
+  }
+
+  // Declared before ':id' so "draft" is never read as a listing id.
+  @Get('draft')
+  getDraft(@CurrentUser() user: AuthenticatedUser) {
+    return this.listingsService.getDraft(user.userId);
+  }
+
+  @Put('draft')
+  saveDraft(@Body() dto: SaveListingDraftDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.listingsService.saveDraft(user.userId, dto.data, dto.step);
+  }
+
+  @Delete('draft')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  deleteDraft(@CurrentUser() user: AuthenticatedUser) {
+    return this.listingsService.deleteDraft(user.userId);
   }
 
   @Get()

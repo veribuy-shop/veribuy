@@ -36,6 +36,18 @@ export interface RegisterResult {
   autoVerified: boolean;
 }
 
+export interface RegisterDetails {
+  name: string;
+  email: string;
+  password: string;
+  phone: string;
+  line1: string;
+  line2?: string;
+  city: string;
+  postalCode: string;
+  referralCode?: string;
+}
+
 interface AuthContextValue {
   loading: boolean;
   user: User | null;
@@ -52,12 +64,7 @@ interface AuthContextValue {
       action?: 'login' | 'register';
     },
   ) => Promise<SocialAuthResponse>;
-  register: (
-    name: string,
-    email: string,
-    password: string,
-    referralCode?: string,
-  ) => Promise<RegisterResult>;
+  register: (details: RegisterDetails) => Promise<RegisterResult>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
 }
@@ -152,17 +159,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const register = useCallback(
-    async (
-      name: string,
-      email: string,
-      password: string,
-      referralCode?: string,
-    ): Promise<RegisterResult> => {
-      const payload: Record<string, unknown> = {
-        name,
-        email,
-        password,
-      };
+    async ({ referralCode, ...details }: RegisterDetails): Promise<RegisterResult> => {
+      const payload: Record<string, unknown> = { ...details, country: 'United Kingdom' };
       if (referralCode?.trim()) {
         payload.referralCode = referralCode.trim().toUpperCase();
       }

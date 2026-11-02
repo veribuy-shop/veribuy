@@ -20,6 +20,10 @@
     "./errors": {
       "types": "./dist/errors/index.d.ts",
       "default": "./dist/errors/index.js"
+    },
+    "./auction": {
+      "types": "./dist/auction/index.d.ts",
+      "default": "./dist/auction/index.js"
     }
   },
   "scripts": {

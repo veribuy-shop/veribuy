@@ -173,7 +173,7 @@ function useObjectURLs(files: File[]): string[] {
   return urls;
 }
 
-/** Fields never written to the local draft: files can't be serialised and device identifiers stay off disk. */
+/** Fields never saved to a draft: files can't be serialised and device identifiers are not stored early. */
 const NON_DRAFT_FIELDS = new Set<string>(['deviceImages', 'screenImages', 'settingsScreenshot', 'imei', 'serialNumber']);
 
 function draftableFields(data: Partial<ListingFormData>): Partial<ListingFormData> {
@@ -285,51 +285,50 @@ export default function CreateListingPage() {
     })();
   }, [user?.id]);
 
-  // Local draft: a refresh or accidental navigation shouldn't lose a long form.
-  // Photos (File objects) can't be stored, and IMEI/serial numbers are left
-  // out on purpose, so only the typed text fields and the current step persist.
-  const draftKey = user?.id ? `vb:listing-draft:${user.id}` : null;
+  // Saved to the account, so a listing started here can be finished in the app
+  // and vice versa. Photos and identifiers are never part of a draft.
   const [draftRestored, setDraftRestored] = useState(false);
   const draftLoaded = useRef(false);
+  const draftSubmitted = useRef(false);
 
   useEffect(() => {
-    if (!draftKey || draftLoaded.current) return;
-    draftLoaded.current = true;
-    try {
-      const raw = window.localStorage.getItem(draftKey);
-      if (!raw) return;
-      const draft = JSON.parse(raw) as { step?: number; data?: Partial<ListingFormData> };
-      if (!draft?.data) return;
-      setFormData(prev => ({ ...prev, ...draftableFields(draft.data!) }));
-      if (draft.step && draft.step >= 1 && draft.step <= STEPS.length) setCurrentStep(draft.step);
-      setDraftRestored(true);
-    } catch {
-      // Corrupt or blocked storage — start with a blank form.
-    }
-  }, [draftKey]);
-
-  useEffect(() => {
-    if (!draftKey || !draftLoaded.current) return;
-    const timer = setTimeout(() => {
+    if (!user?.id || draftLoaded.current) return;
+    let cancelled = false;
+    (async () => {
       try {
-        window.localStorage.setItem(
-          draftKey,
-          JSON.stringify({ step: currentStep, data: draftableFields(formData), savedAt: Date.now() }),
-        );
+        const res = await authFetch('/api/listings/draft');
+        const draft = res.ok ? ((await res.json()) as { step?: number; data?: Partial<ListingFormData> } | null) : null;
+        if (cancelled || !draft?.data) return;
+        setFormData(prev => ({ ...prev, ...draftableFields(draft.data!) }));
+        if (draft.step && draft.step >= 1 && draft.step <= STEPS.length) setCurrentStep(draft.step);
+        setDraftRestored(true);
       } catch {
-        // Storage full or blocked — drafts are a convenience only.
+        // Drafts are a convenience only: start with a blank form.
+      } finally {
+        if (!cancelled) draftLoaded.current = true;
       }
-    }, 500);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, authFetch]);
+
+  useEffect(() => {
+    if (!user?.id || !draftLoaded.current) return;
+    const timer = setTimeout(() => {
+      if (draftSubmitted.current) return;
+      authFetch('/api/listings/draft', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step: currentStep, data: draftableFields(formData) }),
+      }).catch(() => undefined);
+    }, 1000);
     return () => clearTimeout(timer);
-  }, [draftKey, formData, currentStep]);
+  }, [user?.id, authFetch, formData, currentStep]);
 
   const clearDraft = () => {
-    if (!draftKey) return;
-    try {
-      window.localStorage.removeItem(draftKey);
-    } catch {
-      // ignore
-    }
+    draftSubmitted.current = true;
+    return authFetch('/api/listings/draft', { method: 'DELETE' }).catch(() => undefined);
   };
 
   // PERF-06: useObjectURLs must be called after formData is declared so the
@@ -757,8 +756,8 @@ export default function CreateListingPage() {
               <span>We restored your unfinished listing. Photos, IMEI and serial number need adding again.</span>
               <button
                 type="button"
-                onClick={() => {
-                  clearDraft();
+                onClick={async () => {
+                  await clearDraft();
                   window.location.reload();
                 }}
                 className="text-sm font-semibold text-[var(--color-green)] hover:underline"

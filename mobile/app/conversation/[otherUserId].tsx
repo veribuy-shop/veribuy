@@ -26,7 +26,8 @@ export default function ConversationScreen() {
     if (!otherUserId || !user?.id) return;
     try {
       const res = await messagesService.conversation(user.id, otherUserId, listingId || undefined);
-      setMessages(res.data);
+      // Automated notices live under VeriBuy updates; this thread is the two people.
+      setMessages(res.data.filter((m) => !m.isSystem));
       setError('');
       // Mark what we've just shown as read so unread counts stay accurate.
       res.data

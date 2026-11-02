@@ -199,6 +199,18 @@ export default function ProfileScreen() {
           </Pressable>
         ) : null}
 
+        <Button variant="secondary" onPress={() => router.push('/my-listings')}>
+          Your listings
+        </Button>
+
+        <View style={{ height: 10 }} />
+
+        <Button variant="secondary" onPress={() => router.push('/offers')}>
+          Offers
+        </Button>
+
+        <View style={{ height: 10 }} />
+
         <Button variant="secondary" onPress={() => router.push('/profile-edit')}>
           Edit profile
         </Button>
@@ -208,6 +220,10 @@ export default function ProfileScreen() {
         <Button variant="outline" onPress={() => logout()}>
           Sign out
         </Button>
+
+        <Pressable onPress={() => router.push('/close-account')} accessibilityRole="button" className="items-center py-4 mt-1">
+          <Text className="text-sm font-medium text-danger">Close my account</Text>
+        </Pressable>
       </ScrollView>
     </Screen>
   );

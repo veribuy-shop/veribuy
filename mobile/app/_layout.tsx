@@ -1,3 +1,5 @@
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import 'react-native-reanimated';
 import '../global.css';
 
@@ -12,8 +14,15 @@ const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
 
 export const unstable_settings = { anchor: '(main)' };
 
+SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
 function RootNavigator() {
   const { loading } = useAuth();
+
+  // Keep the splash up until the first screen can draw, so there's no blank flash.
+  useEffect(() => {
+    if (!loading) SplashScreen.hideAsync().catch(() => undefined);
+  }, [loading]);
 
   if (loading) {
     return null;
@@ -60,6 +69,11 @@ function RootNavigator() {
           title: 'Messages',
         }}
       />
+      <Stack.Screen name="my-listings" options={{ headerShown: true, title: 'Your listings' }} />
+      <Stack.Screen name="offers" options={{ headerShown: true, title: 'Offers' }} />
+      <Stack.Screen name="listing/edit/[id]" options={{ headerShown: true, title: 'Edit listing' }} />
+      <Stack.Screen name="updates" options={{ headerShown: true, title: 'VeriBuy updates' }} />
+      <Stack.Screen name="close-account" options={{ headerShown: true, title: 'Close account' }} />
       <Stack.Screen
         name="profile-edit"
         options={{

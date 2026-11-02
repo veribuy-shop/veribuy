@@ -85,6 +85,48 @@ export function publicSellerName(profile: {
   return last ? `${first} ${last.charAt(0).toUpperCase()}.` : first;
 }
 
+/**
+ * The only listing fields a draft may hold. Anything else, including IMEI and
+ * serial numbers, is dropped so identifiers are never stored before submission.
+ */
+const DRAFT_FIELD_MAX_LENGTH: Record<string, number> = {
+  title: 200,
+  description: 5000,
+  deviceType: 40,
+  brand: 100,
+  model: 100,
+  conditionGrade: 10,
+  storageCapacity: 40,
+  color: 60,
+  price: 20,
+  currency: 3,
+  format: 20,
+  startingBid: 20,
+  reservePrice: 20,
+  buyItNowPrice: 20,
+  cosmeticCondition: 2000,
+  functionalIssues: 2000,
+  city: 100,
+};
+const DRAFT_NON_TEXT_FIELDS = new Set(['freeShipping', 'isBulkListing', 'quantity', 'durationDays']);
+
+type DraftValue = string | number | boolean | string[];
+
+function pickDraftFields(data: Record<string, unknown>): Record<string, DraftValue> {
+  const safe: Record<string, DraftValue> = {};
+  for (const [key, value] of Object.entries(data)) {
+    const maxLength = DRAFT_FIELD_MAX_LENGTH[key];
+    if (maxLength && typeof value === 'string') {
+      safe[key] = value.slice(0, maxLength);
+    } else if (DRAFT_NON_TEXT_FIELDS.has(key) && (typeof value === 'boolean' || typeof value === 'number')) {
+      safe[key] = value;
+    } else if (key === 'accessories' && Array.isArray(value)) {
+      safe[key] = value.filter((item): item is string => typeof item === 'string').slice(0, 30);
+    }
+  }
+  return safe;
+}
+
 @Injectable()
 export class UlistingsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(UlistingsService.name);
@@ -699,8 +741,21 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
       this.prisma.listing.count({ where: { sellerId } }),
     ]);
 
+    const packs = await this.prisma.evidencePack.findMany({
+      where: { listingId: { in: data.map((l) => l.id) } },
+      select: {
+        listingId: true,
+        items: {
+          select: { url: true },
+          orderBy: { createdAt: 'asc' as const },
+          take: 1,
+        },
+      },
+    });
+    const covers = new Map(packs.map((pack) => [pack.listingId, pack.items[0]?.url ?? null]));
+
     return {
-      data,
+      data: data.map((listing) => ({ ...listing, imageUrl: covers.get(listing.id) ?? null })),
       pagination: {
         page,
         limit,
@@ -978,6 +1033,27 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async getDraft(userId: string) {
+    return this.prisma.listingDraft.findUnique({
+      where: { userId },
+      select: { data: true, step: true, updatedAt: true },
+    });
+  }
+
+  async saveDraft(userId: string, data: Record<string, unknown>, step: number) {
+    const safe = pickDraftFields(data);
+    return this.prisma.listingDraft.upsert({
+      where: { userId },
+      create: { userId, data: safe, step },
+      update: { data: safe, step },
+      select: { data: true, step: true, updatedAt: true },
+    });
+  }
+
+  async deleteDraft(userId: string): Promise<void> {
+    await this.prisma.listingDraft.deleteMany({ where: { userId } });
+  }
+
   async delete(id: string): Promise<void> {
     try {
       await this.prisma.listing.delete({ where: { id } });
@@ -1122,6 +1198,13 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
       result.outcome.outbidBidderId &&
       result.outcome.outbidBidderId !== bidderId
     ) {
+      await this.recordAuctionNotice(
+        listing.sellerId,
+        result.outcome.outbidBidderId,
+        listing.id,
+        'You’ve been outbid',
+        `Someone outbid you on ${listing.title}. The current bid is £${result.outcome.currentBid.toFixed(2)}.`,
+      );
       this.getBidderInfo(result.outcome.outbidBidderId).then((bidder) => {
         if (bidder) {
           this.notifications.notifyOutbid({
@@ -1204,6 +1287,13 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         settledCount++;
 
         if (hasWinner && listing.highestBidderId) {
+          await this.recordAuctionNotice(
+            listing.sellerId,
+            listing.highestBidderId,
+            listing.id,
+            'You won the auction',
+            `You won ${listing.title} at £${curBid.toFixed(2)}. Open the listing to complete your purchase.`,
+          );
           const winnerInfo = await this.getBidderInfo(listing.highestBidderId);
           if (winnerInfo) {
             const checkoutDeadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
@@ -1228,6 +1318,19 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
   /**
    * Fetch user info for bidder notifications.
    */
+  /** Shows in the bidder's VeriBuy updates, so the app can tell them as well as email. */
+  private async recordAuctionNotice(
+    senderId: string,
+    recipientId: string,
+    listingId: string,
+    subject: string,
+    content: string,
+  ): Promise<void> {
+    await this.prisma.message
+      .create({ data: { senderId, recipientId, listingId, subject, content, isSystem: true } })
+      .catch((err: Error) => this.logger.warn(`Failed to record auction notice: ${err.message}`));
+  }
+
   private async getBidderInfo(
     bidderId: string,
   ): Promise<{ name: string; email: string } | null> {

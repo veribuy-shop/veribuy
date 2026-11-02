@@ -35,6 +35,9 @@ describe('UlistingsService', () => {
       order: {
         count: jest.fn().mockResolvedValue(0),
       },
+      message: {
+        create: jest.fn().mockResolvedValue({}),
+      },
     };
 
     redis = {
@@ -231,6 +234,22 @@ describe('UlistingsService', () => {
     });
   });
 
+  describe('listing drafts', () => {
+    it('never stores identifiers or unknown fields', async () => {
+      prisma.listingDraft = { upsert: jest.fn().mockResolvedValue({}) };
+
+      await service.saveDraft(
+        'user-1',
+        { title: 'iPhone 14', imei: '490154203237518', serialNumber: 'ABC123', sellerId: 'other', freeShipping: true },
+        2,
+      );
+
+      const { create, update } = prisma.listingDraft.upsert.mock.calls[0][0];
+      expect(create).toEqual({ userId: 'user-1', data: { title: 'iPhone 14', freeShipping: true }, step: 2 });
+      expect(update.data).toEqual({ title: 'iPhone 14', freeShipping: true });
+    });
+  });
+
   describe('placeBid', () => {
     it('should reject bids on non-auction listings', async () => {
       prisma.listing.findUnique.mockResolvedValue({
@@ -301,6 +320,46 @@ describe('UlistingsService', () => {
       expect(result.success).toBe(true);
       expect(result.isLeading).toBe(true);
       expect(result.currentBid).toBe(0.99);
+    });
+
+    it('tells the previous leader in-app and by email when they are outbid', async () => {
+      const activeAuction = {
+        id: 'lst-auc',
+        sellerId: 'seller-1',
+        title: 'Pixel 8',
+        format: 'AUCTION',
+        status: 'ACTIVE',
+        startingBid: 10.0,
+        currentBid: 20.0,
+        highestBidderId: 'bidder-old',
+        highestMaxBid: 25.0,
+        bidCount: 1,
+        auctionEndsAt: new Date(Date.now() + 60 * 60 * 1000),
+      };
+      prisma.listing.findUnique.mockResolvedValue(activeAuction);
+      notifications.notifyOutbid = jest.fn();
+      prisma.$transaction = jest.fn().mockImplementation(async (cb: any) =>
+        cb({
+          $queryRaw: jest.fn().mockResolvedValue([]),
+          listing: {
+            findUnique: jest.fn().mockResolvedValue(activeAuction),
+            update: jest.fn().mockResolvedValue({ ...activeAuction, bidCount: 2 }),
+          },
+          bid: { create: jest.fn().mockResolvedValue({ id: 'bid-2' }) },
+        }),
+      );
+
+      const result = await service.placeBid('lst-auc', 'bidder-new', 100);
+
+      expect(result.isLeading).toBe(true);
+      expect(prisma.message.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          recipientId: 'bidder-old',
+          listingId: 'lst-auc',
+          subject: 'You’ve been outbid',
+          isSystem: true,
+        }),
+      });
     });
 
     it('should trigger anti-sniping soft close when bid placed within last 2 minutes', async () => {

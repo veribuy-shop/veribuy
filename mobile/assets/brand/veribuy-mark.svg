@@ -1,0 +1,32 @@
+<!-- VeriBuy brand source. Regenerate the app images with: node mobile/scripts/render-brand.mjs -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 50 830 625" role="img" aria-label="VeriBuy">
+  <defs>
+    <linearGradient id="vb-left" gradientUnits="userSpaceOnUse" x1="60" y1="140" x2="330" y2="680"><stop offset="0" stop-color="#5CCDCD"/><stop offset="1" stop-color="#308CA5"/></linearGradient>
+    <linearGradient id="vb-right" gradientUnits="userSpaceOnUse" x1="610" y1="50" x2="330" y2="675"><stop offset="0" stop-color="#64CDBE"/><stop offset="1" stop-color="#1E4670"/></linearGradient>
+    <linearGradient id="vb-accent" gradientUnits="userSpaceOnUse" x1="680" y1="50" x2="850" y2="131"><stop offset="0" stop-color="#2F8A9C"/><stop offset="1" stop-color="#1C3460"/></linearGradient>
+    <linearGradient id="vb-wedge" gradientUnits="userSpaceOnUse" x1="640" y1="165" x2="560" y2="383"><stop offset="0" stop-color="#46A0A5"/><stop offset="1" stop-color="#1A325C"/></linearGradient>
+    <linearGradient id="vb-device" gradientUnits="userSpaceOnUse" x1="810" y1="133" x2="368" y2="673"><stop offset="0" stop-color="#2C6E87"/><stop offset="1" stop-color="#1C3460"/></linearGradient>
+    <clipPath id="vb-clip-left"><polygon points="40,145 165,145 325,435 325,675"/></clipPath>
+    <clipPath id="vb-clip-right"><polygon points="325,435 525,50 655,50 325,675"/></clipPath>
+  </defs>
+  <g>
+    <polygon fill="url(#vb-left)" points="40,145 165,145 325,435 325,675"/>
+    <g clip-path="url(#vb-clip-left)">
+      <polygon fill="#FFFFFF" fill-opacity=".28" points="40,145 165,145 190,235 130,200"/>
+      <polygon fill="#FFFFFF" fill-opacity=".2" points="165,145 325,435 255,420 195,300"/>
+      <polygon fill="#14466E" fill-opacity=".2" points="195,300 325,435 325,675"/>
+      <polygon fill="#145A78" fill-opacity=".07" points="40,145 195,300 325,675"/>
+    </g>
+    <polygon fill="url(#vb-right)" points="325,435 525,50 655,50 325,675"/>
+    <g clip-path="url(#vb-clip-right)">
+      <polygon fill="#FFFFFF" fill-opacity=".24" points="525,50 655,50 590,120 470,240"/>
+      <polygon fill="#FFFFFF" fill-opacity=".13" points="470,240 590,120 345,400"/>
+      <polygon fill="#102854" fill-opacity=".3" points="640,80 325,675 455,290"/>
+    </g>
+    <polygon fill="url(#vb-accent)" points="668,110 705,50 870,50 826,131 800,100"/>
+    <polygon fill="#FFFFFF" fill-opacity=".16" points="705,50 870,50 780,85"/>
+    <polygon fill="url(#vb-wedge)" points="638,165 640,345 645,383 520,383"/>
+    <path fill="url(#vb-device)" fill-rule="evenodd" d="M681 133H792A18 18 0 0 1 810 151V365A18 18 0 0 1 792 383H681A18 18 0 0 1 663 365V151A18 18 0 0 1 681 133ZM680 170V335H795V170ZM718.500 148A3.500 3.500 0 0 0 718.500 155H756.500A3.500 3.500 0 0 0 756.500 148ZM737 348A12 12 0 1 0 737 372A12 12 0 1 0 737 348Z"/>
+    <path fill="url(#vb-device)" fill-rule="evenodd" d="M510 410H748L768 430V635H805V650L780 673H368ZM525 438 435 608H740V438ZM552 635 570 652H625L640 635Z"/>
+  </g>
+</svg>

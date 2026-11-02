@@ -33,7 +33,7 @@ export default function LoginScreen() {
       const user = await login(email.trim(), password);
       router.replace(user.role === 'ADMIN' ? '/admin' : '/(main)');
     } catch (e: any) {
-      setError(e?.message || 'Login failed');
+      setError(e?.status === 401 ? 'That email or password isn’t right. Please try again.' : e?.message || 'We could not sign you in. Please try again.');
     } finally {
       setLoading(false);
     }

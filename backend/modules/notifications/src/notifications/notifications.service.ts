@@ -394,6 +394,24 @@ export class NotificationsService {
           notes: data.payload['notes'],
         });
         break;
+      case 'outbid':
+        await this.email.sendOutbidEmail({
+          bidderEmail: data.to,
+          bidderName: data.payload['bidderName'],
+          listingTitle: data.payload['listingTitle'],
+          listingId: data.payload['listingId'],
+          newCurrentBid: data.payload['newCurrentBid'],
+        });
+        break;
+      case 'auction_won':
+        await this.email.sendAuctionWonEmail({
+          winnerEmail: data.to,
+          winnerName: data.payload['winnerName'],
+          listingTitle: data.payload['listingTitle'],
+          listingId: data.payload['listingId'],
+          winningBid: data.payload['winningBid'],
+        });
+        break;
       case 'raw':
         await this.email.sendRaw({
           to: data.to,

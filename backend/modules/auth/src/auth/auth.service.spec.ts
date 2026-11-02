@@ -454,6 +454,48 @@ describe('AuthService', () => {
     });
   });
 
+  describe('deleteOwnAccount', () => {
+    const hash = bcrypt.hashSync('Correct1!', 4);
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'usr-1', passwordHash: hash, role: 'BUYER', isActive: true });
+      prisma.order = { count: jest.fn().mockResolvedValue(0), updateMany: jest.fn() };
+      prisma.listing = { count: jest.fn().mockResolvedValue(0), updateMany: jest.fn() };
+      prisma.offer = { updateMany: jest.fn() };
+      prisma.profile.deleteMany = jest.fn();
+      prisma.listingDraft = { deleteMany: jest.fn() };
+      prisma.user.update = jest.fn();
+      prisma.$transaction = jest.fn((run: (tx: unknown) => unknown) => run(prisma));
+    });
+
+    it('rejects the wrong password and changes nothing', async () => {
+      await expect(service.deleteOwnAccount('usr-1', 'wrong')).rejects.toThrow('That password is incorrect');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses while an order is in progress, so nobody loses money', async () => {
+      prisma.order.count.mockResolvedValue(1);
+      await expect(service.deleteOwnAccount('usr-1', 'Correct1!')).rejects.toThrow('orders in progress');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('removes personal details but keeps the row for orders and invoices', async () => {
+      await service.deleteOwnAccount('usr-1', 'Correct1!');
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            name: 'Deleted user',
+            email: 'deleted-usr-1@deleted.invalid',
+            isActive: false,
+          }),
+        }),
+      );
+      expect(prisma.profile.deleteMany).toHaveBeenCalledWith({ where: { userId: 'usr-1' } });
+      expect(prisma.user.delete).toBeUndefined();
+    });
+  });
+
   describe('session security', () => {
     it('stores refresh tokens hashed, never in plaintext', async () => {
       prisma.user.findUnique.mockResolvedValue({

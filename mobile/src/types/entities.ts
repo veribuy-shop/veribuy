@@ -69,7 +69,17 @@ export interface UserProfile {
   updatedAt?: string;
 }
 
-export type ListingStatus = 'DRAFT' | 'ACTIVE' | 'PENDING' | 'SOLD' | 'REMOVED';
+export type ListingStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'UNDER_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'ACTIVE'
+  | 'INACTIVE'
+  | 'AUCTION_ENDED'
+  | 'SOLD'
+  | 'DELISTED';
 
 export interface Listing {
   id: string;
@@ -97,9 +107,11 @@ export interface Listing {
   checksSummary?: string[];
   format?: 'FIXED_PRICE' | 'AUCTION';
   startingBid?: number | null;
+  buyItNowPrice?: number | null;
   currentBid?: number | null;
   bidCount?: number;
   auctionEndsAt?: string | null;
+  highestBidderId?: string | null;
   quantity?: number;
   isBulkListing?: boolean;
   createdAt: string;

@@ -946,6 +946,90 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return { message: 'User deleted successfully' };
   }
 
+  /**
+   * Closes the signed-in user's account. Orders, invoices and messages must be
+   * kept for accounting and disputes and reference this row, so the row stays
+   * and everything that identifies the person is removed from it.
+   */
+  async deleteOwnAccount(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, passwordHash: true, role: true, isActive: true },
+    });
+    if (!user || !user.isActive) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
+      // Not 401: the session is fine, and clients treat 401 as an expired login.
+      throw new ForbiddenException('That password is incorrect.');
+    }
+    if (user.role === 'ADMIN') {
+      throw new ForbiddenException('Admin accounts must be removed by another admin.');
+    }
+
+    const [openOrders, leadingAuctions] = await Promise.all([
+      this.prisma.order.count({
+        where: {
+          OR: [{ buyerId: userId }, { sellerId: userId }],
+          status: { in: ['PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'DISPUTED'] },
+        },
+      }),
+      this.prisma.listing.count({
+        where: { highestBidderId: userId, status: { in: ['ACTIVE', 'AUCTION_ENDED'] } },
+      }),
+    ]);
+    if (openOrders > 0) {
+      throw new ForbiddenException(
+        'You have orders in progress. Please complete or resolve them, then close your account.',
+      );
+    }
+    if (leadingAuctions > 0) {
+      throw new ForbiddenException(
+        'You are the highest bidder on an auction. Please wait for it to finish, then close your account.',
+      );
+    }
+
+    const unusablePassword = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.listing.updateMany({
+        where: {
+          sellerId: userId,
+          status: { notIn: ['SOLD', 'DELISTED'] },
+        },
+        data: { status: 'DELISTED' },
+      });
+      await tx.offer.updateMany({
+        where: { OR: [{ buyerId: userId }, { sellerId: userId }], status: 'PENDING' },
+        data: { status: 'WITHDRAWN' },
+      });
+      await tx.order.updateMany({
+        where: { OR: [{ buyerId: userId }, { sellerId: userId }], status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+      await tx.profile.deleteMany({ where: { userId } });
+      await tx.listingDraft.deleteMany({ where: { userId } });
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          name: 'Deleted user',
+          email: `deleted-${userId}@deleted.invalid`,
+          passwordHash: unusablePassword,
+          isActive: false,
+          deletedAt: new Date(),
+          referralCode: null,
+          emailVerificationToken: null,
+          emailVerificationExpiry: null,
+          passwordResetToken: null,
+          passwordResetExpiry: null,
+        },
+      });
+    });
+    await this.revokeAllSessions(userId);
+
+    return { message: 'Your account has been closed.' };
+  }
+
   async changePassword(userId: string, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },

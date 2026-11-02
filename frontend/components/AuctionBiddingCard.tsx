@@ -342,7 +342,7 @@ export default function AuctionBiddingCard({
           </div>
 
           {/* Optional Buy It Now Button */}
-          {buyItNowPrice && buyItNowPrice > 0 && (
+          {buyItNowPrice && buyItNowPrice > effectiveCurrentBid && (
             <div className="pt-2 border-t border-gray-100">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold text-gray-700">Don&apos;t want to wait?</span>

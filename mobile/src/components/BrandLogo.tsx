@@ -8,7 +8,7 @@ interface BrandLogoProps {
 }
 
 export function BrandLogo({ style, height = 48, width }: BrandLogoProps) {
-  const calculatedWidth = width || Math.round(height * (202 / 200));
+  const calculatedWidth = width || Math.round(height * (1000 / 740));
   return (
     <Image
       source={require('../../assets/images/veribuy-logo.png')}

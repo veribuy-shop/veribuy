@@ -4,7 +4,7 @@
     "slug": "veribuy",
     "version": "1.0.0",
     "description": "Verification-led marketplace for pre-owned and refurbished electronic devices.",
-    "primaryColor": "#161F2E",
+    "primaryColor": "#232F3E",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "veribuy",
@@ -33,7 +33,7 @@
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#161F2E"
+        "backgroundColor": "#FFFFFF"
       },
       "permissions": [
         "android.permission.CAMERA",
@@ -91,8 +91,8 @@
         {
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
-          "backgroundColor": "#161F2E",
-          "imageWidth": 200
+          "backgroundColor": "#FFFFFF",
+          "imageWidth": 220
         }
       ],
       [

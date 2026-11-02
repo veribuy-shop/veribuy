@@ -41,6 +41,12 @@ export interface ListingsQuery {
   sort?: string;
 }
 
+export const listingDraftService = {
+  get: () => api.get<{ data: Record<string, unknown>; step: number; updatedAt: string } | null>('/listings/draft'),
+  save: (data: Record<string, unknown>, step: number) => api.put<unknown>('/listings/draft', { data, step }),
+  clear: () => api.del<unknown>('/listings/draft'),
+};
+
 export const listingsService = {
   list: (query: ListingsQuery = {}) => {
     const params = new URLSearchParams();
@@ -54,6 +60,7 @@ export const listingsService = {
     api.get<ListResponse<Listing>>(`/listings/seller/${sellerId}`).then(rows),
   get: (id: string) => api.get<Listing>(`/listings/${id}`),
   create: (data: Record<string, unknown>) => api.post<Listing>('/listings', data),
+  placeBid: (id: string, maxBid: number) => api.post<Listing>(`/listings/${id}/bids`, { maxBid }),
   update: (id: string, data: Record<string, unknown>) => api.patch<Listing>(`/listings/${id}`, data),
   transitionStatus: (id: string, data: Record<string, unknown>) =>
     api.patch<Listing>(`/listings/${id}/status`, data),
@@ -75,6 +82,7 @@ export const authService = {
 
 // ── Users / profile ───────────────────────────────────────────────────────
 export const usersService = {
+  closeAccount: (password: string) => api.post<{ message: string }>('/auth/me/delete', { password }),
   getProfile: (userId: string) => api.get<UserProfile>(`/users/${userId}/profile`),
   createProfile: (userId: string, data: Record<string, unknown>) =>
     api.post<UserProfile>(`/users/${userId}/profile`, data),
@@ -156,8 +164,11 @@ export const ordersService = {
     api
       .get<ListResponse<Order>>(`/transactions/orders/seller/${sellerId}`)
       .then(rows),
-  rate: (orderId: string, data: Record<string, unknown>) =>
-    api.post<Order>(`/transactions/orders/${orderId}/rate`, data),
+  rate: (orderId: string, data: { rating: number; comment?: string }) =>
+    api.post<unknown>(`/transactions/orders/${orderId}/rate`, data),
+  /** Null until the buyer has rated the order. */
+  rating: (orderId: string) =>
+    api.get<{ rating: number; comment?: string | null } | null>(`/transactions/orders/${orderId}/rating`),
   updateShipping: (orderId: string, data: Record<string, unknown>) =>
     api.patch<Order>(`/transactions/orders/${orderId}/shipping`, data),
   updateStatus: (orderId: string, data: Record<string, unknown>) =>
