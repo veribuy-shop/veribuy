@@ -13,7 +13,6 @@ import {
   View,
 } from 'react-native';
 
-import { BrandLogo } from '@/src/components/BrandLogo';
 import { Button, Card, Input, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { usersService } from '@/src/services';
@@ -54,12 +53,13 @@ export default function ProfileEditScreen() {
         setPhone(profile.phone || '');
         setBio(profile.bio || '');
         setAvatarUrl(profile.avatarUrl || '');
-        setLine1(profile.line1 || '');
-        setLine2(profile.line2 || '');
-        setCity(profile.city || '');
-        setState(profile.state || '');
-        setPostalCode(profile.postalCode || '');
-        setCountry(profile.country || 'GB');
+        const saved = profile.address ?? profile;
+        setLine1(saved.line1 || '');
+        setLine2(saved.line2 || '');
+        setCity(saved.city || '');
+        setState(saved.state || '');
+        setPostalCode(saved.postalCode || '');
+        setCountry(saved.country || 'GB');
       } catch {
         // Fallback default
         setDisplayName(profileUser.name || '');
@@ -99,7 +99,7 @@ export default function ProfileEditScreen() {
         postalCode: postalCode.trim() || undefined,
         country: country.trim() || 'GB',
       });
-      Alert.alert('Profile Updated', 'Your profile and default delivery address have been saved successfully.', [
+      Alert.alert('Profile updated', 'Your profile and default delivery address have been saved successfully.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     } catch (e: any) {
@@ -118,24 +118,7 @@ export default function ProfileEditScreen() {
   }
 
   return (
-    <Screen style={{ backgroundColor: '#F5F5F0', paddingTop: Platform.OS === 'web' ? 16 : 44 }}>
-      {/* ── Top Header Bar ──────────────────────────────────────────────── */}
-      <View className="flex-row items-center justify-between mb-3 px-1">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-9 h-9 rounded-full bg-white border border-borderc items-center justify-center shadow-xs"
-        >
-          <Text className="text-base font-bold text-text">‹</Text>
-        </TouchableOpacity>
-
-        <View className="flex-row items-center gap-2">
-          <BrandLogo height={38} />
-          <Text className="text-xs font-black text-text">Account Profile</Text>
-        </View>
-
-        <View className="w-9 h-9" />
-      </View>
-
+    <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"
@@ -159,17 +142,15 @@ export default function ProfileEditScreen() {
               </View>
             </TouchableOpacity>
             <Text className="text-sm font-black text-text mt-2">{displayName || user?.email}</Text>
-            <Text className="text-[11px] text-emerald-700 font-bold">✓ Verified VeriBuy Member</Text>
+            <Text className="text-[11px] text-emerald-700 font-bold">✓ VeriBuy member</Text>
           </View>
 
           {/* Personal Information Card */}
           <Card className="mb-3.5">
-            <Text className="text-xs font-black text-text uppercase tracking-wider mb-2.5">
-              Personal Information
-            </Text>
+            <Text className="text-[15px] font-semibold text-text mb-3">About you</Text>
 
             <Input
-              label="Display Name (Public)"
+              label="Display name (public)"
               value={displayName}
               onChangeText={setDisplayName}
               placeholder="e.g. AlexJ_Tech"
@@ -178,7 +159,7 @@ export default function ProfileEditScreen() {
             <View className="flex-row gap-2">
               <View className="flex-1">
                 <Input
-                  label="First Name"
+                  label="First name"
                   value={firstName}
                   onChangeText={setFirstName}
                   placeholder="Alex"
@@ -186,7 +167,7 @@ export default function ProfileEditScreen() {
               </View>
               <View className="flex-1">
                 <Input
-                  label="Last Name"
+                  label="Last name"
                   value={lastName}
                   onChangeText={setLastName}
                   placeholder="Jenkins"
@@ -195,7 +176,7 @@ export default function ProfileEditScreen() {
             </View>
 
             <Input
-              label="Phone Number (for Royal Mail delivery updates)"
+              label="Phone number (for delivery updates)"
               value={phone}
               onChangeText={setPhone}
               keyboardType="phone-pad"
@@ -203,35 +184,33 @@ export default function ProfileEditScreen() {
             />
 
             <Input
-              label="Bio / Trader Introduction"
+              label="Bio (optional)"
               value={bio}
               onChangeText={setBio}
               multiline
               numberOfLines={3}
-              placeholder="Specializing in pristine Apple Silicon & flagship electronics..."
+              placeholder="A short note buyers will see"
             />
           </Card>
 
           {/* Default Delivery & Return Address Card */}
           <Card className="mb-3.5">
-            <View className="flex-row items-center justify-between mb-2.5">
-              <Text className="text-xs font-black text-text uppercase tracking-wider">
-                Default UK Delivery &amp; Return Address
+            <View className="mb-3">
+              <Text className="text-[15px] font-semibold text-text">Your UK address</Text>
+              <Text className="text-[13px] text-text-muted mt-0.5 leading-[18px]">
+                Fills in checkout for you, and is the return address on labels when you sell.
               </Text>
-              <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                <Text className="text-[11px] font-bold text-emerald-800">Auto-fills Checkout</Text>
-              </View>
             </View>
 
             <Input
-              label="Address Line 1"
+              label="Address line 1"
               value={line1}
               onChangeText={setLine1}
               placeholder="Flat 4B, 18 Kensington Church Street"
             />
 
             <Input
-              label="Address Line 2 (Optional)"
+              label="Address line 2 (optional)"
               value={line2}
               onChangeText={setLine2}
               placeholder="Apartment, suite, or building"
@@ -240,7 +219,7 @@ export default function ProfileEditScreen() {
             <View className="flex-row gap-2">
               <View className="flex-1">
                 <Input
-                  label="City / Town"
+                  label="Town or city"
                   value={city}
                   onChangeText={setCity}
                   placeholder="London"
@@ -267,7 +246,7 @@ export default function ProfileEditScreen() {
             </Button>
             <View className="flex-1">
               <Button onPress={onSave} loading={saving}>
-                Save Changes
+                Save changes
               </Button>
             </View>
           </View>

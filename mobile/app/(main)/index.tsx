@@ -234,16 +234,16 @@ export default function HomeScreen() {
 
   const renderFooter = () => (
     <View className="mt-6 mb-8">
-      {/* ── How Trust Lens™ Protects You (Matching screen4.png) ─────────────── */}
+      {/* ── How Trust Lens protects you (Matching screen4.png) ─────────────── */}
       <View className="bg-surface rounded-2xl border border-borderc p-4 mb-4 shadow-sm">
         <View className="flex-row items-center gap-1.5 mb-1">
           <Ionicons name="shield-checkmark" size={14} color="#2D7A4F" />
-          <Text className="text-[11px] font-extrabold text-emerald-700 uppercase tracking-widest">
+          <Text className="text-[11px] font-extrabold text-emerald-700">
             Buyer protection
           </Text>
         </View>
         <Text className="text-text font-black text-base mb-1">
-          How Trust Lens™ Protects You
+          How Trust Lens protects you
         </Text>
         <Text className="text-text-muted text-xs mb-3.5 leading-relaxed">
           How listings are checked and how your payment is protected.
@@ -256,8 +256,8 @@ export default function HomeScreen() {
               <Text className="text-white text-xs font-black">01</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-text font-bold text-xs">Seller Lists Device &amp; IMEI</Text>
-              <Text className="text-text-muted text-[11px] leading-tight mt-0.5">
+              <Text className="text-text font-semibold text-sm">The seller lists the device</Text>
+              <Text className="text-text-muted text-[13px] leading-[18px] mt-0.5">
                 The seller grades the condition (A/B/C), adds photos, and gives the IMEI for phones.
               </Text>
             </View>
@@ -268,8 +268,8 @@ export default function HomeScreen() {
               <Text className="text-white text-xs font-black">02</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-text font-bold text-xs">Trust Lens™ Authentication</Text>
-              <Text className="text-text-muted text-[11px] leading-tight mt-0.5">
+              <Text className="text-text font-semibold text-sm">Trust Lens checks</Text>
+              <Text className="text-text-muted text-[13px] leading-[18px] mt-0.5">
                 Phone IMEIs are checked against stolen and blacklist registries; other devices are reviewed by our team.
               </Text>
             </View>
@@ -280,8 +280,8 @@ export default function HomeScreen() {
               <Text className="text-white text-xs font-black">03</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-text font-bold text-xs">Escrow checkout</Text>
-              <Text className="text-text-muted text-[11px] leading-tight mt-0.5">
+              <Text className="text-text font-semibold text-sm">Escrow checkout</Text>
+              <Text className="text-text-muted text-[13px] leading-[18px] mt-0.5">
                 Your payment is held by VeriBuy through Stripe. The seller is paid after you confirm delivery.
               </Text>
             </View>
@@ -292,8 +292,8 @@ export default function HomeScreen() {
               <Text className="text-white text-xs font-black">04</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-text font-bold text-xs">48 hours to check it</Text>
-              <Text className="text-text-muted text-[11px] leading-tight mt-0.5">
+              <Text className="text-text font-semibold text-sm">48 hours to check it</Text>
+              <Text className="text-text-muted text-[13px] leading-[18px] mt-0.5">
                 Check the device after delivery. If it doesn’t match the listing, report a problem before releasing payment.
               </Text>
             </View>
@@ -301,27 +301,27 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* ── Why VeriBuy vs Classifieds? Table (Matching screen4.png) ────────── */}
+      {/* ── Why VeriBuy, not classified ads? Table (Matching screen4.png) ────────── */}
       <View className="bg-surface rounded-2xl border border-borderc p-4 mb-4 shadow-sm">
         <View className="flex-row items-center gap-1.5 mb-1">
           <Ionicons name="scale-outline" size={16} color="#565959" />
-          <Text className="text-text font-black text-sm">Why VeriBuy vs Classifieds?</Text>
+          <Text className="text-text font-black text-sm">Why VeriBuy, not classified ads?</Text>
         </View>
         <Text className="text-text-muted text-xs mb-3">
-          Protecting buyers and honest sellers from secondary market fraud.
+          How buying here compares with a typical classified ad.
         </Text>
 
         <View className="gap-2">
           <View className="bg-surface-canvas p-2.5 rounded-xl border border-borderc">
             <Text className="text-[11px] font-bold text-text mb-1">IMEI check on phones</Text>
             <View className="flex-row items-center justify-between">
-              <Text className="text-[11px] font-bold text-emerald-700">✓ Every phone listing</Text>
+              <Text className="text-[11px] font-bold text-emerald-700">✓ Required for phones</Text>
               <Text className="text-[11px] text-text-muted">✕ Usually none</Text>
             </View>
           </View>
 
           <View className="bg-surface-canvas p-2.5 rounded-xl border border-borderc">
-            <Text className="text-[11px] font-bold text-text mb-1">Payment Protection</Text>
+            <Text className="text-[11px] font-bold text-text mb-1">Payment protection</Text>
             <View className="flex-row items-center justify-between">
               <Text className="text-[11px] font-bold text-emerald-700">✓ Escrow until delivery</Text>
               <Text className="text-[11px] text-text-muted">✕ Often bank transfer or cash</Text>
@@ -337,7 +337,7 @@ export default function HomeScreen() {
           </View>
 
           <View className="bg-surface-canvas p-2.5 rounded-xl border border-borderc">
-            <Text className="text-[11px] font-bold text-text mb-1">Seller Platform Fee</Text>
+            <Text className="text-[11px] font-bold text-text mb-1">Seller fee</Text>
             <View className="flex-row items-center justify-between">
               <Text className="text-[11px] font-bold text-emerald-700">✓ 0% seller commission</Text>
               <Text className="text-[11px] text-text-muted">Varies by platform</Text>
@@ -350,25 +350,29 @@ export default function HomeScreen() {
       <View className="bg-[#232F3E] rounded-2xl p-5 mb-6 border border-[#37475A]">
 
         <Text className="text-white text-lg font-black leading-tight mb-1">
-          Ready to Upgrade or Liquidate Gear?
+          Ready to buy or sell?
         </Text>
-        <Text className="text-slate-300 text-xs mb-3.5 leading-relaxed">
+        <Text className="text-white/80 text-xs mb-3.5 leading-relaxed">
           Buy with Buyer Protection, or list a device with 0% seller commission.
         </Text>
 
         <View className="flex-row gap-2">
           <TouchableOpacity
-            onPress={() => load(1, false, '', '')}
+            onPress={() => {
+              setSearch('');
+              setSelectedCategory('');
+              listRef.current?.scrollToOffset({ offset: 0, animated: true });
+            }}
             className="flex-1 bg-emerald-600 py-2.5 rounded-xl items-center active:opacity-90"
           >
-            <Text className="text-white font-bold text-xs">Browse Deals</Text>
+            <Text className="text-white font-bold text-xs">Browse devices</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => router.push('/(main)/sell')}
             className="flex-1 bg-white/10 border border-white/20 py-2.5 rounded-xl items-center active:opacity-90"
           >
-            <Text className="text-white font-bold text-xs">⊕ Sell a device</Text>
+            <Text className="text-white font-bold text-xs">Sell a device</Text>
           </TouchableOpacity>
         </View>
       </View>

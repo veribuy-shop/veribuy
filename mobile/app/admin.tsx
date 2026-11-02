@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, Text, View, RefreshControl } from 'react-native';
 
@@ -48,13 +47,9 @@ export default function AdminScreen() {
   }
 
   return (
-    <Screen style={{ paddingTop: 20 }}>
-      <Text className="text-2xl font-bold text-primary mb-1">Admin</Text>
-      <Text className="text-text-muted mb-4">Platform administration</Text>
+    <Screen>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}>
-        <Text onPress={() => router.back()} className="text-primary mb-3">← Back</Text>
-
-        <Text className="font-semibold text-text mb-2">System Health</Text>
+        <Text className="font-semibold text-text mb-2">System health</Text>
         <Card>
           <Text className="text-text-muted text-sm">See live service status in the web console.</Text>
         </Card>

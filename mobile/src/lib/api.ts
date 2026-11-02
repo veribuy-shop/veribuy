@@ -1,3 +1,5 @@
+import { friendlyApiError } from '@veribuy/common/errors';
+
 import { API_URL } from '../env';
 import { ApiError } from '../types/api';
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from './tokens';
@@ -82,6 +84,14 @@ interface RequestOptions {
   retried?: boolean;
 }
 
+function fallbackMessage(status: number): string {
+  if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
+  if (status === 401) return 'Please sign in and try again.';
+  if (status === 403) return 'You don’t have permission to do that.';
+  if (status === 404) return 'We could not find that.';
+  return 'Something went wrong on our side. Please try again.';
+}
+
 async function rawRequest<T>(
   path: string,
   opts: RequestOptions,
@@ -96,26 +106,31 @@ async function rawRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method: opts.method || 'GET',
-    headers,
-    body:
-      opts.formData && opts.body
-        ? (opts.body as BodyInit)
-        : opts.body
-          ? JSON.stringify(opts.body)
-          : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: opts.method || 'GET',
+      headers,
+      body:
+        opts.formData && opts.body
+          ? (opts.body as BodyInit)
+          : opts.body
+            ? JSON.stringify(opts.body)
+            : undefined,
+    });
+  } catch {
+    throw new ApiError(0, 'We could not reach VeriBuy. Check your connection and try again.');
+  }
 
   const isJson = res.headers.get('content-type')?.includes('application/json');
   const data = isJson ? await res.json() : null;
 
   if (!res.ok) {
-    throw new ApiError(
-      res.status,
-      Array.isArray(data?.message) ? data.message.join(', ') : data?.message || res.statusText,
-      data,
-    );
+    // A rejected login says nothing useful in the server's words. Sign-in itself
+    // is public, so its "wrong password" message still comes through.
+    const message =
+      res.status === 401 && !opts.public ? fallbackMessage(401) : friendlyApiError(data, fallbackMessage(res.status));
+    throw new ApiError(res.status, message, data);
   }
 
   return data as T;

@@ -18,7 +18,7 @@ export function GuestGate({
   icon = 'lock-closed-outline',
 }: GuestGateProps) {
   return (
-    <Screen style={{ paddingTop: 60, justifyContent: 'center' }}>
+    <Screen style={{ justifyContent: 'center' }}>
       <View className="items-center mb-6">
         <BrandLogo width={160} height={50} />
       </View>

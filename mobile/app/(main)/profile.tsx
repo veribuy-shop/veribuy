@@ -54,7 +54,7 @@ export default function ProfileScreen() {
 
   const onCopyCode = () => {
     Alert.alert(
-      'Referral Code',
+      'Referral code',
       `Your code is: ${referralCode}\n\nShare this code with friends to earn £5 on their first device sale!`,
     );
   };
@@ -62,8 +62,8 @@ export default function ProfileScreen() {
   if (!isAuthenticated) {
     return (
       <GuestGate
-        title="Your Account & Rewards"
-        subtitle="Sign in to view your profile, track £5 referral cash bonuses, and manage active listings."
+        title="Your account and rewards"
+        subtitle="Sign in to view your profile, track £5 referral rewards, and manage active listings."
         icon="person-outline"
       />
     );
@@ -72,7 +72,7 @@ export default function ProfileScreen() {
   return (
     <Screen safeTop>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-        <Text className="text-2xl font-bold text-primary mb-4">Profile & Rewards</Text>
+        <Text className="text-[28px] font-bold text-text mb-4">Account</Text>
 
         {/* User Card */}
         <View className="bg-surface rounded-2xl border border-borderc p-4 mb-4">
@@ -82,7 +82,7 @@ export default function ProfileScreen() {
               <Text className="text-text-muted text-xs mt-0.5">{user?.email}</Text>
             </View>
             <View className="bg-emerald-100 px-2.5 py-1 rounded-full">
-              <Text className="text-[11px] font-bold text-emerald-800">{user?.role}</Text>
+              <Text className="text-[11px] font-bold text-emerald-800">{user?.role === 'ADMIN' ? 'Admin' : user?.role === 'SELLER' ? 'Seller' : 'Member'}</Text>
             </View>
           </View>
         </View>
@@ -90,9 +90,9 @@ export default function ProfileScreen() {
         {/* Referral Hub Card */}
         <View className="bg-surface rounded-2xl border border-emerald-200 p-4 mb-4 shadow-sm">
           <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-sm font-bold text-text">Refer Friends, Earn £5</Text>
+            <Text className="text-sm font-bold text-text">Refer a seller, earn £5</Text>
             <View className="bg-emerald-100 px-2 py-0.5 rounded-full">
-              <Text className="text-[11px] font-bold text-emerald-800">£5 Per Sale</Text>
+              <Text className="text-[11px] font-bold text-emerald-800">£5 reward</Text>
             </View>
           </View>
           
@@ -103,8 +103,8 @@ export default function ProfileScreen() {
           {/* Referral Code Box */}
           <View className="bg-surface-alt border border-dashed border-emerald-300 rounded-xl p-3 flex-row items-center justify-between mb-3">
             <View>
-              <Text className="text-[11px] uppercase font-bold text-text-muted tracking-wider">Your Referral Code</Text>
-              <Text className="text-lg font-mono font-bold text-emerald-700 tracking-wider mt-0.5">
+              <Text className="text-[11px] font-bold text-text-muted tracking-wider">Your referral code</Text>
+              <Text className="text-lg font-bold text-emerald-700 tracking-wider mt-0.5">
                 {referralCode}
               </Text>
             </View>
@@ -127,13 +127,13 @@ export default function ProfileScreen() {
           {/* Referral Balance & Stats */}
           <View className="flex-row gap-2">
             <View className="flex-1 bg-surface-alt rounded-xl p-2.5 border border-borderc">
-              <Text className="text-[11px] text-text-muted font-medium">Bonus Earned</Text>
+              <Text className="text-[11px] text-text-muted font-medium">Earned</Text>
               <Text className="text-base font-bold text-emerald-700 mt-0.5">
                 £{(summary?.referralBonusBalance ?? 0).toFixed(2)}
               </Text>
             </View>
             <View className="flex-1 bg-surface-alt rounded-xl p-2.5 border border-borderc">
-              <Text className="text-[11px] text-text-muted font-medium">Total Referrals</Text>
+              <Text className="text-[11px] text-text-muted font-medium">Referred</Text>
               <Text className="text-base font-bold text-text mt-0.5">
                 {summary?.referrals?.length ?? 0}
               </Text>
@@ -149,7 +149,7 @@ export default function ProfileScreen() {
           {/* Activity / Referred Users List */}
           {summary && summary.referrals.length > 0 ? (
             <View className="mt-3.5 border-t border-borderc pt-3">
-              <Text className="text-xs font-bold text-text mb-2">Referral Activity</Text>
+              <Text className="text-xs font-bold text-text mb-2">Referral activity</Text>
               {summary.referrals.map((ref) => (
                 <View
                   key={ref.id}
@@ -157,7 +157,7 @@ export default function ProfileScreen() {
                 >
                   <View>
                     <Text className="text-xs font-medium text-text">
-                      {ref.referredUser?.name || 'Referred Friend'}
+                      {ref.referredUser?.name || 'Referred friend'}
                     </Text>
                     <Text className="text-[11px] text-text-muted">
                       {new Date(ref.createdAt).toLocaleDateString()}
@@ -195,7 +195,7 @@ export default function ProfileScreen() {
             onPress={() => router.push('/admin')}
             className="bg-primary rounded-xl py-3 px-4 mb-3 active:opacity-80"
           >
-            <Text className="text-white font-semibold text-center text-sm">Admin Dashboard</Text>
+            <Text className="text-white font-semibold text-center text-sm">Admin dashboard</Text>
           </Pressable>
         ) : null}
 

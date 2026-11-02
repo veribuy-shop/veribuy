@@ -1858,32 +1858,15 @@ export class TransactionsService implements OnModuleInit {
   }
 
   /**
-   * Fetch buyer email from auth-service (internal call).
-   * Returns null on failure.
-   */
-  private async getBuyerEmail(buyerId: string): Promise<string | null> {
-    const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-
-    try {
-      const response = await fetch(`${AUTH_SERVICE_URL}/auth/internal/users/${buyerId}`, {
-        headers: { 'x-internal-service': process.env.INTERNAL_SERVICE_TOKEN! },
-        signal: AbortSignal.timeout(3000),
-      });
-
-      if (!response.ok) return null;
-      const data = await response.json() as Record<string, any>;
-      return (data.email as string) ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Orchestrate invoice generation for an order.
    * Always call fire-and-forget — must not block order flow.
    */
   private async generateInvoiceForOrder(order: any): Promise<void> {
-    const buyerEmail = await this.getBuyerEmail(order.buyerId);
+    const buyer = await this.prisma.user.findUnique({
+      where: { id: order.buyerId },
+      select: { email: true },
+    });
+    const buyerEmail = buyer?.email;
     if (!buyerEmail) {
       this.logger.warn(`Could not fetch buyer email for order ${order.id} — skipping invoice`);
       return;

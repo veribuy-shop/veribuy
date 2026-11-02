@@ -1,9 +1,11 @@
-import { File } from 'expo-file-system';
+import { friendlyApiError } from '@veribuy/common/errors';
+import { File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 
 import { API_URL } from '../env';
-import { api } from '../lib/api';
-import { Paginated, ShippingAddressDto } from '../types/api';
+import { api, refreshSession } from '../lib/api';
+import { getAccessToken } from '../lib/tokens';
+import { ApiError, Paginated, ShippingAddressDto } from '../types/api';
 import {
   CreateOrderResult,
   EvidenceItem,
@@ -17,6 +19,13 @@ import {
   User,
   UserProfile,
 } from '../types/entities';
+
+// Most list endpoints are paginated; a few older ones return a plain array.
+type ListResponse<T> = Paginated<T> | T[];
+
+export function rows<T>(res: ListResponse<T>): T[] {
+  return Array.isArray(res) ? res : res?.data ?? [];
+}
 
 // ── Listings ──────────────────────────────────────────────────────────────
 export interface ListingsQuery {
@@ -41,7 +50,8 @@ export const listingsService = {
     const qs = params.toString();
     return api.get<Paginated<Listing>>(`/listings${qs ? `?${qs}` : ''}`);
   },
-  bySeller: (sellerId: string) => api.get<Listing[]>(`/listings/seller/${sellerId}`),
+  bySeller: (sellerId: string) =>
+    api.get<ListResponse<Listing>>(`/listings/seller/${sellerId}`).then(rows),
   get: (id: string) => api.get<Listing>(`/listings/${id}`),
   create: (data: Record<string, unknown>) => api.post<Listing>('/listings', data),
   update: (id: string, data: Record<string, unknown>) => api.patch<Listing>(`/listings/${id}`, data),
@@ -140,12 +150,12 @@ export const ordersService = {
   get: (orderId: string) => api.get<Order>(`/transactions/orders/${orderId}`),
   buyerOrders: (buyerId: string) =>
     api
-      .get<Paginated<Order> | Order[]>(`/transactions/orders/buyer/${buyerId}`)
-      .then((res) => (Array.isArray(res) ? res : res?.data ?? [])),
+      .get<ListResponse<Order>>(`/transactions/orders/buyer/${buyerId}`)
+      .then(rows),
   sellerOrders: (sellerId: string) =>
     api
-      .get<Paginated<Order> | Order[]>(`/transactions/orders/seller/${sellerId}`)
-      .then((res) => (Array.isArray(res) ? res : res?.data ?? [])),
+      .get<ListResponse<Order>>(`/transactions/orders/seller/${sellerId}`)
+      .then(rows),
   rate: (orderId: string, data: Record<string, unknown>) =>
     api.post<Order>(`/transactions/orders/${orderId}/rate`, data),
   updateShipping: (orderId: string, data: Record<string, unknown>) =>
@@ -161,8 +171,22 @@ export const ordersService = {
     api.get<{ locations: any[] }>(
       `/transactions/orders/${orderId}/dropoff-locations${postcode ? `?postcode=${encodeURIComponent(postcode)}` : ''}`,
     ),
-  getShippingLabelUrl: (orderId: string) =>
-    `${API_URL}/transactions/orders/${orderId}/shipping-label`,
+  /** Downloads the label with the seller's login and returns the local file. */
+  downloadShippingLabel: async (orderId: string) => {
+    await refreshSession();
+    const token = await getAccessToken();
+    const res = await fetch(`${API_URL}/transactions/orders/${orderId}/shipping-label`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new ApiError(res.status, friendlyApiError(body, 'We could not get your shipping label. Please try again.'), body);
+    }
+    const target = new File(Paths.cache, `royal-mail-label-${orderId.slice(0, 8)}.pdf`);
+    if (target.exists) target.delete();
+    target.write(new Uint8Array(await res.arrayBuffer()));
+    return target;
+  },
 };
 
 // ── Messaging ─────────────────────────────────────────────────────────────
@@ -219,19 +243,19 @@ export const offersService = {
   /** Binding price offer on a fixed-price listing; the seller accepts or declines. */
   make: (listingId: string, amount: number, note?: string) =>
     api.post<Offer>(`/offers/listing/${listingId}`, { amount, ...(note ? { note } : {}) }),
-  mine: (role: 'buyer' | 'seller') => api.get<Offer[]>(`/offers?role=${role}`),
+  mine: (role: 'buyer' | 'seller') => api.get<ListResponse<Offer>>(`/offers?role=${role}`).then(rows),
   respond: (offerId: string, action: 'ACCEPT' | 'DECLINE' | 'WITHDRAW') =>
     api.patch<Offer>(`/offers/${offerId}`, { action }),
 };
 
 // ── Notifications ────────────────────────────────────────────────────────
 export const notificationsService = {
-  list: () => api.get<Notification[]>('/notifications'),
+  list: () => api.get<ListResponse<Notification>>('/notifications').then(rows),
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────
 export const adminService = {
-  users: () => api.get<User[]>('/auth/users'),
+  users: () => api.get<ListResponse<User>>('/auth/users?limit=100').then(rows),
   bootstrapAdmin: (data: { email: string; password: string; setupToken: string }) =>
     api.public.post<unknown>('/auth/admin/bootstrap', data),
 };

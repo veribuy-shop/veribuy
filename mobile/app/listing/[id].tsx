@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { Screen } from '@/src/components/ui';
+import { Input, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
 import { buyerFacingPrice, calculateBuyerProtectionFee, getBuyerProtectionFeePercent } from '@/src/lib/fees';
@@ -403,14 +403,7 @@ export default function ListingDetailScreen() {
                 <Text className="text-xs text-text-muted mb-3">
                   Asking price {formatPrice(askingPrice, currency)}. Offers are binding — Buyer Protection and shipping are added at checkout.
                 </Text>
-                <Text className="text-xs font-bold text-text mb-1">Your offer (£)</Text>
-                <TextInput
-                  value={offerPrice}
-                  onChangeText={setOfferPrice}
-                  keyboardType="decimal-pad"
-                  accessibilityLabel="Offer amount in pounds"
-                  className="bg-[#F5F5F0] border border-borderc rounded-xl p-3 text-text font-black text-base mb-3"
-                />
+                <Input label="Your offer (£)" value={offerPrice} onChangeText={setOfferPrice} keyboardType="decimal-pad" />
                 <Text className="text-xs font-bold text-text mb-1">Note to the seller (optional)</Text>
                 <TextInput
                   value={offerNote}

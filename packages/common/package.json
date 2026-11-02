@@ -16,6 +16,10 @@
     "./evidence": {
       "types": "./dist/evidence/index.d.ts",
       "default": "./dist/evidence/index.js"
+    },
+    "./errors": {
+      "types": "./dist/errors/index.d.ts",
+      "default": "./dist/errors/index.js"
     }
   },
   "scripts": {

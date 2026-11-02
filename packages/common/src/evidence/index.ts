@@ -3,3 +3,4 @@
  * import it without pulling NestJS modules into the client bundle.
  */
 export * from './requirements';
+export * from './imei';

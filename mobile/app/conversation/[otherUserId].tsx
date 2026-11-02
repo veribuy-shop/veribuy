@@ -68,7 +68,7 @@ export default function ConversationScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={headerHeight}
       className="flex-1 bg-warm-beige"
-      style={{ paddingTop: 20 }}
+      style={{ paddingTop: 8 }}
     >
       {title ? <Stack.Screen options={{ title }} /> : null}
       <FlatList

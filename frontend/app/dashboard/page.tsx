@@ -1523,7 +1523,7 @@ function DashboardContent() {
                     Referral Bonus
                   </span>
                   <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                    £5 Per Sale
+                    £5 reward
                   </span>
                 </div>
                 <p className="text-3xl font-bold text-emerald-600">

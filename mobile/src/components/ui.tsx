@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -31,7 +32,7 @@ export function Button({ onPress, variant = 'primary', loading, disabled, style,
       : variant === 'green'
       ? 'bg-green'
       : variant === 'secondary'
-      ? 'bg-surface-alt'
+      ? 'bg-surface border border-border-strong'
       : variant === 'danger'
       ? 'bg-danger'
       : 'bg-transparent';
@@ -49,13 +50,13 @@ export function Button({ onPress, variant = 'primary', loading, disabled, style,
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      className={`${bg} ${border} py-3 px-4 rounded-xl items-center justify-center ${isDisabled ? 'opacity-50' : 'active:opacity-90'}`}
+      className={`${bg} ${border} min-h-12 py-3 px-4 rounded-xl items-center justify-center ${isDisabled ? 'opacity-50' : 'active:opacity-90'}`}
       style={style}
     >
       {loading ? (
         <ActivityIndicator color={variant === 'outline' || variant === 'accent' ? '#232F3E' : '#fff'} />
       ) : (
-        <Text className={`${textColor} font-bold text-sm`}>{children}</Text>
+        <Text className={`${textColor} font-semibold text-[15px]`}>{children}</Text>
       )}
     </Pressable>
   );
@@ -66,16 +67,42 @@ interface InputProps extends TextInputProps {
   error?: string;
 }
 
-export function Input({ label, error, ...props }: InputProps) {
+const NUMERIC_KEYBOARDS = ['number-pad', 'decimal-pad', 'numeric', 'phone-pad'];
+
+export function Input({ label, error, onFocus, onBlur, ...props }: InputProps) {
+  const [focused, setFocused] = useState(false);
+  // iOS number pads have no return key, so give people a way to close them.
+  const showDone = focused && NUMERIC_KEYBOARDS.includes(props.keyboardType ?? '');
+
   return (
     <View className="mb-4">
       {label ? <Text className="text-[13px] font-medium text-text mb-1.5">{label}</Text> : null}
-      <TextInput
-        placeholderTextColor="#8A8A8A"
-        className={`bg-surface border rounded-xl px-3.5 min-h-12 py-3 text-[15px] text-text ${error ? 'border-danger' : 'border-border-strong'}`}
-        {...props}
-      />
-      {error ? <Text className="text-xs text-danger mt-1">{error}</Text> : null}
+      <View className="justify-center">
+        <TextInput
+          placeholderTextColor="#8A8A8A"
+          className={`bg-surface border rounded-xl px-3.5 min-h-12 py-3 text-[15px] text-text ${error ? 'border-danger' : 'border-border-strong'}`}
+          onFocus={(e) => {
+            setFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            onBlur?.(e);
+          }}
+          {...props}
+        />
+        {showDone ? (
+          <Pressable
+            onPress={Keyboard.dismiss}
+            accessibilityRole="button"
+            accessibilityLabel="Done"
+            className="absolute right-1 h-10 px-3 items-center justify-center"
+          >
+            <Text className="text-[15px] font-semibold text-emerald-700">Done</Text>
+          </Pressable>
+        ) : null}
+      </View>
+      {error ? <Text className="text-[13px] text-danger mt-1">{error}</Text> : null}
     </View>
   );
 }
@@ -141,7 +168,7 @@ export function StatusPill({ status }: { status: string }) {
     label = 'Delivered';
   } else if (normalized === 'DISPUTED' || normalized === 'FAILED' || normalized === 'REJECTED' || normalized === 'CANCELLED') {
     color = 'bg-discount-crimson-bg text-discount-crimson border border-rose-200';
-    label = normalized === 'DISPUTED' ? 'Under Review' : 'Cancelled';
+    label = normalized === 'DISPUTED' ? 'Under review' : 'Cancelled';
   }
 
   return (

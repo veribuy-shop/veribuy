@@ -516,6 +516,24 @@ describe('TransactionsService', () => {
     });
   });
 
+  describe('invoices', () => {
+    it('sends the invoice to the buyer email from the database', async () => {
+      invoicesService.generateAndSendInvoice = jest.fn().mockResolvedValue(undefined);
+      prisma.user.findUnique.mockResolvedValue({ email: 'buyer@example.com' });
+
+      await (service as any).generateInvoiceForOrder({ id: 'ord-1', buyerId: 'buyer-1', sellerId: 'seller-1' });
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: 'buyer-1' },
+        select: { email: true },
+      });
+      expect(invoicesService.generateAndSendInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ord-1' }),
+        'buyer@example.com',
+      );
+    });
+  });
+
   describe('updateShipping', () => {
     it('recomputes the shipping fee server-side and ignores the client value', async () => {
       (service as any).fetchListing = jest.fn().mockResolvedValue({

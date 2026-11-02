@@ -38,8 +38,8 @@ export default function OrdersScreen() {
   if (!isAuthenticated) {
     return (
       <GuestGate
-        title="Track Your Orders & Escrow"
-        subtitle="Sign in to view active purchases, Royal Mail tracking numbers, and seller fulfillment labels."
+        title="Track your orders"
+        subtitle="Sign in to view active purchases, Royal Mail tracking numbers, and seller postage labels."
         icon="cube-outline"
       />
     );
@@ -55,7 +55,7 @@ export default function OrdersScreen() {
             onPress={() => setView(v)}
             className={`px-4 py-2 rounded-full mr-2 ${view === v ? 'bg-primary' : 'bg-surface-alt'}`}
           >
-            <Text className={view === v ? 'text-white font-semibold' : 'text-text'}>{v === 'BUYER' ? 'My Purchases' : 'My Sales'}</Text>
+            <Text className={view === v ? 'text-white font-semibold' : 'text-text'}>{v === 'BUYER' ? 'Purchases' : 'Sales'}</Text>
           </Pressable>
         ))}
       </View>

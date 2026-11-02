@@ -18,6 +18,22 @@ describe('session handling', () => {
     setOnSessionExpired(onExpired);
   });
 
+  it('never shows the server wording for a rejected login', async () => {
+    const rejected = {
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      headers: { get: () => 'application/json' },
+      json: async () => ({ message: 'Invalid or expired token' }),
+    };
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(rejected)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ accessToken: 'a', refreshToken: 'r' }), status: 200 })
+      .mockResolvedValueOnce(rejected);
+    await expect(request('/orders')).rejects.toMatchObject({ message: 'Please sign in and try again.' });
+  });
+
   it('stays signed in when the refresh fails on a dropped connection', async () => {
     global.fetch = jest.fn().mockResolvedValueOnce(expired).mockRejectedValueOnce(new TypeError('Network request failed'));
     await expect(request('/orders')).rejects.toBeDefined();

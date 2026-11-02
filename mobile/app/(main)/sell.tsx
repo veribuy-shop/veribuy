@@ -9,6 +9,8 @@ import { useAuth } from '@/src/context/AuthContext';
 import { evidenceService, listingsService, trustLensService } from '@/src/services';
 import { Listing } from '@/src/types/entities';
 
+import { validateImeiChecksum } from '@veribuy/common/evidence';
+
 import { resolveDeviceWeightProfile } from '@/src/lib/shipping';
 
 const DEVICE_TYPES = ['SMARTPHONE', 'TABLET', 'LAPTOP', 'SMARTWATCH', 'AIRPODS', 'DESKTOP', 'GAMING_CONSOLE', 'OTHER'];
@@ -118,9 +120,11 @@ export default function SellScreen() {
     if (storageCapacity) payload.storageCapacity = storageCapacity;
     if (color.trim()) payload.color = color.trim();
     if (serialNumber.trim()) payload.serialNumber = serialNumber.trim();
-    if (imei.trim()) payload.imei = imei.trim();
+    if (deviceType === 'SMARTPHONE' && imei.trim()) payload.imei = imei.replace(/[\s-]/g, '');
     return listingsService.create(payload);
   };
+
+  const imeiCheck = validateImeiChecksum(imei);
 
   const onSubmit = async () => {
     if (!title || !description || !deviceType || !brand || !model || !price) {
@@ -133,6 +137,10 @@ export default function SellScreen() {
     }
     if (description.trim().length < 50) {
       setError('Description must be at least 50 characters.');
+      return;
+    }
+    if (deviceType === 'SMARTPHONE' && !imeiCheck.valid) {
+      setError(imeiCheck.status === 'empty' ? 'Enter the phone’s 15-digit IMEI. Dial *#06# to find it.' : imeiCheck.status === 'incomplete' ? `The IMEI is too short: ${imeiCheck.message}.` : imeiCheck.message);
       return;
     }
     const amount = Number(price);
@@ -171,9 +179,9 @@ export default function SellScreen() {
         await trustLensService.submit({
           listingId: listing.id,
           conditionGrade: conditionGrade || undefined,
-          imeiProvided: !!imei.trim(),
+          imeiProvided: deviceType === 'SMARTPHONE' && !!imei.trim(),
           serialProvided: !!serialNumber.trim(),
-          imei: imei.trim() || undefined,
+          imei: deviceType === 'SMARTPHONE' ? imei.replace(/[\s-]/g, '') || undefined : undefined,
           serialNumber: serialNumber.trim() || undefined,
           brand: brand.trim() || undefined,
         });
@@ -225,7 +233,7 @@ export default function SellScreen() {
   if (!isAuthenticated) {
     return (
       <GuestGate
-        title="Sell with 0% Commission"
+        title="Sell with 0% commission"
         subtitle="Sign in or create an account to list your device with a Trust Lens review and tracked Royal Mail shipping."
         icon="cash-outline"
       />
@@ -261,11 +269,11 @@ export default function SellScreen() {
               <View className="flex-1 mr-2">
                 <Text className="text-[11px] font-bold text-text">Postage estimate</Text>
                 <Text className="text-[11px] text-text-muted mt-0.5">
-                  {weightProfile.weightTierLabel} · ~{weightProfile.totalWeightGrams}g ({weightProfile.parcelFormat === 'SMALL_PARCEL' ? 'Small Parcel' : 'Medium Parcel'})
+                  {weightProfile.weightTierLabel} · ~{weightProfile.totalWeightGrams}g ({weightProfile.parcelFormat === 'SMALL_PARCEL' ? 'Small parcel' : 'Medium parcel'})
                 </Text>
               </View>
               <View className="bg-emerald-100 px-2 py-0.5 rounded-full">
-                <Text className="text-[11px] font-bold text-emerald-800">Auto-mapped</Text>
+                <Text className="text-[11px] font-bold text-emerald-800">Automatic</Text>
               </View>
             </View>
           ) : null}
@@ -283,8 +291,9 @@ export default function SellScreen() {
 
           {(deviceType === 'SMARTPHONE') && (
             <Input
-              label="IMEI (15 digits)"
-              placeholder="e.g. 352094081234567"
+              label="IMEI (dial *#06# to find it)"
+              placeholder="15 digits"
+              error={imei && imeiCheck.status === 'invalid' ? imeiCheck.message : undefined}
               value={imei}
               onChangeText={setImei}
               keyboardType="number-pad"
@@ -296,7 +305,7 @@ export default function SellScreen() {
           <Input label="Your price (£)" value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
 
           {/* Delivery & Postage Options */}
-          <Text className="text-sm font-semibold text-text mb-2">Delivery Method & Postage</Text>
+          <Text className="text-sm font-semibold text-text mb-2">Delivery</Text>
           
           {/* Option 1: Buyer Pays */}
           <Pressable
@@ -317,19 +326,19 @@ export default function SellScreen() {
                   {!freeShipping && <View className="w-1.5 h-1.5 rounded-full bg-white" />}
                 </View>
                 <Text className="font-semibold text-sm text-text">
-                  Buyer Pays Shipping (Standard)
+                  Buyer pays postage
                 </Text>
               </View>
               <View className="bg-emerald-100 px-2 py-0.5 rounded-full">
-                <Text className="text-[11px] font-bold text-emerald-800">£0 for You</Text>
+                <Text className="text-[11px] font-bold text-emerald-800">£0 for you</Text>
               </View>
             </View>
             <Text className="text-xs text-text-muted ml-6 leading-relaxed">
-              Postage is calculated dynamically at checkout via Royal Mail Tracked rates based on device category, weight profile, and buyer&apos;s UK location. You pay £0 for shipping.
+              Royal Mail postage is worked out at checkout from the device’s weight and the buyer’s location. You pay nothing for postage.
             </Text>
           </Pressable>
 
-          {/* Option 2: Seller Pays (Free Shipping for Buyer) */}
+          {/* Option 2: Seller Pays (Free postage for the buyer) */}
           <Pressable
             onPress={() => setFreeShipping(true)}
             className={`p-3.5 rounded-xl border mb-3.5 ${
@@ -348,11 +357,11 @@ export default function SellScreen() {
                   {freeShipping && <View className="w-1.5 h-1.5 rounded-full bg-white" />}
                 </View>
                 <Text className="font-semibold text-sm text-text">
-                  Free Shipping for Buyer
+                  Free postage for the buyer
                 </Text>
               </View>
               <View className="bg-warm-beige px-2 py-0.5 rounded-full">
-                <Text className="text-[11px] font-semibold text-accent-dark">Attracts Buyers</Text>
+                <Text className="text-[11px] font-semibold text-accent-dark">Attracts buyers</Text>
               </View>
             </View>
             <Text className="text-xs text-text-muted ml-6 leading-relaxed">
@@ -394,29 +403,29 @@ export default function SellScreen() {
 
           {/* Transparent Payout Card */}
           <View className="bg-surface border border-borderc rounded-xl p-4 mb-3.5">
-            <Text className="text-xs font-bold text-text mb-2.5 uppercase tracking-wide">Payout Breakdown</Text>
+            <Text className="text-xs font-bold text-text mb-2.5">Your payout</Text>
             
             <View className="flex-row justify-between mb-1.5">
-              <Text className="text-xs text-text-muted">Asking Price</Text>
+              <Text className="text-xs text-text-muted">Asking price</Text>
               <Text className="text-xs font-semibold text-text">
                 £{isValidPrice ? parsedPrice.toFixed(2) : '0.00'}
               </Text>
             </View>
 
             <View className="flex-row justify-between mb-1.5">
-              <Text className="text-xs text-text-muted">VeriBuy Commission</Text>
+              <Text className="text-xs text-text-muted">VeriBuy commission</Text>
               <Text className="text-xs font-bold text-emerald-600">0% (£0.00)</Text>
             </View>
 
             <View className="flex-row justify-between mb-2">
-              <Text className="text-xs text-text-muted">Postage Fee</Text>
+              <Text className="text-xs text-text-muted">Postage</Text>
               <Text className="text-xs text-text-muted">
-                {freeShipping ? 'Covered by Seller' : 'Paid by Buyer (Royal Mail Live)'}
+                {freeShipping ? 'Paid by you' : 'Paid by the buyer'}
               </Text>
             </View>
 
             <View className="border-t border-borderc pt-2.5 flex-row justify-between items-center">
-              <Text className="text-sm font-bold text-text">Estimated Payout</Text>
+              <Text className="text-sm font-bold text-text">You receive</Text>
               <Text className="text-base font-bold text-emerald-700">
                 £{isValidPrice ? parsedPrice.toFixed(2) : '0.00'}
               </Text>

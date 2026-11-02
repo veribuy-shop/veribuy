@@ -71,8 +71,8 @@ export default function MessagesScreen() {
   if (!isAuthenticated) {
     return (
       <GuestGate
-        title="Direct Buyer-Seller Messages"
-        subtitle="Sign in to chat with sellers, ask device condition questions, and track live offer negotiations."
+        title="Message buyers and sellers"
+        subtitle="Sign in to chat with sellers, ask device condition questions, and follow your offers."
         icon="chatbubble-ellipses-outline"
       />
     );

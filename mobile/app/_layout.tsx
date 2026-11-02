@@ -64,14 +64,14 @@ function RootNavigator() {
         name="profile-edit"
         options={{
           headerShown: true,
-          title: 'Edit Profile',
+          title: 'Edit profile',
         }}
       />
       <Stack.Screen
         name="admin"
         options={{
           headerShown: true,
-          title: 'Admin Dashboard',
+          title: 'Admin',
         }}
       />
       <Stack.Screen name="check-email" options={{ headerShown: false }} />
