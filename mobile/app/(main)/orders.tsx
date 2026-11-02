@@ -7,6 +7,7 @@ import { Card, EmptyState, Screen, StatusPill } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { ordersService } from '@/src/services';
 import { Order } from '@/src/types/entities';
+import { shortDate } from '@/src/lib/format';
 import { formatPrice } from '@/src/lib/currency';
 
 export default function OrdersScreen() {
@@ -39,14 +40,14 @@ export default function OrdersScreen() {
       <GuestGate
         title="Track Your Orders & Escrow"
         subtitle="Sign in to view active purchases, Royal Mail tracking numbers, and seller fulfillment labels."
-        icon="📦"
+        icon="cube-outline"
       />
     );
   }
 
   return (
-    <Screen style={{ paddingTop: 64 }}>
-      <Text className="text-2xl font-bold text-primary mb-3">Orders &amp; Escrow</Text>
+    <Screen safeTop>
+      <Text className="text-[28px] font-bold text-text mb-3">Orders</Text>
       <View className="flex-row mb-3">
         {(['BUYER', 'SELLER'] as const).map((v) => (
           <Pressable
@@ -65,33 +66,31 @@ export default function OrdersScreen() {
         renderItem={({ item }) => (
           <Pressable onPress={() => router.push(`/order/${item.id}`)}>
             <Card>
-              <View className="flex-row items-center justify-between">
-                <Text className="text-text font-bold text-base">
+              <Text className="text-[15px] font-semibold text-text leading-5" numberOfLines={2}>
+                {item.listingTitle || item.listing?.title || `Order ${item.id.slice(0, 8)}`}
+              </Text>
+              <View className="flex-row items-center justify-between mt-2">
+                <Text className="text-lg font-bold text-text">
                   {formatPrice(item.totalAmount || item.amount, item.currency)}
                 </Text>
                 <StatusPill status={item.status} />
               </View>
-              {item.listing?.title ? (
-                <Text className="text-text-muted text-sm mt-1 font-medium" numberOfLines={1}>
-                  {item.listing.title}
-                </Text>
-              ) : null}
               <View className="flex-row items-center gap-2 mt-2">
                 <View className="bg-slate-100 px-2 py-0.5 rounded">
-                  <Text className="text-[10px] font-bold text-slate-700">
-                    {item.shippingAddress?.deliveryMethod === 'CLICK_AND_COLLECT' ? '🏪 Click & Collect' : '🚚 Royal Mail'}
+                  <Text className="text-[11px] font-bold text-slate-700">
+                    {item.shippingAddress?.deliveryMethod === 'CLICK_AND_COLLECT' ? 'Click & Collect' : 'Royal Mail'}
                   </Text>
                 </View>
                 {item.trackingNumber ? (
                   <View className="bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    <Text className="text-[10px] font-mono font-bold text-emerald-800">
+                    <Text className="text-[11px] font-mono font-bold text-emerald-800">
                       {item.trackingNumber}
                     </Text>
                   </View>
                 ) : view === 'SELLER' && item.status !== 'CANCELLED' && item.status !== 'REFUNDED' ? (
                   <View className="bg-amber-100 px-2 py-0.5 rounded">
-                    <Text className="text-[10px] font-bold text-amber-900">
-                      Print 4x6&quot; Label / QR
+                    <Text className="text-[11px] font-bold text-amber-900">
+                      Post this order
                     </Text>
                   </View>
                 ) : null}
@@ -101,14 +100,14 @@ export default function OrdersScreen() {
                   Order #{item.orderNumber || item.id.slice(0, 8)}
                 </Text>
                 <Text className="text-warm-tan text-xs">
-                  {new Date(item.createdAt).toLocaleDateString()}
+                  {shortDate(item.createdAt)}
                 </Text>
               </View>
             </Card>
           </Pressable>
         )}
         ListEmptyComponent={
-          loading ? null : <EmptyState title="No orders found" subtitle="Your escrow orders will appear here." />
+          loading ? undefined : <EmptyState title="No orders found" subtitle="Your purchases and sales will appear here." />
         }
       />
     </Screen>

@@ -11,10 +11,19 @@ export function StripeProvider({
   return React.createElement(React.Fragment, null, children);
 }
 
-export async function initPaymentSheet(_params: unknown): Promise<{ error?: { message: string } | null }> {
-  return { error: null };
+// Stripe's native PaymentSheet doesn't exist on web. Fail loudly rather than
+// pretend a payment succeeded — buyers on the web use veribuy.shop.
+const WEB_UNAVAILABLE = {
+  code: 'Unavailable',
+  message: 'Payments are not available in the web preview. Please use the VeriBuy app or veribuy.shop.',
+};
+
+export async function initPaymentSheet(
+  _params: unknown,
+): Promise<{ error?: { code?: string; message: string } | null }> {
+  return { error: WEB_UNAVAILABLE };
 }
 
-export async function presentPaymentSheet(): Promise<{ error?: { message: string } | null }> {
-  return { error: null };
+export async function presentPaymentSheet(): Promise<{ error?: { code?: string; message: string } | null }> {
+  return { error: WEB_UNAVAILABLE };
 }

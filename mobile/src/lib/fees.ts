@@ -17,3 +17,15 @@ export function calculateBuyerProtectionFee(
   return Math.round(fee * 100) / 100;
 }
 
+
+/**
+ * What a buyer pays for the item: asking price + Buyer Protection, matching
+ * the web. Only Royal Mail shipping is added at checkout.
+ */
+export function buyerFacingPrice(
+  itemPrice: number,
+  percent = DEFAULT_BUYER_PROTECTION_FEE_PERCENT,
+): number {
+  const p = Math.max(0, Number(itemPrice) || 0);
+  return Math.round((p + calculateBuyerProtectionFee(p, percent)) * 100) / 100;
+}

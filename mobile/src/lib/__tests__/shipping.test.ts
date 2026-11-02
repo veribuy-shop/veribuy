@@ -57,3 +57,11 @@ describe('Mobile shipping & Royal Mail rate engine', () => {
     expect(formatShippingService('SPECIAL_DELIVERY_1PM')).toBe('Special Delivery Guaranteed 1pm');
   });
 });
+
+describe('price parity with the server', () => {
+  it('quotes the server-side weight and fee for a Dell XPS 15', () => {
+    const quote = calculateShippingFee('LAPTOP', 'SW1A 1AA', 'TRACKED_48', { brand: 'Dell', model: 'XPS 15' });
+    expect(quote.weightGrams).toBe(2350);
+    expect(quote.totalFee).toBe(7.35);
+  });
+});

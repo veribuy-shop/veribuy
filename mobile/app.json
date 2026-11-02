@@ -9,12 +9,6 @@
     "icon": "./assets/images/icon.png",
     "scheme": "veribuy",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#161F2E"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.veribuy.app",
@@ -41,7 +35,6 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#161F2E"
       },
-      "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES",
@@ -92,7 +85,24 @@
           "cameraPermission": "Allow VeriBuy to access your camera so you can take photos and evidence for device verification."
         }
       ],
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#161F2E",
+          "imageWidth": 200
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "dynamic"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

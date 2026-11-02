@@ -1,31 +1,43 @@
-import { useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { FlatList, Text, TextInput, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
 
+import { shortDate } from '@/src/lib/format';
 import { useAuth } from '@/src/context/AuthContext';
 import { messagesService } from '@/src/services';
 import { Message } from '@/src/types/entities';
 
 export default function ConversationScreen() {
-  const { otherUserId, listingId } = useLocalSearchParams<{
+  const headerHeight = useHeaderHeight();
+  const { otherUserId, listingId, title } = useLocalSearchParams<{
     otherUserId: string;
     listingId?: string;
+    title?: string;
   }>();
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    if (!otherUserId) return;
+    if (!otherUserId || !user?.id) return;
     try {
-      const res = await messagesService.conversation(otherUserId, listingId || undefined);
+      const res = await messagesService.conversation(user.id, otherUserId, listingId || undefined);
       setMessages(res.data);
+      setError('');
+      // Mark what we've just shown as read so unread counts stay accurate.
+      res.data
+        .filter((m) => m.recipientId === user.id && !m.isRead)
+        .forEach((m) => messagesService.markRead(m.id).catch(() => {}));
+    } catch (e: any) {
+      setError(e?.message || 'Could not load this conversation.');
     } finally {
       setLoading(false);
     }
-  }, [otherUserId, listingId]);
+  }, [otherUserId, listingId, user?.id]);
 
   useEffect(() => {
     load();
@@ -42,7 +54,10 @@ export default function ConversationScreen() {
         content: body,
       });
       setInput('');
+      setError('');
       await load();
+    } catch (e: any) {
+      setError(e?.message || 'Your message was not sent. Please try again.');
     } finally {
       setSending(false);
     }
@@ -51,9 +66,11 @@ export default function ConversationScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={headerHeight}
       className="flex-1 bg-warm-beige"
       style={{ paddingTop: 20 }}
     >
+      {title ? <Stack.Screen options={{ title }} /> : null}
       <FlatList
         data={messages}
         keyExtractor={(item) => item.id}
@@ -67,7 +84,7 @@ export default function ConversationScreen() {
             >
               <Text className={mine ? 'text-white' : 'text-text'}>{item.content}</Text>
               <Text className={`text-xs mt-0.5 ${mine ? 'text-warm-tan' : 'text-warm-tan'}`}>
-                {new Date(item.createdAt).toLocaleTimeString()}
+                {shortDate(item.createdAt)}
               </Text>
             </View>
           );
@@ -80,16 +97,28 @@ export default function ConversationScreen() {
           )
         }
       />
+      {error ? (
+        <Text accessibilityLiveRegion="polite" className="text-danger text-xs text-center px-4 py-1">
+          {error}
+        </Text>
+      ) : null}
       <View className="flex-row items-center border-t border-borderc bg-surface px-3 py-2">
         <TextInput
           value={input}
           onChangeText={setInput}
           placeholder="Type a message…"
-          placeholderTextColor="#AAAAAA"
+          placeholderTextColor="#8A8A8A"
           multiline
+          accessibilityLabel="Message"
           className="flex-1 bg-warm-beige rounded-lg px-3 py-2 text-text"
         />
-        <Pressable onPress={send} disabled={sending || !input.trim()} className="ml-2 bg-accent rounded-lg px-4 py-2">
+        <Pressable
+          onPress={send}
+          disabled={sending || !input.trim()}
+          accessibilityRole="button"
+          accessibilityLabel="Send message"
+          className="ml-2 bg-primary rounded-lg px-4 py-2"
+        >
           <Text className="text-white font-semibold">Send</Text>
         </Pressable>
       </View>

@@ -118,7 +118,7 @@ export default function ProfileEditScreen() {
   }
 
   return (
-    <Screen style={{ backgroundColor: '#F8F9FF', paddingTop: Platform.OS === 'web' ? 16 : 44 }}>
+    <Screen style={{ backgroundColor: '#F5F5F0', paddingTop: Platform.OS === 'web' ? 16 : 44 }}>
       {/* ── Top Header Bar ──────────────────────────────────────────────── */}
       <View className="flex-row items-center justify-between mb-3 px-1">
         <TouchableOpacity
@@ -219,7 +219,7 @@ export default function ProfileEditScreen() {
                 Default UK Delivery &amp; Return Address
               </Text>
               <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                <Text className="text-[9px] font-bold text-emerald-800">Auto-fills Checkout</Text>
+                <Text className="text-[11px] font-bold text-emerald-800">Auto-fills Checkout</Text>
               </View>
             </View>
 

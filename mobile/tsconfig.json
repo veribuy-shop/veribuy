@@ -8,8 +8,15 @@
       ],
       "~/*": [
         "./src/*"
+      ],
+      "@veribuy/common/*": [
+        "../packages/common/src/*/index.ts"
       ]
-    }
+    },
+    "types": [
+      "jest",
+      "node"
+    ]
   },
   "include": [
     "**/*.ts",

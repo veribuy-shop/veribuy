@@ -1,3 +1,6 @@
+import { File } from 'expo-file-system';
+import { Platform } from 'react-native';
+
 import { API_URL } from '../env';
 import { api } from '../lib/api';
 import { Paginated, ShippingAddressDto } from '../types/api';
@@ -9,6 +12,7 @@ import {
   Notification,
   Order,
   ReferralSummary,
+  TrustLensCheckSummary,
   TrustLensReport,
   User,
   UserProfile,
@@ -77,6 +81,11 @@ export const usersService = {
 // ── Trust Lens ────────────────────────────────────────────────────────────
 export const trustService = {
   getForListing: (listingId: string) => api.get<TrustLensReport>(`/trust-lens/${listingId}`),
+  /** Public check results for buyers; null until an IMEI check has run. */
+  publicSummary: (listingId: string) =>
+    api.public
+      .get<{ check: TrustLensCheckSummary | null } | null>(`/trust-lens/${listingId}/summary`)
+      .then((res) => res?.check ?? null),
   submit: (data: Record<string, unknown>) => api.post<TrustLensReport>('/trust-lens', data),
   updateStatus: (listingId: string, data: Record<string, unknown>) =>
     api.patch<TrustLensReport>(`/trust-lens/${listingId}/status`, data),
@@ -85,14 +94,23 @@ export const trustLensService = trustService;
 
 // ── Evidence ──────────────────────────────────────────────────────────────
 export const evidenceService = {
-  forListing: (listingId: string) => api.get<EvidenceItem[]>(`/evidence/listing/${listingId}`),
+  /** Public photos for a listing. The API returns the evidence pack; unwrap its items. */
+  forListing: (listingId: string) =>
+    api.public
+      .get<{ items?: EvidenceItem[] } | EvidenceItem[]>(`/evidence/listing/${listingId}`)
+      .then((res) => (Array.isArray(res) ? res : res?.items ?? [])),
   upload: (
     listingId: string,
     file: { uri: string; name: string; type: string },
     meta: { type: string; description?: string },
   ) => {
     const form = new FormData();
-    form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+    // Expo's fetch only accepts real file objects, not React Native's { uri } parts.
+    // File also reports the true type, so a PNG isn't mislabelled as a JPEG.
+    form.append(
+      'file',
+      (Platform.OS === 'web' ? { uri: file.uri, name: file.name, type: file.type } : new File(file.uri)) as unknown as Blob,
+    );
     form.append('listingId', listingId);
     form.append('type', meta.type);
     if (meta.description) form.append('description', meta.description);
@@ -106,17 +124,28 @@ export interface CreateOrderInput {
   buyerId: string;
   sellerId: string;
   listingId: string;
-  amount: number;
-  shippingAddress: ShippingAddressDto;
+  /** Display hint only — the server prices the order (listing, winning bid or accepted offer). */
+  amount?: number;
+  currency?: string;
+  shippingService?: string;
+  shippingAddress?: ShippingAddressDto;
+  /** Pay at a seller-accepted offer price (validated server-side). */
+  offerId?: string;
 }
 
 export const ordersService = {
   create: (input: CreateOrderInput) => api.post<CreateOrderResult>('/transactions/orders', input),
-  confirmPayment: (orderId: string) =>
-    api.post<Order>(`/transactions/orders/${orderId}/confirm-payment`),
+  confirmPayment: (orderId: string, paymentIntentId: string) =>
+    api.post<Order>(`/transactions/orders/${orderId}/confirm-payment`, { paymentIntentId }),
   get: (orderId: string) => api.get<Order>(`/transactions/orders/${orderId}`),
-  buyerOrders: (buyerId: string) => api.get<Order[]>(`/transactions/orders/buyer/${buyerId}`),
-  sellerOrders: (sellerId: string) => api.get<Order[]>(`/transactions/orders/seller/${sellerId}`),
+  buyerOrders: (buyerId: string) =>
+    api
+      .get<Paginated<Order> | Order[]>(`/transactions/orders/buyer/${buyerId}`)
+      .then((res) => (Array.isArray(res) ? res : res?.data ?? [])),
+  sellerOrders: (sellerId: string) =>
+    api
+      .get<Paginated<Order> | Order[]>(`/transactions/orders/seller/${sellerId}`)
+      .then((res) => (Array.isArray(res) ? res : res?.data ?? [])),
   rate: (orderId: string, data: Record<string, unknown>) =>
     api.post<Order>(`/transactions/orders/${orderId}/rate`, data),
   updateShipping: (orderId: string, data: Record<string, unknown>) =>
@@ -153,8 +182,10 @@ export const messagesService = {
       `/notifications/messages/user/${userId}${qs ? `?${qs}` : ''}`,
     );
   },
-  conversation: (otherUserId: string, listingId?: string) => {
-    const params = new URLSearchParams({ otherUserId });
+  conversation: (userId: string, otherUserId: string, listingId?: string) => {
+    // The server only returns conversations for the signed-in user and checks
+    // that `userId` matches the token, so it must be sent explicitly.
+    const params = new URLSearchParams({ userId, otherUserId });
     if (listingId) params.set('listingId', listingId);
     return api.get<Paginated<Message>>(
       `/notifications/messages/conversation?${params.toString()}`,
@@ -166,6 +197,31 @@ export const messagesService = {
     api.patch<Message>(`/notifications/messages/${messageId}/read`),
   unreadCount: (userId: string) =>
     api.get<{ count: number }>(`/notifications/messages/unread-count/${userId}`),
+};
+
+// ── Offers ────────────────────────────────────────────────────────────────
+export type OfferStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN' | 'EXPIRED' | 'COMPLETED';
+
+export interface Offer {
+  id: string;
+  listingId: string;
+  amount: string | number;
+  note: string | null;
+  status: OfferStatus;
+  expiresAt: string | null;
+  createdAt: string;
+  listing: { id: string; title: string; price: string | number; currency: string; status: string };
+  buyer: { id: string; name: string };
+  seller: { id: string; name: string };
+}
+
+export const offersService = {
+  /** Binding price offer on a fixed-price listing; the seller accepts or declines. */
+  make: (listingId: string, amount: number, note?: string) =>
+    api.post<Offer>(`/offers/listing/${listingId}`, { amount, ...(note ? { note } : {}) }),
+  mine: (role: 'buyer' | 'seller') => api.get<Offer[]>(`/offers?role=${role}`),
+  respond: (offerId: string, action: 'ACCEPT' | 'DECLINE' | 'WITHDRAW') =>
+    api.patch<Offer>(`/offers/${offerId}`, { action }),
 };
 
 // ── Notifications ────────────────────────────────────────────────────────

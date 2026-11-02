@@ -10,6 +10,8 @@ import { useAuth } from '@/src/context/AuthContext';
 
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
 
+export const unstable_settings = { anchor: '(main)' };
+
 function RootNavigator() {
   const { loading } = useAuth();
 
@@ -18,34 +20,37 @@ function RootNavigator() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }} initialRouteName="(main)">
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        headerTintColor: '#232F3E',
+        headerStyle: { backgroundColor: '#FFFFFF' },
+        headerTitleStyle: { fontSize: 17, fontWeight: '600', color: '#0F1111' },
+        headerBackButtonDisplayMode: 'minimal',
+        headerShadowVisible: true,
+      }}
+    >
       <Stack.Screen name="(main)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen
         name="listing/[id]"
         options={{
           headerShown: true,
-          title: 'Device Details',
-          headerBackTitle: 'Back',
-          headerTintColor: '#232F3E',
+          title: 'Device details',
         }}
       />
       <Stack.Screen
         name="checkout"
         options={{
           headerShown: true,
-          title: 'Escrow Checkout',
-          headerBackTitle: 'Back',
-          headerTintColor: '#232F3E',
+          title: 'Checkout',
         }}
       />
       <Stack.Screen
         name="order/[id]"
         options={{
           headerShown: true,
-          title: 'Order Fulfillment',
-          headerBackTitle: 'Orders',
-          headerTintColor: '#232F3E',
+          title: 'Your order',
         }}
       />
       <Stack.Screen
@@ -53,8 +58,6 @@ function RootNavigator() {
         options={{
           headerShown: true,
           title: 'Messages',
-          headerBackTitle: 'Back',
-          headerTintColor: '#232F3E',
         }}
       />
       <Stack.Screen
@@ -62,8 +65,6 @@ function RootNavigator() {
         options={{
           headerShown: true,
           title: 'Edit Profile',
-          headerBackTitle: 'Profile',
-          headerTintColor: '#232F3E',
         }}
       />
       <Stack.Screen
@@ -71,8 +72,6 @@ function RootNavigator() {
         options={{
           headerShown: true,
           title: 'Admin Dashboard',
-          headerBackTitle: 'Back',
-          headerTintColor: '#232F3E',
         }}
       />
       <Stack.Screen name="check-email" options={{ headerShown: false }} />

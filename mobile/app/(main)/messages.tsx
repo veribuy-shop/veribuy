@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { shortDate, shortName } from '@/src/lib/format';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, View, Pressable } from 'react-native';
@@ -13,6 +15,16 @@ interface Thread {
   listingId?: string;
   lastMessage: Message;
   messages: Message[];
+}
+
+function threadTitle(thread: Thread, userId?: string): string {
+  const last = thread.lastMessage;
+  if (last.isSystem) return 'VeriBuy updates';
+  return shortName(last.senderId === userId ? last.recipient?.name : last.sender?.name);
+}
+
+function threadIcon(thread: Thread): keyof typeof Ionicons.glyphMap {
+  return thread.lastMessage.isSystem ? 'notifications-outline' : 'person-outline';
 }
 
 export default function MessagesScreen() {
@@ -61,14 +73,14 @@ export default function MessagesScreen() {
       <GuestGate
         title="Direct Buyer-Seller Messages"
         subtitle="Sign in to chat with sellers, ask device condition questions, and track live offer negotiations."
-        icon="💬"
+        icon="chatbubble-ellipses-outline"
       />
     );
   }
 
   return (
-    <Screen style={{ paddingTop: 64 }}>
-      <Text className="text-2xl font-bold text-primary mb-3">Messages</Text>
+    <Screen safeTop>
+      <Text className="text-[28px] font-bold text-text mb-3">Messages</Text>
       <FlatList
         data={threads}
         keyExtractor={(item) => item.otherUserId + (item.listingId || '')}
@@ -76,21 +88,38 @@ export default function MessagesScreen() {
         renderItem={({ item }) => (
           <Pressable
             onPress={() =>
-              router.push(`/conversation/${item.otherUserId}${item.listingId ? `?listingId=${item.listingId}` : ''}`)
+              router.push({
+                pathname: '/conversation/[otherUserId]',
+                params: {
+                  otherUserId: item.otherUserId,
+                  title: threadTitle(item, user?.id),
+                  ...(item.listingId ? { listingId: item.listingId } : {}),
+                },
+              })
             }
-            className="bg-surface rounded-xl border border-borderc p-4 mb-2"
+            className="bg-surface rounded-2xl border border-borderc p-3.5 mb-2 active:opacity-90"
           >
-            <Text className="text-text font-semibold">User {item.otherUserId.slice(0, 8)}</Text>
-            <Text className="text-text-muted text-sm mt-1" numberOfLines={1}>
-              {item.lastMessage.content}
-            </Text>
-            <Text className="text-warm-tan text-xs mt-1">
-              {new Date(item.lastMessage.createdAt).toLocaleString()}
-            </Text>
+            <View className="flex-row items-center">
+              <View className="w-11 h-11 rounded-full bg-surface-container items-center justify-center mr-3">
+                <Ionicons name={threadIcon(item)} size={20} color="#232F3E" />
+              </View>
+              <View className="flex-1">
+                <View className="flex-row items-center justify-between">
+                  <Text className="flex-1 text-[15px] font-semibold text-text mr-2" numberOfLines={1}>
+                    {threadTitle(item, user?.id)}
+                  </Text>
+                  <Text className="text-xs text-text-subtle">{shortDate(item.lastMessage.createdAt)}</Text>
+                </View>
+                {item.lastMessage.listing?.title ? (
+                  <Text className="text-xs text-text-subtle mt-0.5" numberOfLines={1}>{item.lastMessage.listing.title}</Text>
+                ) : null}
+                <Text className="text-sm text-text-muted mt-0.5" numberOfLines={1}>{item.lastMessage.content}</Text>
+              </View>
+            </View>
           </Pressable>
         )}
         ListEmptyComponent={
-          loading ? null : <EmptyState title="No messages yet" subtitle="Start a conversation from a listing." />
+          loading ? undefined : <EmptyState title="No messages yet" subtitle="Start a conversation from a listing." />
         }
       />
     </Screen>

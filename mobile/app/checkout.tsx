@@ -1,19 +1,19 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
   Platform,
-  Pressable,
   ScrollView,
+  ScrollViewInstance,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
-import { BrandLogo } from '@/src/components/BrandLogo';
 import { Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
@@ -25,968 +25,667 @@ import {
   ShippingQuote,
 } from '@/src/lib/shipping';
 import { initPaymentSheet, presentPaymentSheet } from '@/src/lib/stripe';
-import { listingsService, ordersService } from '@/src/services';
-import { Listing } from '@/src/types/entities';
+import { listingsService, ordersService, usersService } from '@/src/services';
+import { ApiError } from '@/src/types/api';
+import { Listing, Order } from '@/src/types/entities';
 
 interface CheckoutParams extends Record<string, string | string[]> {
   listingId: string;
-  clientSecret: string;
-  orderId: string;
-  amount: string;
+  offerId: string;
 }
 
+/** A Royal Mail / PUDO location exactly as the API returned it (sent back on update). */
 interface CollectionPoint {
   id: string;
   name: string;
-  address: string;
-  city: string;
+  addressLine1: string;
+  town: string;
   postcode: string;
-  distance: string;
-  hours: string;
+  distanceMiles?: number;
+  openingHours?: Record<string, string>;
+  [key: string]: unknown;
 }
 
-const DEFAULT_COLLECTION_POINTS: CollectionPoint[] = [
-  {
-    id: 'pudo-1',
-    name: 'Kensington High Street Post Office',
-    address: '208-212 Kensington High St',
-    city: 'London',
-    postcode: 'W8 7RG',
-    distance: '0.3 mi',
-    hours: 'Mon-Sat 08:30 - 18:00',
-  },
-  {
-    id: 'pudo-2',
-    name: 'Royal Mail Kensington Customer Service Point',
-    address: '42 Earls Court Road',
-    city: 'London',
-    postcode: 'W8 6EJ',
-    distance: '0.6 mi',
-    hours: 'Mon-Sat 08:00 - 14:00',
-  },
-  {
-    id: 'pudo-3',
-    name: 'Evri ParcelShop / Kensington News',
-    address: '14 Kensington Church Street',
-    city: 'London',
-    postcode: 'W8 4EP',
-    distance: '0.1 mi',
-    hours: 'Mon-Sun 07:00 - 22:00',
-  },
-];
+type FieldKey = 'name' | 'line1' | 'city' | 'postalCode' | 'collectionPoint' | 'cardholderName';
+
+/** Muted so example text is never mistaken for a pre-filled value. */
+const PLACEHOLDER_COLOR = '#8A8A8A';
+const UK_POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
+const CARDHOLDER_NAME = /^[a-zA-Z\s\-'.]+$/;
+
+function deviceIcon(deviceType?: string): keyof typeof Ionicons.glyphMap {
+  switch (deviceType) {
+    case 'LAPTOP':
+      return 'laptop-outline';
+    case 'TABLET':
+      return 'tablet-portrait-outline';
+    case 'SMARTWATCH':
+      return 'watch-outline';
+    case 'AIRPODS':
+      return 'headset-outline';
+    case 'GAMING_CONSOLE':
+      return 'game-controller-outline';
+    case 'DESKTOP':
+      return 'desktop-outline';
+    default:
+      return 'phone-portrait-outline';
+  }
+}
+
+function errorMessage(err: unknown, fallback: string): string {
+  // Server faults say nothing useful to a buyer, so keep the friendly fallback.
+  if (err instanceof ApiError && err.status >= 500) return fallback;
+  if (err instanceof ApiError || err instanceof Error) return err.message || fallback;
+  return fallback;
+}
 
 export default function CheckoutScreen() {
   const params = useLocalSearchParams<CheckoutParams>();
   const { user } = useAuth();
 
   const [listing, setListing] = useState<Listing | null>(null);
+  const [order, setOrder] = useState<Order | null>(null);
+  const [clientSecret, setClientSecret] = useState('');
+  const [paymentIntentId, setPaymentIntentId] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [activeOrderId, setActiveOrderId] = useState<string>(params.orderId || '');
-  const [activeClientSecret, setActiveClientSecret] = useState<string>(params.clientSecret || '');
+  const [formError, setFormError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
 
-  // Shipping address form state
-  const [name, setName] = useState(user?.name || 'Alex Jenkins');
-  const [line1, setLine1] = useState('Flat 4B, 18 Kensington Church Street');
-  const [city, setCity] = useState('London');
-  const [postalCode, setPostalCode] = useState('W8 4EP');
-  const [country, setCountry] = useState('United Kingdom');
-  const [editAddress, setEditAddress] = useState(false);
+  // Delivery address — filled from the buyer's saved profile, never invented.
+  const [name, setName] = useState(user?.name || '');
+  const [line1, setLine1] = useState('');
+  const [line2, setLine2] = useState('');
+  const [city, setCity] = useState('');
+  const [county, setCounty] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [addressPrefilled, setAddressPrefilled] = useState(false);
+  const [cardholderName, setCardholderName] = useState(user?.name || '');
 
-  // Cardholder name state and anti-fraud verification
-  const [cardholderName, setCardholderName] = useState(user?.name || 'Alex Jenkins');
-  const [cardholderError, setCardholderError] = useState('');
-
-  // Payment source
-  const [selectedPaymentSource, setSelectedPaymentSource] = useState<
-    'APPLE_PAY' | 'GOOGLE_PAY' | 'CARD' | 'KLARNA' | 'CLEARPAY'
-  >('CARD');
-
-  // Delivery method & service
   const [deliveryMethod, setDeliveryMethod] = useState<'HOME' | 'CLICK_AND_COLLECT'>('HOME');
-  const [selectedService, setSelectedService] = useState<RoyalMailService>('SPECIAL_DELIVERY_1PM');
-
-  // Click & Collect collection points
-  const [collectionPoints, setCollectionPoints] = useState<CollectionPoint[]>(DEFAULT_COLLECTION_POINTS);
-  const [selectedCollectionPoint, setSelectedCollectionPoint] = useState<CollectionPoint>(DEFAULT_COLLECTION_POINTS[0]);
+  const [selectedService, setSelectedService] = useState<RoyalMailService>('TRACKED_48');
+  const [collectionPoints, setCollectionPoints] = useState<CollectionPoint[]>([]);
+  const [selectedCollectionPoint, setSelectedCollectionPoint] = useState<CollectionPoint | null>(null);
   const [loadingPoints, setLoadingPoints] = useState(false);
-
-  // Charity donation
+  const [pointsError, setPointsError] = useState('');
   const [donateToCharity, setDonateToCharity] = useState(false);
 
-  const itemPrice = Number(params.amount || listing?.price || 799);
-  const feePercent = getBuyerProtectionFeePercent();
-  const protectionFee = calculateBuyerProtectionFee(itemPrice, feePercent);
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const fieldOffsets = useRef<Partial<Record<FieldKey, number>>>({});
+
+  // The server-priced order is authoritative (an accepted offer or a winning
+  // bid differs from the listing price). Fall back to the listing for display.
+  const itemPrice = Number(order?.amount ?? listing?.price ?? 0);
+  const protectionFee =
+    order?.protectionFee != null
+      ? Number(order.protectionFee)
+      : calculateBuyerProtectionFee(itemPrice, getBuyerProtectionFeePercent());
   const currency = listing?.currency || 'GBP';
 
-  // Dynamic Royal Mail quotes based on listing specs and postcode
   const shippingQuotes: ShippingQuote[] = useMemo(() => {
-    return getShippingOptions(listing?.deviceType || 'SMARTPHONE', postalCode, {
-      brand: listing?.brand || 'Apple',
-      model: listing?.model || 'iPhone 14 Pro Max',
+    if (!listing) return [];
+    return getShippingOptions(listing.deviceType, postalCode, {
+      brand: listing.brand,
+      model: listing.model,
       itemPrice,
     });
   }, [listing, postalCode, itemPrice]);
 
-  const activeQuote = useMemo(() => {
-    return (
-      shippingQuotes.find((q) => q.service === selectedService) ||
-      shippingQuotes[0] ||
-      null
-    );
-  }, [shippingQuotes, selectedService]);
-
-  const effectiveShippingFee = listing?.freeShipping ? 0 : (activeQuote?.totalFee || 0);
+  const activeQuote = shippingQuotes.find((q) => q.service === selectedService) || shippingQuotes[0] || null;
+  const effectiveShippingFee = listing?.freeShipping ? 0 : activeQuote?.totalFee || 0;
   const donationAmount = donateToCharity ? 1.0 : 0;
-  const totalAmount = Math.round((itemPrice + protectionFee + effectiveShippingFee + donationAmount) * 100) / 100;
+  const localTotal = Math.round((itemPrice + protectionFee + effectiveShippingFee + donationAmount) * 100) / 100;
+  // The server's figure wins if it ever differs (say, rates changed since this
+  // app version shipped). Any change to the quote inputs clears it.
+  const [serverTotal, setServerTotal] = useState<number | null>(null);
+  useEffect(() => setServerTotal(null), [localTotal]);
+  const totalAmount = serverTotal ?? localTotal;
+  const formattedTotal = formatPrice(totalAmount, currency);
 
-  const klarnaInstallment = formatPrice(Math.round((totalAmount / 3) * 100) / 100, currency);
-  const clearpayInstallment = formatPrice(Math.round((totalAmount / 4) * 100) / 100, currency);
-
-  // Fetch Click & Collect points from backend when postcode changes
-  const fetchPoints = useCallback(async (pc: string) => {
-    if (!pc || pc.trim().length < 3) return;
-    setLoadingPoints(true);
-    try {
-      const res = await ordersService.getCollectionPoints(pc.trim());
-      if (res?.locations && res.locations.length > 0) {
-        const mapped: CollectionPoint[] = res.locations.map((loc: any) => ({
-          id: loc.id || loc.placeId || `pudo-${Math.random()}`,
-          name: loc.name,
-          address: loc.addressLine1 || loc.address || '',
-          city: loc.town || loc.city || 'London',
-          postcode: loc.postcode,
-          distance: `${loc.distanceMiles ?? 0.5} mi`,
-          hours: loc.openingHours?.monday ? `Mon-Fri: ${loc.openingHours.monday}` : 'Mon-Sat 08:30 - 18:00',
-        }));
-        setCollectionPoints(mapped);
-        setSelectedCollectionPoint(mapped[0]);
-      }
-    } catch {
-      // Keep defaults gracefully
-    } finally {
-      setLoadingPoints(false);
-    }
-  }, []);
+  // Depend on the user's id/role, not the object: a token refresh replaces the
+  // object and must not reload checkout over what the buyer has typed.
+  const userId = user?.id;
+  const userRole = user?.role;
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      if (params.listingId) {
-        const l = await listingsService.get(params.listingId);
-        setListing(l);
-      } else {
-        setListing({
-          id: 'showcase-1',
-          sellerId: 'demo-seller-1',
-          title: 'iPhone 14 Pro Max 256GB',
-          description: 'Pristine condition iPhone 14 Pro Max. Battery health 94%.',
-          deviceType: 'SMARTPHONE',
-          brand: 'Apple',
-          model: 'iPhone 14 Pro Max',
-          storageCapacity: '256GB',
-          color: 'Space Black',
-          condition: 'EXCELLENT',
-          conditionGrade: 'A',
-          price: 799,
-          currency: 'GBP',
-          originalPrice: 1199,
-          batteryHealth: 94,
-          freeShipping: false,
-          status: 'ACTIVE',
-          trustLensStatus: 'VERIFIED',
-          images: [
-            'https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=800&q=80',
-          ],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
+      if (!userId) {
+        router.replace('/(auth)/login');
+        return;
+      }
+      if (userRole === 'ADMIN') {
+        throw new Error('Administrator accounts cannot buy listings. Please sign in with a buyer account.');
+      }
+      if (!params.listingId) {
+        throw new Error('No item was selected. Please choose a device to buy.');
       }
 
-      if (params.clientSecret) {
-        await initPaymentSheet({
-          paymentIntentClientSecret: params.clientSecret,
-          merchantDisplayName: 'VeriBuy UK',
-          allowsDelayedPaymentMethods: false,
-        });
-      }
-    } catch {
-      setListing({
-        id: params.listingId || 'showcase-1',
-        sellerId: 'demo-seller-1',
-        title: 'iPhone 14 Pro Max 256GB',
-        description: 'Pristine condition iPhone 14 Pro Max.',
-        deviceType: 'SMARTPHONE',
-        brand: 'Apple',
-        model: 'iPhone 14 Pro Max',
-        storageCapacity: '256GB',
-        color: 'Space Black',
-        condition: 'EXCELLENT',
-        conditionGrade: 'A',
-        price: 799,
-        currency: 'GBP',
-        originalPrice: 1199,
-        batteryHealth: 94,
-        freeShipping: false,
-        status: 'ACTIVE',
-        trustLensStatus: 'VERIFIED',
-        images: [
-          'https://images.unsplash.com/photo-1695048133142-1a20484d2569?auto=format&fit=crop&w=800&q=80',
-        ],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      const l = await listingsService.get(params.listingId);
+      setListing(l);
+
+      // Create (or resume) the pending order now so the price shown is the
+      // server's price and the item is held while the buyer checks out.
+      const created = await ordersService.create({
+        buyerId: userId,
+        sellerId: l.sellerId,
+        listingId: l.id,
+        amount: Number(l.price),
+        currency: l.currency,
+        shippingService: 'TRACKED_48',
+        ...(params.offerId ? { offerId: params.offerId } : {}),
       });
+      setOrder(created.order);
+      setClientSecret(created.clientSecret);
+      setPaymentIntentId(created.paymentIntentId);
+
+      // Pre-fill from the saved profile (best effort).
+      try {
+        const profile = await usersService.getProfile(userId);
+        const addr = profile.address ?? null;
+        const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ');
+        if (fullName) {
+          setName((prev) => prev || fullName);
+          setCardholderName((prev) => prev || fullName);
+        }
+        if (addr?.line1) {
+          // Fill only empty fields so nothing the buyer typed is overwritten.
+          setLine1((prev) => prev || addr.line1 || '');
+          setLine2((prev) => prev || addr.line2 || '');
+          setCity((prev) => prev || addr.city || '');
+          setCounty((prev) => prev || addr.state || addr.city || '');
+          setPostalCode((prev) => prev || (addr.postalCode || '').toUpperCase());
+          setAddressPrefilled(true);
+        }
+      } catch {
+        // The buyer can type the address.
+      }
+    } catch (err) {
+      setLoadError(errorMessage(err, 'We could not start checkout for this item. Please try again.'));
     } finally {
       setLoading(false);
     }
-  }, [params.listingId, params.clientSecret]);
+  }, [params.listingId, params.offerId, userId, userRole]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  const fetchPoints = useCallback(async (pc: string) => {
+    if (!UK_POSTCODE.test(pc.trim())) {
+      setPointsError('Enter a full UK postcode to find pickup points.');
+      return;
+    }
+    setLoadingPoints(true);
+    setPointsError('');
+    try {
+      const res = await ordersService.getCollectionPoints(pc.trim());
+      const points = (res?.locations || []) as CollectionPoint[];
+      setCollectionPoints(points);
+      setSelectedCollectionPoint(points[0] ?? null);
+      if (points.length === 0) setPointsError('No pickup points found near that postcode.');
+    } catch (err) {
+      setCollectionPoints([]);
+      setSelectedCollectionPoint(null);
+      setPointsError(errorMessage(err, 'Could not load pickup points. Please try again.'));
+    } finally {
+      setLoadingPoints(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (deliveryMethod === 'CLICK_AND_COLLECT') {
+    if (deliveryMethod === 'CLICK_AND_COLLECT' && UK_POSTCODE.test(postalCode.trim())) {
       fetchPoints(postalCode);
     }
   }, [deliveryMethod, postalCode, fetchPoints]);
 
-  const validateCardholder = (): boolean => {
-    if (selectedPaymentSource === 'CARD') {
-      const trimmed = cardholderName.trim();
-      if (!trimmed || trimmed.length < 2) {
-        setCardholderError('Name on card is required and must match your payment card.');
-        return false;
-      }
-      if (!/^[a-zA-Z\s\-'.]+$/.test(trimmed)) {
-        setCardholderError('Please enter a valid cardholder name (letters, spaces, and hyphens only).');
-        return false;
-      }
+  const validate = (): Partial<Record<FieldKey, string>> => {
+    const errors: Partial<Record<FieldKey, string>> = {};
+    if (name.trim().length < 2) errors.name = 'Enter the recipient’s full name.';
+    if (deliveryMethod === 'HOME') {
+      if (line1.trim().length < 5) errors.line1 = 'Enter the first line of the address (at least 5 characters).';
+      if (city.trim().length < 2) errors.city = 'Enter the town or city.';
+      if (!UK_POSTCODE.test(postalCode.trim())) errors.postalCode = 'Enter a valid UK postcode, e.g. M1 1AE.';
+    } else if (!selectedCollectionPoint) {
+      errors.collectionPoint = 'Choose a pickup point.';
     }
-    setCardholderError('');
-    return true;
+    const card = cardholderName.trim();
+    if (card.length < 2) {
+      errors.cardholderName = 'Enter the name exactly as it appears on your card.';
+    } else if (!CARDHOLDER_NAME.test(card)) {
+      errors.cardholderName = 'Use letters, spaces, hyphens, apostrophes and full stops only.';
+    }
+    return errors;
   };
 
-  const onConfirmEscrowPayment = async () => {
-    if (!validateCardholder()) {
-      Alert.alert('Verification Required', 'Please enter a valid cardholder name matching your payment card before confirming.');
+  const scrollToFirstError = (errors: Partial<Record<FieldKey, string>>) => {
+    const order: FieldKey[] = ['name', 'line1', 'city', 'postalCode', 'collectionPoint', 'cardholderName'];
+    const first = order.find((k) => errors[k]);
+    const y = first ? fieldOffsets.current[first] : undefined;
+    if (y !== undefined) scrollRef.current?.scrollTo({ y: Math.max(0, y - 24), animated: true });
+  };
+
+  const onPay = async () => {
+    if (!order || !listing || !clientSecret || !paymentIntentId) return;
+    const errors = validate();
+    setFieldErrors(errors);
+    const count = Object.keys(errors).length;
+    if (count > 0) {
+      setFormError(count === 1 ? Object.values(errors)[0]! : `Please fix ${count} highlighted fields before paying.`);
+      scrollToFirstError(errors);
       return;
     }
-
+    setFormError('');
     setProcessing(true);
     try {
-      let orderId = activeOrderId;
-
-      // Ensure an order exists in backend
-      if (!orderId && listing) {
-        try {
-          const res = await ordersService.create({
-            buyerId: user?.id || 'demo-buyer',
-            sellerId: listing.sellerId,
-            listingId: listing.id,
-            amount: listing.price,
-            shippingAddress: {
+      // 1. Save delivery details on the order. The server recomputes shipping
+      //    and syncs the Stripe amount, so the buyer is charged what they see.
+      const address =
+        deliveryMethod === 'CLICK_AND_COLLECT' && selectedCollectionPoint
+          ? {
               name: name.trim(),
-              line1: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint.address : line1.trim(),
-              city: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint.city : city.trim(),
-              state: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint.city : city.trim(),
-              postal_code: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint.postcode : postalCode.trim(),
+              line1: `${selectedCollectionPoint.name}, ${selectedCollectionPoint.addressLine1}`,
+              city: selectedCollectionPoint.town,
+              state: selectedCollectionPoint.town,
+              postal_code: selectedCollectionPoint.postcode,
               country: 'GB',
-            },
-          });
-          orderId = res.order.id;
-          setActiveOrderId(res.order.id);
-          setActiveClientSecret(res.clientSecret);
-        } catch {
-          // Mock orderId for showcase
-          orderId = `vb-${Date.now().toString().slice(-6)}`;
-          setActiveOrderId(orderId);
-        }
+            }
+          : {
+              name: name.trim(),
+              line1: line1.trim(),
+              ...(line2.trim() ? { line2: line2.trim() } : {}),
+              city: city.trim(),
+              state: county.trim() || city.trim(),
+              postal_code: postalCode.trim().toUpperCase(),
+              country: 'GB',
+            };
+      const priced = await ordersService.updateShipping(order.id, {
+        shippingFee: effectiveShippingFee,
+        shippingService: selectedService,
+        deliveryMethod,
+        donationAmount,
+        ...(deliveryMethod === 'CLICK_AND_COLLECT' ? { collectionPoint: selectedCollectionPoint } : {}),
+        shippingAddress: address,
+      });
+
+      // Never open payment for an amount the buyer hasn't been shown.
+      const chargedTotal = Number(priced?.totalAmount);
+      if (Number.isFinite(chargedTotal) && Math.abs(chargedTotal - totalAmount) >= 0.01) {
+        setServerTotal(chargedTotal);
+        setFormError(
+          `Your total is now ${formatPrice(chargedTotal, currency)} after the latest postage price. You have not been charged. Check it and tap Pay again.`,
+        );
+        return;
       }
 
-      // Update shipping and billing metadata on server before confirmation
-      if (orderId) {
-        try {
-          await ordersService.updateShipping(orderId, {
-            shippingFee: effectiveShippingFee,
-            shippingService: selectedService,
-            deliveryMethod,
-            cardholderName: cardholderName.trim(),
-            donationAmount,
-            collectionPoint: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint : undefined,
-          });
-        } catch {
-          // Non-fatal if simulated
-        }
+      // 2. Take payment with Stripe's PaymentSheet. Nothing is shown as paid
+      //    unless Stripe completes.
+      const init = await initPaymentSheet({
+        paymentIntentClientSecret: clientSecret,
+        merchantDisplayName: 'VeriBuy',
+        returnURL: 'veribuy://stripe-redirect',
+        allowsDelayedPaymentMethods: false,
+        defaultBillingDetails: { name: cardholderName.trim(), address: { country: 'GB' } },
+      });
+      if (init.error) {
+        // Setup errors are written for developers, so never show them to buyers.
+        if (__DEV__) console.warn('initPaymentSheet failed:', init.error.message);
+        throw new Error('We could not start the payment. You have not been charged. Please try again.');
       }
 
-      // Confirm with Stripe if PaymentSheet is initialized
-      if (activeClientSecret) {
-        const { error } = await presentPaymentSheet();
-        if (error) {
-          Alert.alert('Payment Authorization Failed', error.message);
-          return;
-        }
+      const result = await presentPaymentSheet();
+      if (result.error) {
+        // Closing the sheet isn't an error worth an alert.
+        if ((result.error as { code?: string }).code === 'Canceled') return;
+        throw new Error(result.error.message);
       }
 
-      // Confirm payment in backend escrow
-      if (orderId) {
-        await ordersService.confirmPayment(orderId).catch(() => {});
+      // 3. Record the payment. If this call fails the Stripe webhook still
+      //    settles the order, so tell the buyer honestly rather than erroring.
+      let confirmed = true;
+      try {
+        await ordersService.confirmPayment(order.id, paymentIntentId);
+      } catch {
+        confirmed = false;
       }
 
       Alert.alert(
-        '🛡️ Escrow Funds Ringfenced',
-        `Payment of ${formatPrice(totalAmount, currency)} successfully authorized into VeriBuy Escrow Vault!\n\nSeller has been notified to dispatch with tamper-evident seal. Funds are released only after your 48-hour inspection.`,
+        'Payment received',
+        confirmed
+          ? `${formattedTotal} is held securely until you confirm the device arrived as described. We've told the seller to post it.`
+          : `Your payment went through. We're finishing setting up your order — it will appear in Orders shortly.`,
         [
           {
-            text: 'Track Escrow Pipeline',
-            onPress: () => router.replace(orderId ? `/order/${orderId}` : '/(main)/orders'),
+            text: 'View order',
+            onPress: () => {
+              // Clear checkout from the stack so Back can't re-open a paid order.
+              if (router.canDismiss()) router.dismissAll();
+              router.push(`/order/${order.id}`);
+            },
           },
         ],
       );
-    } catch (e: any) {
-      Alert.alert('Escrow Error', e?.message || 'Could not complete escrow authorization.');
+    } catch (err) {
+      const message = errorMessage(err, 'Your payment did not go through. You have not been charged.');
+      // Shown inline as well: alerts are easy to dismiss and don't exist on web.
+      setFormError(message);
+      Alert.alert('Payment not completed', message);
     } finally {
       setProcessing(false);
     }
   };
 
-  const formattedTotal = formatPrice(totalAmount, currency);
+  const recordOffset = (key: FieldKey) => (e: { nativeEvent: { layout: { y: number } } }) => {
+    fieldOffsets.current[key] = e.nativeEvent.layout.y;
+  };
+
+  const inputClass = (key: FieldKey) =>
+    `bg-[#F5F5F0] p-3 rounded-xl border text-sm ${fieldErrors[key] ? 'border-rose-500' : 'border-borderc'}`;
+
+  const FieldError = ({ k }: { k: FieldKey }) =>
+    fieldErrors[k] ? <Text className="text-rose-600 text-[11px] font-semibold mt-1">{fieldErrors[k]}</Text> : null;
 
   if (loading) {
     return (
       <Screen style={{ justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#059669" />
-        <Text className="text-text-muted text-xs mt-3">Initialising Secure Escrow Session...</Text>
+        <ActivityIndicator size="large" color="#2D7A4F" />
+        <Text className="text-text-muted text-xs mt-3">Preparing secure checkout…</Text>
       </Screen>
     );
   }
 
-  return (
-    <Screen style={{ backgroundColor: '#F8F9FF', paddingTop: Platform.OS === 'web' ? 16 : 44 }}>
-      {/* ── Top Header Bar ──────────────────────────────────────────────── */}
-      <View className="flex-row items-center justify-between mb-3 px-1">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-9 h-9 rounded-full bg-white border border-borderc items-center justify-center shadow-xs"
-        >
-          <Text className="text-base font-bold text-text">‹</Text>
+  if (loadError || !listing || !order) {
+    return (
+      <Screen style={{ justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <Text className="text-lg font-black text-text mb-2 text-center">Checkout unavailable</Text>
+        <Text className="text-sm text-text-muted text-center mb-5">
+          {loadError || 'We could not start checkout for this item.'}
+        </Text>
+        <TouchableOpacity onPress={load} className="bg-[#2D7A4F] px-5 py-3 rounded-xl mb-3" accessibilityRole="button">
+          <Text className="text-white font-bold">Try again</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
+          <Text className="text-emerald-700 font-bold">Go back</Text>
+        </TouchableOpacity>
+      </Screen>
+    );
+  }
 
-        <View className="flex-row items-center gap-2">
-          <BrandLogo height={38} />
-          <Text className="text-xs font-black text-text">Escrow Checkout</Text>
-        </View>
+  const coverImage = listing.imageUrl || listing.images?.[0];
+  const verified = listing.trustLensStatus === 'PASSED';
 
-        <View className="w-9 h-9 rounded-full bg-[#0B192C] items-center justify-center">
-          <Text className="text-white text-xs font-bold">🛡️</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={{ paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        {/* ── Secure Banner ─────────────────────────────────────────────── */}
-        <View className="bg-white border border-borderc rounded-2xl p-3 mb-3 shadow-xs">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <Text className="text-emerald-700 text-sm">🔒</Text>
-              <Text className="text-xs font-black text-text">Bank-Grade Escrow Vault</Text>
-            </View>
-            <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex-row items-center gap-1">
-              <View className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-              <Text className="text-[10px] font-black text-emerald-800">Protected</Text>
-            </View>
-          </View>
-          <Text className="text-[10px] font-bold text-text-muted mt-1 uppercase tracking-wider">
-            Tier-4 Encrypted • Stripe Connect (UK) Ltd
-          </Text>
-        </View>
-
-        {/* ── Item Summary & Financial Breakdown ────────────────────────── */}
-        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3 shadow-xs">
+  return (
+    <Screen>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ paddingBottom: 140 }}
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Item & price breakdown */}
+        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3">
           <View className="flex-row gap-3 mb-3 pb-3 border-b border-borderc">
-            <View className="w-20 h-20 rounded-xl bg-surface-canvas overflow-hidden relative items-center justify-center border border-borderc">
-              {listing?.images?.[0] ? (
-                <Image
-                  source={{ uri: listing.images[0] }}
-                  className="w-full h-full"
-                  resizeMode="cover"
-                />
+            <View className="w-20 h-20 rounded-xl bg-surface-canvas overflow-hidden items-center justify-center border border-borderc">
+              {coverImage ? (
+                <Image source={{ uri: coverImage }} className="w-full h-full" resizeMode="cover" accessibilityIgnoresInvertColors />
               ) : (
-                <Text className="text-2xl">📱</Text>
+                <Ionicons name={deviceIcon(listing.deviceType)} size={26} color="#565959" />
               )}
-              {listing?.storageCapacity ? (
-                <View className="absolute bottom-1 right-1 bg-black/80 px-1.5 py-0.5 rounded">
-                  <Text className="text-[8px] font-black text-white">{listing.storageCapacity}</Text>
+            </View>
+            <View className="flex-1">
+              {verified ? (
+                <View className="self-start bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 mb-1">
+                  <Text className="text-[11px] font-bold text-emerald-800">✓ Trust Lens verified</Text>
                 </View>
               ) : null}
-            </View>
-
-            <View className="flex-1">
-              <View className="flex-row items-center gap-1.5 mb-1">
-                <View className="bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  <Text className="text-[9px] font-bold text-emerald-800">✓ Verified Listing</Text>
-                </View>
-                {listing?.originalPrice && listing.originalPrice > listing.price ? (
-                  <View className="bg-[#FFF1F2] px-2 py-0.5 rounded-full border border-rose-200">
-                    <Text className="text-[9px] font-bold text-[#E11D48]">
-                      Save {Math.round(((listing.originalPrice - listing.price) / listing.originalPrice) * 100)}%
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-
-              <Text className="text-text font-black text-sm mb-0.5">
-                {listing?.title || 'Electronics Item'}
-              </Text>
-              <Text className="text-text-muted text-[11px] mb-1">
-                {listing?.color || 'Original'} • {listing?.conditionGrade ? `Grade ${listing.conditionGrade}` : 'Excellent Condition'}
-              </Text>
-              <Text className="text-emerald-700 text-[10px] font-bold">
-                🪪 GSMA Blacklist &amp; Diagnostics Verified
+              <Text className="text-text font-black text-sm mb-0.5">{listing.title}</Text>
+              <Text className="text-text-muted text-[11px]">
+                {[listing.color, listing.conditionGrade ? `Grade ${listing.conditionGrade}` : null].filter(Boolean).join(' • ')}
               </Text>
             </View>
           </View>
 
-          {/* Pricing Ledger */}
-          <View className="space-y-2 mb-3">
-            <View className="flex-row items-center justify-between">
-              <Text className="text-xs text-text-muted">Device Subtotal</Text>
-              <Text className="text-xs font-bold text-text">{formatPrice(itemPrice, currency)}</Text>
-            </View>
-
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-1.5">
-                <Text className="text-xs text-text-muted">Buyer Protection Fee</Text>
-                <View className="bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                  <Text className="text-[9px] font-bold text-emerald-800">48h Escrow Guarantee</Text>
-                </View>
-              </View>
-              <Text className="text-xs font-bold text-emerald-700">
-                {formatPrice(protectionFee, currency)}
-              </Text>
-            </View>
-
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-1.5">
-                <Text className="text-xs text-text-muted">
-                  {formatShippingService(selectedService)} 🚚
-                </Text>
-                {listing?.freeShipping ? (
-                  <View className="bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                    <Text className="text-[9px] font-bold text-emerald-800">Seller Paid</Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text className="text-xs font-bold text-emerald-700">
-                {listing?.freeShipping ? 'FREE' : formatPrice(effectiveShippingFee, currency)}
-              </Text>
-            </View>
-
-            {donateToCharity && (
-              <View className="flex-row items-center justify-between bg-rose-50 p-2 rounded-xl border border-rose-200">
-                <View className="flex-row items-center gap-1.5">
-                  <Text className="text-xs">❤️</Text>
-                  <Text className="text-xs font-bold text-rose-900">Good Things Foundation (Digital Inclusion)</Text>
-                </View>
-                <Text className="text-xs font-bold text-rose-800">+£1.00</Text>
-              </View>
-            )}
+          <View className="gap-2 mb-3">
+            <Row label="Item price" value={formatPrice(itemPrice, currency)} />
+            <Row label={`Buyer Protection (${getBuyerProtectionFeePercent()}%)`} value={formatPrice(protectionFee, currency)} />
+            <Row
+              label={formatShippingService(selectedService)}
+              value={listing.freeShipping ? 'Free (seller pays)' : formatPrice(effectiveShippingFee, currency)}
+            />
+            {donateToCharity ? <Row label="Donation to Good Things Foundation" value={formatPrice(1, currency)} /> : null}
           </View>
 
           <View className="pt-3 border-t border-borderc flex-row items-baseline justify-between">
             <View>
-              <Text className="text-sm font-black text-text">Total Payable</Text>
-              <Text className="text-[9px] text-text-muted uppercase font-bold tracking-wider">
-                VAT Included • Held in Escrow
-              </Text>
+              <Text className="text-sm font-black text-text">Total</Text>
+              <Text className="text-[11px] text-text-muted">Held in escrow until you confirm delivery</Text>
             </View>
             <Text className="text-2xl font-black text-text">{formattedTotal}</Text>
           </View>
         </View>
 
-        {/* ── Delivery Method (Home Delivery vs Click & Collect) ─────────── */}
-        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3 shadow-xs">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-[11px] font-black text-text uppercase tracking-wider">
-              Delivery Method
-            </Text>
-            <View className="bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-              <Text className="text-[9px] font-bold text-slate-700">Royal Mail UK Network</Text>
-            </View>
+        {/* Delivery */}
+        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3">
+          <Text className="text-[11px] font-black text-text uppercase tracking-wider mb-3">Delivery</Text>
+          <View className="flex-row gap-2 mb-4">
+            {(['HOME', 'CLICK_AND_COLLECT'] as const).map((m) => {
+              const selected = deliveryMethod === m;
+              return (
+                <TouchableOpacity
+                  key={m}
+                  onPress={() => setDeliveryMethod(m)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  className={`flex-1 p-3 rounded-xl border ${selected ? 'bg-emerald-50/60 border-emerald-500' : 'bg-white border-borderc'}`}
+                >
+                  <Text className="text-xs font-black text-text">{m === 'HOME' ? 'Home delivery' : 'Click & Collect'}</Text>
+                  <Text className="text-[11px] text-text-muted mt-0.5">
+                    {m === 'HOME' ? 'Royal Mail to your door' : 'Post Office or pickup point'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {/* Delivery Mode Pills */}
-          <View className="flex-row gap-2 mb-3">
-            <TouchableOpacity
-              onPress={() => setDeliveryMethod('HOME')}
-              className={`flex-1 p-3 rounded-xl border ${
-                deliveryMethod === 'HOME'
-                  ? 'bg-emerald-50/60 border-emerald-500'
-                  : 'bg-white border-borderc'
-              }`}
-            >
-              <View className="flex-row items-center justify-between mb-1">
-                <Text className="text-sm">🚚</Text>
-                <View
-                  className={`w-4 h-4 rounded-full items-center justify-center ${
-                    deliveryMethod === 'HOME' ? 'bg-emerald-600' : 'border border-borderc'
-                  }`}
-                >
-                  {deliveryMethod === 'HOME' ? <Text className="text-white text-[9px] font-bold">✓</Text> : null}
-                </View>
-              </View>
-              <Text className="text-xs font-black text-text">Home Delivery</Text>
-              <Text className="text-[10px] text-text-muted mt-0.5">Direct to doorstep</Text>
-            </TouchableOpacity>
+          <View onLayout={recordOffset('name')} className="mb-3">
+            <Text className="text-xs font-bold text-text mb-1">Full name</Text>
+            <TextInput
+                placeholderTextColor={PLACEHOLDER_COLOR}
+              value={name}
+              onChangeText={setName}
+              placeholder="Recipient full name"
+              autoComplete="name"
+              accessibilityLabel="Recipient full name"
+              className={inputClass('name')}
+            />
+            <FieldError k="name" />
+          </View>
 
-            <TouchableOpacity
-              onPress={() => setDeliveryMethod('CLICK_AND_COLLECT')}
-              className={`flex-1 p-3 rounded-xl border ${
-                deliveryMethod === 'CLICK_AND_COLLECT'
-                  ? 'bg-emerald-50/60 border-emerald-500'
-                  : 'bg-white border-borderc'
-              }`}
-            >
-              <View className="flex-row items-center justify-between mb-1">
-                <Text className="text-sm">🏪</Text>
-                <View
-                  className={`w-4 h-4 rounded-full items-center justify-center ${
-                    deliveryMethod === 'CLICK_AND_COLLECT' ? 'bg-emerald-600' : 'border border-borderc'
-                  }`}
-                >
-                  {deliveryMethod === 'CLICK_AND_COLLECT' ? (
-                    <Text className="text-white text-[9px] font-bold">✓</Text>
-                  ) : null}
+          {deliveryMethod === 'HOME' ? (
+            <>
+              {addressPrefilled ? (
+                <Text className="text-[11px] text-text-muted mb-2">
+                  ✓ Filled in from your saved address. Change anything that’s different for this order.
+                </Text>
+              ) : null}
+              <View onLayout={recordOffset('line1')} className="mb-3">
+                <Text className="text-xs font-bold text-text mb-1">Address line 1</Text>
+                <TextInput
+                placeholderTextColor={PLACEHOLDER_COLOR} value={line1} onChangeText={setLine1} placeholder="1 Example Street" autoComplete="address-line1" accessibilityLabel="Address line 1" className={inputClass('line1')} />
+                <FieldError k="line1" />
+              </View>
+              <View className="mb-3">
+                <Text className="text-xs font-bold text-text mb-1">Address line 2 (optional)</Text>
+                <TextInput
+                placeholderTextColor={PLACEHOLDER_COLOR} value={line2} onChangeText={setLine2} placeholder="Flat 4B" autoComplete="address-line2" accessibilityLabel="Address line 2" className="bg-[#F5F5F0] p-3 rounded-xl border border-borderc text-sm" />
+              </View>
+              <View className="flex-row gap-2 mb-3">
+                <View className="flex-1" onLayout={recordOffset('city')}>
+                  <Text className="text-xs font-bold text-text mb-1">Town or city</Text>
+                  <TextInput
+                placeholderTextColor={PLACEHOLDER_COLOR} value={city} onChangeText={setCity} placeholder="London" accessibilityLabel="Town or city" className={inputClass('city')} />
+                  <FieldError k="city" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-xs font-bold text-text mb-1">County (optional)</Text>
+                  <TextInput
+                placeholderTextColor={PLACEHOLDER_COLOR} value={county} onChangeText={setCounty} placeholder="Greater London" accessibilityLabel="County" className="bg-[#F5F5F0] p-3 rounded-xl border border-borderc text-sm" />
                 </View>
               </View>
-              <Text className="text-xs font-black text-text">Click &amp; Collect</Text>
-              <Text className="text-[10px] text-text-muted mt-0.5">Post Office / PUDO</Text>
-            </TouchableOpacity>
+            </>
+          ) : null}
+
+          <View onLayout={recordOffset('postalCode')} className="mb-3">
+            <Text className="text-xs font-bold text-text mb-1">Postcode</Text>
+            <TextInput
+                placeholderTextColor={PLACEHOLDER_COLOR}
+              value={postalCode}
+              onChangeText={(v) => setPostalCode(v.toUpperCase())}
+              placeholder="M1 1AE"
+              autoCapitalize="characters"
+              autoComplete="postal-code"
+              accessibilityLabel="Postcode"
+              className={`${inputClass('postalCode')} font-mono`}
+            />
+            <FieldError k="postalCode" />
           </View>
 
           {deliveryMethod === 'CLICK_AND_COLLECT' ? (
-            <View className="space-y-2">
-              <View className="flex-row items-center justify-between mb-1">
-                <Text className="text-[11px] font-bold text-text-muted">
-                  Nearest Pickup Points ({postalCode}):
-                </Text>
-                {loadingPoints && <ActivityIndicator size="small" color="#059669" />}
-              </View>
-
+            <View onLayout={recordOffset('collectionPoint')} className="gap-2">
+              {loadingPoints ? <ActivityIndicator size="small" color="#2D7A4F" /> : null}
+              {pointsError ? <Text className="text-[11px] text-rose-600">{pointsError}</Text> : null}
               {collectionPoints.map((pt) => {
-                const isSelected = selectedCollectionPoint?.id === pt.id;
+                const selected = selectedCollectionPoint?.id === pt.id;
                 return (
                   <TouchableOpacity
                     key={pt.id}
                     onPress={() => setSelectedCollectionPoint(pt)}
-                    className={`p-3 rounded-xl border ${
-                      isSelected ? 'bg-emerald-50/50 border-emerald-500' : 'bg-slate-50 border-borderc'
-                    }`}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    className={`p-3 rounded-xl border ${selected ? 'bg-emerald-50/50 border-emerald-500' : 'bg-slate-50 border-borderc'}`}
                   >
-                    <View className="flex-row items-start justify-between">
-                      <View className="flex-1 mr-2">
-                        <Text className="text-xs font-black text-text">{pt.name}</Text>
-                        <Text className="text-[11px] text-text-muted mt-0.5">
-                          {pt.address}, {pt.postcode}
-                        </Text>
-                        <Text className="text-[10px] text-emerald-700 font-bold mt-1">🕒 {pt.hours}</Text>
-                      </View>
-                      <View className="items-end gap-1">
-                        <View className="bg-slate-200/70 px-1.5 py-0.5 rounded">
-                          <Text className="text-[9px] font-bold text-slate-800">{pt.distance}</Text>
-                        </View>
-                        {isSelected ? <Text className="text-emerald-700 text-xs font-bold">✓</Text> : null}
-                      </View>
-                    </View>
+                    <Text className="text-xs font-black text-text">{pt.name}</Text>
+                    <Text className="text-[11px] text-text-muted mt-0.5">
+                      {pt.addressLine1}, {pt.town} {pt.postcode}
+                      {pt.distanceMiles != null ? ` · ${pt.distanceMiles} mi` : ''}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
-
-              <View className="bg-blue-50 border border-blue-100 p-2.5 rounded-xl flex-row items-start gap-2 mt-1">
-                <Text className="text-xs">📱</Text>
-                <Text className="text-[10px] text-blue-900 leading-tight">
-                  Upon dispatch, you will receive a secure 6-digit PIN and QR pass to present at the counter with your ID.
-                </Text>
-              </View>
+              <FieldError k="collectionPoint" />
             </View>
-          ) : (
-            <>
-              {/* Home Delivery Address Details */}
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-[11px] font-black text-text uppercase tracking-wider">
-                  Address Details
-                </Text>
-                <TouchableOpacity onPress={() => setEditAddress(!editAddress)}>
-                  <Text className="text-xs font-bold text-emerald-700">
-                    {editAddress ? 'Save Address' : 'Change'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+          ) : null}
 
-              {editAddress ? (
-                <View className="space-y-2 mt-2">
-                  <TextInput
-                    value={name}
-                    onChangeText={setName}
-                    placeholder="Recipient Full Name"
-                    className="bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
-                  />
-                  <TextInput
-                    value={line1}
-                    onChangeText={setLine1}
-                    placeholder="Address Line 1"
-                    className="bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
-                  />
-                  <View className="flex-row gap-2">
-                    <TextInput
-                      value={city}
-                      onChangeText={setCity}
-                      placeholder="City"
-                      className="flex-1 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs"
-                    />
-                    <TextInput
-                      value={postalCode}
-                      onChangeText={(v) => setPostalCode(v.toUpperCase())}
-                      placeholder="Postcode"
-                      className="w-28 bg-[#eff4ff] p-2.5 rounded-xl border border-borderc text-xs uppercase font-mono"
-                    />
-                  </View>
-                </View>
-              ) : (
-                <View className="flex-row items-start gap-2.5 mb-3">
-                  <View className="w-8 h-8 rounded-full bg-[#eff4ff] items-center justify-center mt-0.5">
-                    <Text className="text-sm">📍</Text>
-                  </View>
-                  <View className="flex-1">
-                    <View className="flex-row items-center gap-2 mb-0.5">
-                      <Text className="text-xs font-black text-text">{name}</Text>
-                      <View className="bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                        <Text className="text-[9px] font-bold text-slate-700">UK Mainland</Text>
-                      </View>
+          {deliveryMethod === 'HOME' && shippingQuotes.length > 0 ? (
+            <View className="mt-2 pt-3 border-t border-borderc gap-2">
+              <Text className="text-[11px] font-black text-text uppercase tracking-wider">Delivery speed</Text>
+              {shippingQuotes.map((quote) => {
+                const selected = selectedService === quote.service;
+                return (
+                  <TouchableOpacity
+                    key={quote.service}
+                    onPress={() => setSelectedService(quote.service)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    className={`p-3 rounded-xl border flex-row items-center justify-between ${selected ? 'bg-emerald-50/60 border-emerald-500' : 'bg-white border-borderc'}`}
+                  >
+                    <View className="flex-1 mr-2">
+                      <Text className="text-xs font-black text-text">{quote.label}</Text>
+                      <Text className="text-[11px] text-text-muted mt-0.5">
+                        {quote.estimate} • covered up to £{quote.insuranceCover}
+                      </Text>
                     </View>
-                    <Text className="text-[11px] text-text-muted leading-relaxed">
-                      {line1}, {city}, {postalCode}, {country}
+                    <Text className="text-xs font-black text-text">
+                      {listing.freeShipping ? 'Free' : formatPrice(quote.totalFee, currency)}
                     </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Royal Mail Service Tier Selection */}
-              <View className="mt-3 pt-3 border-t border-borderc">
-                <Text className="text-[11px] font-black text-text uppercase tracking-wider mb-2">
-                  Select Royal Mail Delivery Speed
-                </Text>
-                <View className="space-y-2">
-                  {shippingQuotes.map((quote) => {
-                    const isSelected = selectedService === quote.service;
-                    return (
-                      <TouchableOpacity
-                        key={quote.service}
-                        onPress={() => setSelectedService(quote.service)}
-                        className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                          isSelected
-                            ? 'bg-emerald-50/60 border-emerald-500'
-                            : 'bg-white border-borderc'
-                        }`}
-                      >
-                        <View className="flex-1 mr-2">
-                          <View className="flex-row items-center gap-2">
-                            <Text className="text-xs font-black text-text">{quote.label}</Text>
-                            {quote.isRecommended && (
-                              <View className="bg-emerald-100 px-1.5 py-0.2 rounded">
-                                <Text className="text-[9px] font-bold text-emerald-800">Recommended</Text>
-                              </View>
-                            )}
-                          </View>
-                          <Text className="text-[10px] text-text-muted mt-0.5">
-                            {quote.estimate} • Up to £{quote.insuranceCover} Transit Cover
-                          </Text>
-                        </View>
-                        <View className="items-end">
-                          <Text className="text-xs font-black text-text">
-                            {listing?.freeShipping ? 'FREE' : formatPrice(quote.totalFee, currency)}
-                          </Text>
-                          {isSelected ? (
-                            <Text className="text-emerald-700 text-xs font-bold">✓ Selected</Text>
-                          ) : null}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            </>
-          )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
 
-        {/* ── Select Payment Source & Cardholder Verification ────────────── */}
-        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3 shadow-xs">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-[11px] font-black text-text uppercase tracking-wider">
-              Payment Information &amp; Verification
-            </Text>
-            <View className="flex-row items-center gap-1">
-              <Text className="text-[10px] font-bold text-emerald-700">🛡️ Stripe Protected</Text>
-            </View>
-          </View>
-
-          {/* Payment Method Selector */}
-          <View className="space-y-2 mb-4">
-            {/* Credit / Debit Card */}
-            <TouchableOpacity
-              onPress={() => setSelectedPaymentSource('CARD')}
-              className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                selectedPaymentSource === 'CARD'
-                  ? 'bg-emerald-50/50 border-emerald-500'
-                  : 'bg-white border-borderc'
-              }`}
-            >
-              <View className="flex-row items-center gap-3">
-                <View className="w-9 h-9 rounded-xl bg-[#eff4ff] items-center justify-center border border-borderc">
-                  <Text className="text-base">💳</Text>
-                </View>
-                <View>
-                  <Text className="text-xs font-black text-text">Credit / Debit Card</Text>
-                  <Text className="text-[10px] text-text-muted">Visa, Mastercard, Amex via Stripe Vault</Text>
-                </View>
-              </View>
-              <View
-                className={`w-5 h-5 rounded-full items-center justify-center ${
-                  selectedPaymentSource === 'CARD' ? 'bg-emerald-600' : 'border border-borderc'
-                }`}
-              >
-                {selectedPaymentSource === 'CARD' ? (
-                  <Text className="text-white text-[10px] font-bold">✓</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-
-            {/* Apple Pay */}
-            <TouchableOpacity
-              onPress={() => setSelectedPaymentSource('APPLE_PAY')}
-              className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                selectedPaymentSource === 'APPLE_PAY'
-                  ? 'bg-emerald-50/50 border-emerald-500'
-                  : 'bg-white border-borderc'
-              }`}
-            >
-              <View className="flex-row items-center gap-3">
-                <View className="w-9 h-9 rounded-xl bg-black items-center justify-center">
-                  <Text className="text-white text-base"></Text>
-                </View>
-                <View>
-                  <Text className="text-xs font-black text-text">Apple Pay</Text>
-                  <Text className="text-[10px] text-text-muted">Instant biometric escrow authentication</Text>
-                </View>
-              </View>
-              <View
-                className={`w-5 h-5 rounded-full items-center justify-center ${
-                  selectedPaymentSource === 'APPLE_PAY' ? 'bg-emerald-600' : 'border border-borderc'
-                }`}
-              >
-                {selectedPaymentSource === 'APPLE_PAY' ? (
-                  <Text className="text-white text-[10px] font-bold">✓</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-
-            {/* Google Pay */}
-            <TouchableOpacity
-              onPress={() => setSelectedPaymentSource('GOOGLE_PAY')}
-              className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                selectedPaymentSource === 'GOOGLE_PAY'
-                  ? 'bg-emerald-50/50 border-emerald-500'
-                  : 'bg-white border-borderc'
-              }`}
-            >
-              <View className="flex-row items-center gap-3">
-                <View className="w-9 h-9 rounded-xl bg-[#eff4ff] items-center justify-center border border-borderc">
-                  <Text className="text-base font-black text-rose-500">G</Text>
-                </View>
-                <View>
-                  <Text className="text-xs font-black text-text">Google Pay</Text>
-                  <Text className="text-[10px] text-text-muted">One-tap checkout with Google Wallet</Text>
-                </View>
-              </View>
-              <View
-                className={`w-5 h-5 rounded-full items-center justify-center ${
-                  selectedPaymentSource === 'GOOGLE_PAY' ? 'bg-emerald-600' : 'border border-borderc'
-                }`}
-              >
-                {selectedPaymentSource === 'GOOGLE_PAY' ? (
-                  <Text className="text-white text-[10px] font-bold">✓</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-
-            {/* Klarna (Pay in 3) */}
-            <TouchableOpacity
-              onPress={() => setSelectedPaymentSource('KLARNA')}
-              className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                selectedPaymentSource === 'KLARNA'
-                  ? 'bg-purple-50/50 border-purple-500'
-                  : 'bg-white border-borderc'
-              }`}
-            >
-              <View className="flex-row items-center gap-3">
-                <View className="w-9 h-9 rounded-xl bg-[#FFB3C7] items-center justify-center">
-                  <Text className="text-black text-xs font-black">Klarna.</Text>
-                </View>
-                <View>
-                  <Text className="text-xs font-black text-text">Klarna (Pay in 3)</Text>
-                  <Text className="text-[10px] text-text-muted">3 interest-free payments of {klarnaInstallment}</Text>
-                </View>
-              </View>
-              <View
-                className={`w-5 h-5 rounded-full items-center justify-center ${
-                  selectedPaymentSource === 'KLARNA' ? 'bg-purple-600' : 'border border-borderc'
-                }`}
-              >
-                {selectedPaymentSource === 'KLARNA' ? (
-                  <Text className="text-white text-[10px] font-bold">✓</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-
-            {/* Clearpay (Pay in 4) */}
-            <TouchableOpacity
-              onPress={() => setSelectedPaymentSource('CLEARPAY')}
-              className={`p-3 rounded-xl border flex-row items-center justify-between ${
-                selectedPaymentSource === 'CLEARPAY'
-                  ? 'bg-emerald-50/50 border-emerald-500'
-                  : 'bg-white border-borderc'
-              }`}
-            >
-              <View className="flex-row items-center gap-3">
-                <View className="w-9 h-9 rounded-xl bg-[#B2FCE4] items-center justify-center">
-                  <Text className="text-black text-xs font-black">clearpay</Text>
-                </View>
-                <View>
-                  <Text className="text-xs font-black text-text">Clearpay (Pay in 4)</Text>
-                  <Text className="text-[10px] text-text-muted">4 interest-free payments of {clearpayInstallment}</Text>
-                </View>
-              </View>
-              <View
-                className={`w-5 h-5 rounded-full items-center justify-center ${
-                  selectedPaymentSource === 'CLEARPAY' ? 'bg-emerald-600' : 'border border-borderc'
-                }`}
-              >
-                {selectedPaymentSource === 'CLEARPAY' ? (
-                  <Text className="text-white text-[10px] font-bold">✓</Text>
-                ) : null}
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          {/* ── CARDHOLDER NAME MATCHING VERIFICATION ── */}
-          <View className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mt-1">
-            <View className="flex-row items-center gap-1.5 mb-1.5">
-              <Text className="text-sm">🪪</Text>
-              <Text className="text-xs font-black text-slate-900">
-                Cardholder Name (as printed on your card) *
-              </Text>
-            </View>
-
-            <TextInput
-              value={cardholderName}
-              onChangeText={(text) => {
-                setCardholderName(text);
-                if (cardholderError) setCardholderError('');
-              }}
-              placeholder="e.g. ALEX JENKINS"
-              autoCapitalize="characters"
-              className={`bg-white p-2.5 rounded-lg border text-xs font-medium ${
-                cardholderError ? 'border-rose-500' : 'border-slate-300'
-              }`}
-            />
-
-            {cardholderError ? (
-              <Text className="text-rose-600 text-[11px] font-semibold mt-1">
-                {cardholderError}
-              </Text>
-            ) : null}
-
-            {/* Anti-Fraud Notice Required by User */}
-            <View className="flex-row items-start gap-1.5 mt-2 bg-amber-50/70 border border-amber-200/80 p-2 rounded-lg">
-              <Text className="text-amber-800 text-xs">⚠️</Text>
-              <Text className="text-[11px] text-amber-900 leading-tight flex-1">
-                <Text className="font-bold">Important Anti-Fraud Notice:</Text> The name on the card must match what you are putting here. This is checked with Stripe before confirming to keep card processing safe and protect escrow funds.
-              </Text>
-            </View>
-          </View>
+        {/* Payment */}
+        <View className="bg-white rounded-2xl border border-borderc p-4 mb-3" onLayout={recordOffset('cardholderName')}>
+          <Text className="text-[11px] font-black text-text uppercase tracking-wider mb-1">Payment</Text>
+          <Text className="text-[11px] text-text-muted mb-3">
+            You’ll choose card, Klarna or Clearpay in Stripe’s secure payment sheet.
+          </Text>
+          <Text className="text-xs font-bold text-text mb-1">Name on card</Text>
+          <TextInput
+                placeholderTextColor={PLACEHOLDER_COLOR}
+            value={cardholderName}
+            onChangeText={(t) => setCardholderName(t)}
+            placeholder="As printed on your card"
+            autoComplete="name"
+            accessibilityLabel="Name on card"
+            className={inputClass('cardholderName')}
+          />
+          <FieldError k="cardholderName" />
+          <Text className="text-[11px] text-text-muted mt-1.5">
+            Letters, spaces, hyphens, apostrophes and full stops only. Your bank may use it for security checks.
+          </Text>
         </View>
 
-        {/* ── Donate to Charity Toggle ──────────────────────────────────── */}
+        {/* Optional donation */}
         <TouchableOpacity
           onPress={() => setDonateToCharity(!donateToCharity)}
-          className={`bg-white rounded-2xl border p-4 mb-3 shadow-xs flex-row items-start gap-3 ${
-            donateToCharity ? 'border-rose-400 bg-rose-50/30' : 'border-borderc'
-          }`}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: donateToCharity }}
+          className={`bg-white rounded-2xl border p-4 mb-3 flex-row items-start gap-3 ${donateToCharity ? 'border-rose-400' : 'border-borderc'}`}
         >
-          <View
-            className={`w-6 h-6 rounded-lg items-center justify-center mt-0.5 ${
-              donateToCharity ? 'bg-rose-500' : 'border border-slate-300 bg-slate-50'
-            }`}
-          >
+          <View className={`w-6 h-6 rounded-lg items-center justify-center ${donateToCharity ? 'bg-rose-500' : 'border border-slate-300'}`}>
             {donateToCharity ? <Text className="text-white text-xs font-bold">✓</Text> : null}
           </View>
           <View className="flex-1">
-            <View className="flex-row items-center justify-between mb-0.5">
-              <View className="flex-row items-center gap-1.5">
-                <Text className="text-xs">❤️</Text>
-                <Text className="text-xs font-black text-text">Donate £1.00 to Digital Inclusion UK</Text>
-              </View>
-              <Text className="text-xs font-black text-rose-600">+£1.00</Text>
-            </View>
-            <Text className="text-[11px] text-text-muted leading-relaxed">
-              Provides refurbished devices and vital skills to UK families in need via Good Things Foundation (Reg. Charity #1165209).
-            </Text>
+            <Text className="text-xs font-black text-text">Add £1.00 for Good Things Foundation</Text>
+            <Text className="text-[11px] text-text-muted">Optional donation supporting digital inclusion in the UK.</Text>
           </View>
         </TouchableOpacity>
 
-        {/* ── Money-Back Guarantee Callout ───────────────────────────────── */}
-        <View className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4 flex-row items-start gap-3">
-          <View className="w-8 h-8 rounded-full bg-emerald-600 items-center justify-center">
-            <Text className="text-white text-sm font-bold">🛡️</Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-xs font-black text-emerald-900 mb-0.5">
-              VeriBuy 48-Hour Escrow Money-Back Guarantee
-            </Text>
-            <Text className="text-[11px] text-emerald-800 leading-relaxed">
-              Once delivered, your 48-hour inspection countdown begins. If the device does not match the Trust Lens™ report or photos, return shipping is covered and your funds are reversed immediately.
-            </Text>
-          </View>
+        <View className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-4">
+          <Text className="text-xs font-black text-emerald-900 mb-0.5">How Buyer Protection works</Text>
+          <Text className="text-[11px] text-emerald-800 leading-relaxed">
+            Your payment is held until you confirm the device arrived as described. If it doesn’t match the listing,
+            report a problem from your order within 48 hours of delivery.
+          </Text>
         </View>
       </ScrollView>
 
-      {/* ── Sticky Action Button ────────────────────────────────────────── */}
       <View
-        className="absolute bottom-0 left-0 right-0 bg-white/95 border-t border-borderc p-3.5 shadow-lg"
+        className="absolute bottom-0 left-0 right-0 bg-white border-t border-borderc p-3.5"
         style={Platform.OS === 'web' ? { position: 'fixed' as any } : undefined}
       >
+        {formError ? (
+          <Text accessibilityLiveRegion="polite" className="text-rose-600 text-xs font-semibold mb-2 text-center">
+            {formError}
+          </Text>
+        ) : null}
         <TouchableOpacity
-          onPress={onConfirmEscrowPayment}
+          onPress={onPay}
           disabled={processing}
-          className="bg-[#059669] py-4 rounded-xl flex-row items-center justify-center gap-2 active:opacity-90 shadow-sm"
+          accessibilityRole="button"
+          accessibilityState={{ disabled: processing, busy: processing }}
+          className="bg-[#2D7A4F] py-4 rounded-xl flex-row items-center justify-center gap-2"
         >
-          {processing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text className="text-white text-base">🔒</Text>
-          )}
-          <Text className="text-white font-black text-sm tracking-wide">
-            {processing ? 'Authorizing Escrow Vault...' : `Confirm & Lock Funds in Escrow (${formattedTotal})`}
+          {processing ? <ActivityIndicator size="small" color="#fff" /> : null}
+          <Text className="text-white font-black text-sm">
+            {processing ? 'Processing…' : `Pay ${formattedTotal}`}
           </Text>
         </TouchableOpacity>
-
-        <View className="flex-row items-center justify-center gap-1.5 mt-2">
-          <Text className="text-slate-500 text-[10px]">🔒</Text>
-          <Text className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">
-            Zero Seller Fee • Verified Card Authentication • 48hr Inspection
-          </Text>
-        </View>
       </View>
     </Screen>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center justify-between">
+      <Text className="text-xs text-text-muted">{label}</Text>
+      <Text className="text-xs font-bold text-text">{value}</Text>
+    </View>
   );
 }

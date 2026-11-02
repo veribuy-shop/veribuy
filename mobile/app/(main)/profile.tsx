@@ -64,13 +64,13 @@ export default function ProfileScreen() {
       <GuestGate
         title="Your Account & Rewards"
         subtitle="Sign in to view your profile, track £5 referral cash bonuses, and manage active listings."
-        icon="🎁"
+        icon="person-outline"
       />
     );
   }
 
   return (
-    <Screen style={{ paddingTop: 52 }}>
+    <Screen safeTop>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         <Text className="text-2xl font-bold text-primary mb-4">Profile & Rewards</Text>
 
@@ -90,7 +90,7 @@ export default function ProfileScreen() {
         {/* Referral Hub Card */}
         <View className="bg-surface rounded-2xl border border-emerald-200 p-4 mb-4 shadow-sm">
           <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-sm font-bold text-text">🎁 Refer Friends, Earn £5</Text>
+            <Text className="text-sm font-bold text-text">Refer Friends, Earn £5</Text>
             <View className="bg-emerald-100 px-2 py-0.5 rounded-full">
               <Text className="text-[11px] font-bold text-emerald-800">£5 Per Sale</Text>
             </View>
@@ -103,7 +103,7 @@ export default function ProfileScreen() {
           {/* Referral Code Box */}
           <View className="bg-surface-alt border border-dashed border-emerald-300 rounded-xl p-3 flex-row items-center justify-between mb-3">
             <View>
-              <Text className="text-[10px] uppercase font-bold text-text-muted tracking-wider">Your Referral Code</Text>
+              <Text className="text-[11px] uppercase font-bold text-text-muted tracking-wider">Your Referral Code</Text>
               <Text className="text-lg font-mono font-bold text-emerald-700 tracking-wider mt-0.5">
                 {referralCode}
               </Text>
@@ -159,21 +159,21 @@ export default function ProfileScreen() {
                     <Text className="text-xs font-medium text-text">
                       {ref.referredUser?.name || 'Referred Friend'}
                     </Text>
-                    <Text className="text-[10px] text-text-muted">
+                    <Text className="text-[11px] text-text-muted">
                       {new Date(ref.createdAt).toLocaleDateString()}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-1.5">
                     <Text className="text-xs font-bold text-emerald-600">+£5.00</Text>
                     <View
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                      className={`px-1.5 py-0.5 rounded text-[11px] font-semibold ${
                         ref.status === 'QUALIFIED' || ref.status === 'PAID'
                           ? 'bg-emerald-100 text-emerald-800'
                           : 'bg-amber-100 text-amber-800'
                       }`}
                     >
                       <Text
-                        className={`text-[10px] font-semibold ${
+                        className={`text-[11px] font-semibold ${
                           ref.status === 'QUALIFIED' || ref.status === 'PAID'
                             ? 'text-emerald-800'
                             : 'text-amber-800'

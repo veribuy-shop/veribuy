@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
 import { Text, View } from 'react-native';
@@ -8,13 +9,13 @@ import { Button, Card, Screen } from './ui';
 interface GuestGateProps {
   title: string;
   subtitle: string;
-  icon?: string;
+  icon?: keyof typeof Ionicons.glyphMap;
 }
 
 export function GuestGate({
   title,
   subtitle,
-  icon = '🔒',
+  icon = 'lock-closed-outline',
 }: GuestGateProps) {
   return (
     <Screen style={{ paddingTop: 60, justifyContent: 'center' }}>
@@ -24,13 +25,13 @@ export function GuestGate({
 
       <Card>
         <View className="items-center py-4">
-          <Text className="text-4xl mb-3">{icon}</Text>
+          <View className="mb-3"><Ionicons name={icon} size={38} color="#232F3E" /></View>
           <Text className="text-xl font-bold text-text text-center">{title}</Text>
-          <Text className="text-xs text-text-muted text-center mt-2 px-3 leading-relaxed">
+          <Text className="text-sm text-text-muted text-center mt-2 px-3 leading-5">
             {subtitle}
           </Text>
 
-          <View className="w-full mt-6 space-y-2">
+          <View className="w-full mt-6 gap-2">
             <Button onPress={() => router.push('/login')}>
               Sign in to your account
             </Button>

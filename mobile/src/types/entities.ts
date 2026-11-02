@@ -53,6 +53,15 @@ export interface UserProfile {
   state?: string;
   postalCode?: string;
   country?: string;
+  /** The API nests the saved address; the flat fields above are legacy. */
+  address?: {
+    line1?: string;
+    line2?: string | null;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  } | null;
   bio?: string;
   avatarUrl?: string;
   trustScore?: number;
@@ -76,6 +85,8 @@ export interface Listing {
   conditionGrade?: string;
   status: ListingStatus;
   images?: string[];
+  /** Cover photo resolved by the API from the listing's evidence pack. */
+  imageUrl?: string | null;
   trustLensStatus?: string;
   freeShipping?: boolean;
   storageCapacity?: string;
@@ -84,6 +95,13 @@ export interface Listing {
   batteryHealth?: number;
   originalPrice?: number;
   checksSummary?: string[];
+  format?: 'FIXED_PRICE' | 'AUCTION';
+  startingBid?: number | null;
+  currentBid?: number | null;
+  bidCount?: number;
+  auctionEndsAt?: string | null;
+  quantity?: number;
+  isBulkListing?: boolean;
   createdAt: string;
   updatedAt: string;
   seller?: {
@@ -96,7 +114,19 @@ export interface Listing {
     city?: string;
     country?: string;
     trustScore?: number;
+    sellerRating?: number | null;
   };
+}
+
+/** Public, sanitised IMEI check result (never includes the IMEI itself). */
+export interface TrustLensCheckSummary {
+  imeiValid: boolean | null;
+  icloudLocked: boolean | null;
+  reportedStolen: boolean | null;
+  blacklisted: boolean | null;
+  fmiOn: boolean | null;
+  verifiedAt: string;
+  deviceAttributes: Array<{ label: string; value: string }>;
 }
 
 export interface TrustLensReport {
@@ -129,6 +159,7 @@ export interface Order {
   buyerId: string;
   sellerId: string;
   listingId?: string | null;
+  listingTitle?: string | null;
   amount: number;
   currency: string;
   status: OrderStatus;
@@ -224,6 +255,11 @@ export interface Message {
   listingId?: string;
   subject?: string;
   content: string;
+  /** Automated order/offer/listing update rather than text a person wrote. */
+  isSystem?: boolean;
+  sender?: { id: string; name?: string | null } | null;
+  recipient?: { id: string; name?: string | null } | null;
+  listing?: { id: string; title: string } | null;
   isRead: boolean;
   readAt?: string;
   createdAt: string;

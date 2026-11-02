@@ -1,4 +1,4 @@
-import { calculateBuyerProtectionFee, getBuyerProtectionFeePercent } from '../fees';
+import { buyerFacingPrice, calculateBuyerProtectionFee, getBuyerProtectionFeePercent } from '../fees';
 import { formatPrice } from '../currency';
 
 describe('Mobile fees and currency utilities', () => {
@@ -13,5 +13,12 @@ describe('Mobile fees and currency utilities', () => {
     expect(formatPrice(100, 'GBP')).toContain('100.00');
     expect(formatPrice(12.5, 'GBP')).toContain('12.50');
     expect(formatPrice(null)).toBe('£0.00');
+  });
+});
+
+describe('buyerFacingPrice', () => {
+  it('adds the Buyer Protection fee to the asking price', () => {
+    expect(buyerFacingPrice(100)).toBe(105);
+    expect(buyerFacingPrice(899)).toBe(943.95);
   });
 });

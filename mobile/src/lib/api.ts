@@ -9,10 +9,13 @@ export function setOnSessionExpired(cb: (() => void) | null): void {
   onSessionExpired = cb;
 }
 
+/** The server rejected the session. Anything else is transient and keeps it. */
+class SessionEndedError extends Error {}
+
 async function refreshTokens(): Promise<void> {
   const refreshToken = await getRefreshToken();
   if (!refreshToken) {
-    throw new Error('No refresh token');
+    throw new SessionEndedError('No refresh token');
   }
 
   const res = await fetch(`${API_URL}/auth/refresh`, {
@@ -21,9 +24,12 @@ async function refreshTokens(): Promise<void> {
     body: JSON.stringify({ refreshToken }),
   });
 
-  if (!res.ok) {
+  if (res.status === 401) {
     await clearTokens();
-    throw new Error('Refresh failed');
+    throw new SessionEndedError('Refresh rejected');
+  }
+  if (!res.ok) {
+    throw new Error(`Refresh failed (${res.status})`);
   }
 
   const data = (await res.json()) as {
@@ -127,15 +133,18 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
   } catch (err) {
     // Only attempt refresh on a 401 that we haven't already retried.
     if (err instanceof ApiError && err.status === 401 && !opts.retried) {
+      // Only the server rejecting the refresh ends the session. A dropped
+      // connection or a failed retry surfaces as an error and stays signed in.
       try {
         await doRefresh();
-        const newToken = await getAccessToken();
-        return await rawRequest<T>(path, { ...opts, retried: true }, newToken);
-      } catch {
-        await clearTokens();
-        onSessionExpired?.();
+      } catch (refreshErr) {
+        if (refreshErr instanceof SessionEndedError) {
+          onSessionExpired?.();
+        }
         throw err;
       }
+      const newToken = await getAccessToken();
+      return rawRequest<T>(path, { ...opts, retried: true }, newToken);
     }
     throw err;
   }

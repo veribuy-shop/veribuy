@@ -9,6 +9,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PropsWithChildren<T = unknown> = T & { children?: React.ReactNode };
 
@@ -67,11 +68,11 @@ interface InputProps extends TextInputProps {
 
 export function Input({ label, error, ...props }: InputProps) {
   return (
-    <View className="mb-3">
-      {label ? <Text className="text-sm text-text-muted mb-1">{label}</Text> : null}
+    <View className="mb-4">
+      {label ? <Text className="text-[13px] font-medium text-text mb-1.5">{label}</Text> : null}
       <TextInput
-        placeholderTextColor="#AAAAAA"
-        className={`bg-surface border rounded-lg px-3 py-3 text-text ${error ? 'border-danger' : 'border-borderc'}`}
+        placeholderTextColor="#8A8A8A"
+        className={`bg-surface border rounded-xl px-3.5 min-h-12 py-3 text-[15px] text-text ${error ? 'border-danger' : 'border-border-strong'}`}
         {...props}
       />
       {error ? <Text className="text-xs text-danger mt-1">{error}</Text> : null}
@@ -79,9 +80,10 @@ export function Input({ label, error, ...props }: InputProps) {
   );
 }
 
-export function Screen({ children, style }: PropsWithChildren<{ style?: ViewStyle }>) {
+export function Screen({ children, style, safeTop }: PropsWithChildren<{ style?: ViewStyle; safeTop?: boolean }>) {
+  const insets = useSafeAreaInsets();
   return (
-    <View className="flex-1 bg-surface-canvas px-4 pt-4" style={style}>
+    <View className="flex-1 bg-surface-canvas px-4 pt-4" style={[safeTop ? { paddingTop: insets.top + 8 } : null, style]}>
       {children}
     </View>
   );
@@ -115,7 +117,7 @@ export function EmptyState({ title, subtitle }: { title: string; subtitle?: stri
 export function LoadingState() {
   return (
     <View className="flex-1 items-center justify-center py-20">
-      <ActivityIndicator size="large" color="#059669" />
+      <ActivityIndicator size="large" color="#2D7A4F" />
     </View>
   );
 }
@@ -123,20 +125,20 @@ export function LoadingState() {
 export function StatusPill({ status }: { status: string }) {
   const normalized = status?.toUpperCase() || '';
   let color = 'bg-surface-alt text-text';
-  let label = normalized.replace('_', ' ');
+  let label = normalized.charAt(0) + normalized.slice(1).toLowerCase().replace(/_/g, ' ');
 
   if (normalized === 'ACTIVE' || normalized === 'COMPLETED' || normalized === 'PASSED') {
     color = 'bg-grade-a-bg text-grade-a-text border border-emerald-200';
     if (normalized === 'PASSED') label = 'Trust Lens: Verified';
   } else if (normalized === 'ESCROW_HELD' || normalized === 'PAID' || normalized === 'PAYMENT_RECEIVED') {
     color = 'bg-amber-50 text-amber-800 border border-amber-200';
-    label = 'In Escrow';
+    label = 'Payment held';
   } else if (normalized === 'SHIPPED') {
     color = 'bg-grade-b-bg text-grade-b-text border border-blue-200';
     label = 'Dispatched';
   } else if (normalized === 'DELIVERED') {
     color = 'bg-indigo-50 text-indigo-800 border border-indigo-200';
-    label = 'Delivered (48h Check)';
+    label = 'Delivered';
   } else if (normalized === 'DISPUTED' || normalized === 'FAILED' || normalized === 'REJECTED' || normalized === 'CANCELLED') {
     color = 'bg-discount-crimson-bg text-discount-crimson border border-rose-200';
     label = normalized === 'DISPUTED' ? 'Under Review' : 'Cancelled';
@@ -144,7 +146,7 @@ export function StatusPill({ status }: { status: string }) {
 
   return (
     <View className={`px-2.5 py-0.5 rounded-full ${color}`}>
-      <Text className="text-[10px] font-bold">{label}</Text>
+      <Text className="text-[11px] font-semibold">{label}</Text>
     </View>
   );
 }

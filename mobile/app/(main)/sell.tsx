@@ -15,6 +15,20 @@ const DEVICE_TYPES = ['SMARTPHONE', 'TABLET', 'LAPTOP', 'SMARTWATCH', 'AIRPODS',
 const CONDITION_GRADES = ['A', 'B', 'C'];
 const STORAGE_OPTIONS = ['64GB', '128GB', '256GB', '512GB', '1TB', '2TB'];
 
+const CHIP_LABEL: Record<string, string> = {
+  SMARTPHONE: 'Smartphone',
+  TABLET: 'Tablet',
+  LAPTOP: 'Laptop',
+  SMARTWATCH: 'Smartwatch',
+  AIRPODS: 'Earbuds',
+  DESKTOP: 'Desktop',
+  GAMING_CONSOLE: 'Games console',
+  OTHER: 'Other',
+  A: 'A · Pristine',
+  B: 'B · Good',
+  C: 'C · Fair',
+};
+
 function ChipRow<T extends string>({
   options,
   value,
@@ -28,7 +42,13 @@ function ChipRow<T extends string>({
     <View className="flex-row flex-wrap mb-3">
       {options.map((opt) => (
         <Pressable key={opt} onPress={() => onChange(opt)} className="mr-2 mb-2">
-          <Tag className={value === opt ? 'bg-accent' : 'bg-warm-beige'}>{opt.replace('_', ' ')}</Tag>
+          <View
+            className={`px-3.5 py-2 rounded-full border ${value === opt ? 'bg-primary border-primary' : 'bg-surface border-border-strong'}`}
+          >
+            <Text className={`text-[13px] font-medium ${value === opt ? 'text-white' : 'text-text'}`}>
+              {CHIP_LABEL[opt] ?? opt}
+            </Text>
+          </View>
         </Pressable>
       ))}
     </View>
@@ -62,6 +82,25 @@ export default function SellScreen() {
     });
     if (res.canceled || !res.assets?.[0]) return;
     setPickedImage(res.assets[0].uri);
+  };
+
+  // Photograph the device directly. JPEG at 0.8 keeps uploads small on mobile data.
+  const takePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Camera access needed',
+        'Allow camera access in Settings to photograph your device, or choose a photo from your library.',
+      );
+      return;
+    }
+    try {
+      const res = await ImagePicker.launchCameraAsync({ mediaTypes: 'images', quality: 0.8 });
+      if (res.canceled || !res.assets?.[0]) return;
+      setPickedImage(res.assets[0].uri);
+    } catch {
+      Alert.alert('Camera unavailable', 'We could not open the camera. You can choose a photo from your library instead.');
+    }
   };
 
   const createListing = async (): Promise<Listing> => {
@@ -112,6 +151,8 @@ export default function SellScreen() {
     try {
       const listing = await createListing();
 
+      let photoUploaded = false;
+      let verificationSubmitted = false;
       if (pickedImage) {
         try {
           await evidenceService.upload(
@@ -119,12 +160,14 @@ export default function SellScreen() {
             { uri: pickedImage, name: 'evidence.jpg', type: 'image/jpeg' },
             { type: 'DEVICE_IMAGE', description: 'Initial listing photo' },
           );
+          photoUploaded = true;
         } catch (uploadErr) {
-          console.warn('[SellScreen] Non-fatal: failed to upload initial evidence image:', uploadErr);
+          console.warn('[SellScreen] Failed to upload initial evidence image:', uploadErr);
         }
       }
 
-      try {
+      // Same as the web form: nothing goes for review until its photo is in.
+      if (photoUploaded) try {
         await trustLensService.submit({
           listingId: listing.id,
           conditionGrade: conditionGrade || undefined,
@@ -134,13 +177,23 @@ export default function SellScreen() {
           serialNumber: serialNumber.trim() || undefined,
           brand: brand.trim() || undefined,
         });
+        verificationSubmitted = true;
       } catch (trustLensErr) {
-        console.warn('[SellScreen] Non-fatal: failed to submit Trust Lens verification request:', trustLensErr);
+        console.warn('[SellScreen] Failed to submit Trust Lens verification request:', trustLensErr);
       }
 
-      Alert.alert('Listing created', 'Your listing is now registered with Trust Lens™ and under review.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      // Say exactly what happened — never claim a step succeeded when it didn't.
+      const problems = [
+        !photoUploaded ? 'your photo didn’t upload' : null,
+        photoUploaded && !verificationSubmitted ? 'verification couldn’t be started' : null,
+      ].filter(Boolean);
+      Alert.alert(
+        problems.length ? 'Listing saved — action needed' : 'Listing submitted',
+        problems.length
+          ? `Your listing was saved, but ${problems.join(' and ')}. Open it on veribuy.shop to add photos and finish verification.`
+          : 'Your listing is with Trust Lens for review. We’ll message you when it’s live.',
+        [{ text: 'OK', onPress: () => router.back() }],
+      );
       reset();
     } catch (e: any) {
       setError(e?.message || 'Could not create listing.');
@@ -173,62 +226,64 @@ export default function SellScreen() {
     return (
       <GuestGate
         title="Sell with 0% Commission"
-        subtitle="Sign in or create an account to list your device with verified Trust Lens™ diagnostics and automated Royal Mail shipping."
-        icon="💰"
+        subtitle="Sign in or create an account to list your device with a Trust Lens review and tracked Royal Mail shipping."
+        icon="cash-outline"
       />
     );
   }
 
   return (
-    <Screen style={{ paddingTop: 20 }}>
+    <Screen safeTop>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1"
       >
-        <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
-          <Text className="text-2xl font-bold text-primary mb-1">Sell your device</Text>
-          <Text className="text-text-muted mb-4">Create a verified listing with 0% seller commission</Text>
+        <ScrollView contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+          <Text className="text-[28px] font-bold text-text mb-1">Sell your device</Text>
+          <Text className="text-[15px] text-text-muted mb-5">List your device with 0% seller commission</Text>
 
-          <Input label="Title * (10+ chars)" value={title} onChangeText={setTitle} />
+          <Input label="Title"
+            placeholder="e.g. iPhone 14 Pro 256GB, Space Black" value={title} onChangeText={setTitle} />
           <Input
-            label="Description * (50+ chars)"
+            label="Description"
+            placeholder="Condition, what is included, any marks or faults (at least 50 characters)"
             value={description}
             onChangeText={setDescription}
             multiline
             numberOfLines={4}
           />
 
-          <Text className="text-sm text-text-muted mb-1">Device type *</Text>
+          <Text className="text-[13px] font-medium text-text mb-2">Device type</Text>
           <ChipRow options={DEVICE_TYPES} value={deviceType} onChange={setDeviceType} />
 
           {weightProfile ? (
             <View className="bg-surface-alt border border-borderc rounded-xl p-3 mb-3 flex-row items-center justify-between">
               <View className="flex-1 mr-2">
-                <Text className="text-[11px] font-bold text-text">📦 Royal Mail Automated Weight Profiling</Text>
+                <Text className="text-[11px] font-bold text-text">Postage estimate</Text>
                 <Text className="text-[11px] text-text-muted mt-0.5">
                   {weightProfile.weightTierLabel} · ~{weightProfile.totalWeightGrams}g ({weightProfile.parcelFormat === 'SMALL_PARCEL' ? 'Small Parcel' : 'Medium Parcel'})
                 </Text>
               </View>
               <View className="bg-emerald-100 px-2 py-0.5 rounded-full">
-                <Text className="text-[10px] font-bold text-emerald-800">Auto-mapped</Text>
+                <Text className="text-[11px] font-bold text-emerald-800">Auto-mapped</Text>
               </View>
             </View>
           ) : null}
 
-          <Input label="Brand *" value={brand} onChangeText={setBrand} />
-          <Input label="Model *" value={model} onChangeText={setModel} />
+          <Input label="Brand" value={brand} onChangeText={setBrand} />
+          <Input label="Model" value={model} onChangeText={setModel} />
 
-          <Text className="text-sm text-text-muted mb-1">Condition grade</Text>
+          <Text className="text-[13px] font-medium text-text mb-2">Condition grade</Text>
           <ChipRow options={CONDITION_GRADES} value={conditionGrade} onChange={setConditionGrade} />
 
-          <Text className="text-sm text-text-muted mb-1">Storage capacity</Text>
+          <Text className="text-[13px] font-medium text-text mb-2">Storage capacity</Text>
           <ChipRow options={STORAGE_OPTIONS} value={storageCapacity} onChange={setStorageCapacity} />
 
-          <Input label="Color (e.g. Space Grey, Titanium)" value={color} onChangeText={setColor} />
+          <Input label="Colour (optional)" value={color} onChangeText={setColor} />
 
-          {(deviceType === 'SMARTPHONE' || deviceType === 'TABLET' || deviceType === 'SMARTWATCH') && (
+          {(deviceType === 'SMARTPHONE') && (
             <Input
-              label="IMEI / Hardware Identifier (15 digits)"
+              label="IMEI (15 digits)"
               placeholder="e.g. 352094081234567"
               value={imei}
               onChangeText={setImei}
@@ -236,9 +291,9 @@ export default function SellScreen() {
             />
           )}
 
-          <Input label="Serial Number (Optional)" value={serialNumber} onChangeText={setSerialNumber} />
+          <Input label="Serial number (optional)" value={serialNumber} onChangeText={setSerialNumber} />
 
-          <Input label="Price (GBP £) *" value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
+          <Input label="Your price (£)" value={price} onChangeText={setPrice} keyboardType="decimal-pad" />
 
           {/* Delivery & Postage Options */}
           <Text className="text-sm font-semibold text-text mb-2">Delivery Method & Postage</Text>
@@ -301,18 +356,41 @@ export default function SellScreen() {
               </View>
             </View>
             <Text className="text-xs text-text-muted ml-6 leading-relaxed">
-              You cover the Royal Mail Tracked postage cost. Free shipping listings typically sell up to 2x faster.
+              You cover the Royal Mail Tracked postage cost, so buyers see free delivery.
             </Text>
           </Pressable>
 
-          {/* Photo upload */}
-          <Pressable onPress={pickImage} className="border border-dashed border-borderc rounded-xl p-4 mb-3 items-center bg-surface-alt">
+          {/* Photo: camera or library */}
+          <View className="border border-dashed border-borderc rounded-xl p-4 mb-3 items-center bg-surface-alt">
             {pickedImage ? (
-              <Image source={{ uri: pickedImage }} className="w-full h-40 rounded-lg" resizeMode="cover" />
+              <Image
+                source={{ uri: pickedImage }}
+                className="w-full h-40 rounded-lg mb-3"
+                resizeMode="cover"
+                accessibilityLabel="Selected device photo"
+              />
             ) : (
-              <Text className="text-accent font-semibold">Add a photo for the evidence pack</Text>
+              <Text className="text-text-muted text-xs mb-3 text-center">
+                Add a clear photo of the device in good light.
+              </Text>
             )}
-          </Pressable>
+            <View className="flex-row gap-2 w-full">
+              <Pressable
+                onPress={takePhoto}
+                accessibilityRole="button"
+                className="flex-1 bg-[#232F3E] py-3 rounded-xl items-center"
+              >
+                <Text className="text-white font-bold text-xs">Take photo</Text>
+              </Pressable>
+              <Pressable
+                onPress={pickImage}
+                accessibilityRole="button"
+                className="flex-1 bg-white border border-borderc py-3 rounded-xl items-center"
+              >
+                <Text className="text-text font-bold text-xs">{pickedImage ? 'Choose another' : 'Choose from library'}</Text>
+              </Pressable>
+            </View>
+          </View>
 
           {/* Transparent Payout Card */}
           <View className="bg-surface border border-borderc rounded-xl p-4 mb-3.5">
@@ -347,22 +425,22 @@ export default function SellScreen() {
 
           {/* 0% Commission Guarantee */}
           <View className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mb-2.5">
-            <Text className="text-xs font-bold text-emerald-800 mb-0.5">💰 0% Seller Commission Guarantee</Text>
+            <Text className="text-xs font-bold text-emerald-800 mb-0.5">0% seller commission</Text>
             <Text className="text-xs text-emerald-700 leading-snug">
-              You keep 100% of your device sale price. Funds are vaulted securely in escrow and released automatically following the buyer&apos;s 48-hour inspection window.
+              You keep your full asking price. The buyer pays a Buyer Protection fee, and you're paid once they confirm the device arrived as described.
             </Text>
           </View>
 
-          {/* £5 First-Sale Referral Bounty */}
+          {/* Refer a seller, earn £5 */}
           <View className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 mb-4 flex-row items-center justify-between">
             <View className="flex-1 mr-2">
-              <Text className="text-xs font-bold text-amber-900 mb-0.5">🎁 £5 First-Sale Referral Bounty</Text>
+              <Text className="text-xs font-bold text-amber-900 mb-0.5">Refer a seller, earn £5</Text>
               <Text className="text-xs text-amber-800 leading-snug">
-                Earn £5 cash bonus on your first sale! Share your referral link with fellow sellers to earn an additional £5 on each of their first sales.
+                Share your referral link. You earn £5 when a seller you refer completes their first sale.
               </Text>
             </View>
             <View className="bg-amber-200/80 px-2 py-1 rounded-full">
-              <Text className="text-[10px] font-black text-amber-900">+£5 CASH</Text>
+              <Text className="text-[11px] font-black text-amber-900">+£5</Text>
             </View>
           </View>
 

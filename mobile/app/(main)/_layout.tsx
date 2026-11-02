@@ -5,16 +5,16 @@ export default function MainLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#0B192C',
-        tabBarInactiveTintColor: '#64748B',
+        tabBarActiveTintColor: '#232F3E',
+        tabBarInactiveTintColor: '#6F7373',
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
-          borderTopColor: '#E2E8F0',
+          borderTopColor: '#E3E3E3',
           borderTopWidth: 1,
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
-          shadowColor: '#0B192C',
+          shadowColor: '#232F3E',
           shadowOffset: { width: 0, height: -2 },
           shadowOpacity: 0.04,
           shadowRadius: 6,
@@ -32,7 +32,7 @@ export default function MainLayout() {
         options={{
           title: 'Explore',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'storefront' : 'storefront-outline'} color={color} size={22} />
+            <Ionicons name={focused ? 'storefront' : 'storefront-outline'} color={color as string} size={22} />
           ),
         }}
       />
@@ -41,7 +41,7 @@ export default function MainLayout() {
         options={{
           title: 'Sell',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'add-circle' : 'add-circle-outline'} color={color} size={22} />
+            <Ionicons name={focused ? 'add-circle' : 'add-circle-outline'} color={color as string} size={22} />
           ),
         }}
       />
@@ -50,7 +50,7 @@ export default function MainLayout() {
         options={{
           title: 'Orders',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'receipt' : 'receipt-outline'} color={color} size={22} />
+            <Ionicons name={focused ? 'receipt' : 'receipt-outline'} color={color as string} size={22} />
           ),
         }}
       />
@@ -59,7 +59,7 @@ export default function MainLayout() {
         options={{
           title: 'Messages',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} color={color} size={22} />
+            <Ionicons name={focused ? 'chatbubbles' : 'chatbubbles-outline'} color={color as string} size={22} />
           ),
         }}
       />
@@ -68,7 +68,7 @@ export default function MainLayout() {
         options={{
           title: 'Account',
           tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'person' : 'person-outline'} color={color} size={22} />
+            <Ionicons name={focused ? 'person' : 'person-outline'} color={color as string} size={22} />
           ),
         }}
       />
