@@ -167,7 +167,7 @@ export default function HomeScreen() {
         <View className="flex-row mt-4 pt-4 border-t border-white/15">
           {[
             { icon: 'lock-closed-outline', title: 'Payment held', note: 'until delivery' },
-            { icon: 'time-outline', title: '48 hours', note: 'to report a problem' },
+            { icon: 'alert-circle-outline', title: 'Report issues', note: 'before you release' },
             { icon: 'pricetag-outline', title: '0% seller fee', note: 'keep your payout' },
           ].map((item) => (
             <View key={item.title} className="flex-1 pr-2">
@@ -292,7 +292,7 @@ export default function HomeScreen() {
               <Text className="text-white text-xs font-black">04</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-text font-semibold text-sm">48 hours to check it</Text>
+              <Text className="text-text font-semibold text-sm">Check it first</Text>
               <Text className="text-text-muted text-[13px] leading-[18px] mt-0.5">
                 Check the device after delivery. If it doesn’t match the listing, report a problem before releasing payment.
               </Text>
@@ -331,7 +331,7 @@ export default function HomeScreen() {
           <View className="bg-surface-canvas p-2.5 rounded-xl border border-borderc">
             <Text className="text-[11px] font-bold text-text mb-1">After delivery</Text>
             <View className="flex-row items-center justify-between">
-              <Text className="text-[11px] font-bold text-emerald-700">✓ 48h to report a problem</Text>
+              <Text className="text-[11px] font-bold text-emerald-700">✓ Report a problem first</Text>
               <Text className="text-[11px] text-text-muted">✕ Often sold as seen</Text>
             </View>
           </View>

@@ -5,7 +5,7 @@ import { ShieldCheck, RefreshCcw, Lock, Scale, CheckCircle2, ArrowRight } from '
 
 export const metadata: Metadata = {
   title: 'Buyer Protection Guarantee',
-  description: 'Shop with confidence on VeriBuy. 48-hour returns, escrow payments, Trust Lens verification, and dispute resolution.',
+  description: 'Shop with confidence on VeriBuy. Payment held until you confirm, Trust Lens verification, and dispute resolution.',
   alternates: {
     canonical: '/buyer-protection',
   },
@@ -21,9 +21,9 @@ export default function BuyerProtectionPage() {
     },
     {
       icon: <RefreshCcw className="w-6 h-6 text-[var(--color-green)]" />,
-      title: '48-Hour Money-Back Guarantee',
-      description: 'If your device doesn\'t match the listing description, photos, or condition grade, you have 48 hours (2 days) to request a full refund.',
-      benefit: 'Full refund including return postage for misrepresented items.',
+      title: 'Report a Problem',
+      description: 'If your device doesn\'t match the listing description, photos, or condition grade, report a problem before you release payment. Your payment stays held while we review it.',
+      benefit: 'We can refund you if the device isn\'t as described.',
     },
     {
       icon: <ShieldCheck className="w-6 h-6 text-[var(--color-green)]" />,
@@ -43,7 +43,7 @@ export default function BuyerProtectionPage() {
     <div className="min-h-screen bg-[var(--color-surface)]">
       <LegalHeader
         title="Buyer Protection Guarantee"
-        subtitle="Comprehensive protection included on every purchase: escrow payment holding, hardware authentication, and 48-hour (2 days) returns."
+        subtitle="Comprehensive protection included on every purchase: escrow payment holding, listing checks, and a way to report problems."
         lastUpdated="September 4, 2026"
         badge="100% Guaranteed"
       />
@@ -91,7 +91,7 @@ export default function BuyerProtectionPage() {
                 2
               </span>
               <strong className="text-[var(--color-text)] block">Tracked Dispatch & Inspection</strong>
-              <p className="text-xs">Item arrives via tracked Royal Mail delivery. You have 48 hours (2 days) to test battery, screen, and functions.</p>
+              <p className="text-xs">Item arrives via tracked Royal Mail delivery. Check the battery, screen and functions as soon as it arrives.</p>
             </div>
 
             <div className="space-y-2">
@@ -99,7 +99,7 @@ export default function BuyerProtectionPage() {
                 3
               </span>
               <strong className="text-[var(--color-text)] block">Release or Return</strong>
-              <p className="text-xs">Satisfied? Release funds with 1 click. Found an issue? Open a dispute for a full refund.</p>
+              <p className="text-xs">Satisfied? Release funds with 1 click. Found an issue? Report a problem and we’ll review it.</p>
             </div>
           </div>
 

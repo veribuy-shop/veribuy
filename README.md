@@ -9,7 +9,7 @@ VeriBuy is a high-trust, verification-led marketplace for pre-owned and refurbis
 - **TrustLens Hardware Diagnostics & Verification:** Real-time IMEI/serial validation, activation lock checks, blacklisting status, and condition grading.
 - **Automated Device Weight Mapping & Royal Mail Logistics:** Dynamic device hardware profiling, automatic parcel format classification (`SMALL_PARCEL` vs `MEDIUM_PARCEL`), batch weight scaling for bulk quantities, and Royal Mail rate calculation (Tracked 24, Tracked 48, Special Delivery 1pm) with remote UK postcode surcharge detection.
 - **Drop-Off Center & Paperless Fulfillment:** Generation of standard 4x6" PDF shipping labels (with 2D DataMatrix and S10 barcodes) and digital Post Office counter QR codes for paperless drop-off and instant Proof of Postage.
-- **Escrow-Backed Buyer Protection:** Funds remain safely locked in escrow until the buyer inspects and approves the delivered device (or 48-hour auto-release).
+- **Escrow-Backed Buyer Protection:** Funds remain safely locked in escrow until the buyer inspects and approves the delivered device.
 - **Business Accounts & Bulk Listings:** Support for business organizations to list bulk inventory with seller-covered free shipping options while preserving buyer protection guarantees.
 
 ---

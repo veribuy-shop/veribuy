@@ -36,11 +36,10 @@ export type OrderActor = 'BUYER' | 'SELLER' | 'ADMIN' | 'INTERNAL';
  *
  * Security rationale for the sensitive entries:
  *  - ESCROW_HELD → SHIPPED is SELLER-only: a buyer must never be able to mark
- *    an order dispatched, which would start the delivery/auto-release clock.
+ *    an order dispatched, which would start the delivery step.
  *  - SHIPPED → DELIVERED excludes the SELLER: a seller must never be able to
  *    self-certify delivery and trigger release of escrowed funds.
- *  - DELIVERED → COMPLETED is BUYER-driven (plus ADMIN/INTERNAL for the
- *    auto-release timer), since it releases funds to the seller.
+ *  - DELIVERED → COMPLETED is BUYER-driven (plus ADMIN/INTERNAL), since it releases funds to the seller.
  *  - Anything touching money after escrow (CANCELLED post-payment, REFUNDED,
  *    dispute resolution) is restricted to ADMIN/INTERNAL.
  */
@@ -1784,7 +1783,7 @@ export class TransactionsService implements OnModuleInit {
                   listingTitle: order.listingTitle || 'Your order',
                   orderId: order.id,
                   status: 'DELIVERED',
-                  message: 'Your parcel has been delivered! Please inspect your device within 48 hours and confirm receipt to release payment to the seller.',
+                  message: 'Your parcel has been delivered! Please check your device, then confirm it to release payment to the seller or report a problem.',
                 },
               });
             }

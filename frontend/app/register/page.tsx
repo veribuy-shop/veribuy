@@ -31,7 +31,7 @@ const WHY_JOIN = [
   { icon: ShieldCheck, label: 'Trust Lens™ checks before listings go live' },
   { icon: Lock,        label: 'Payment held in escrow until the buyer confirms delivery' },
   { icon: Coins,       label: '0% seller commission' },
-  { icon: RotateCcw,  label: '48-hour window for buyers to report a problem' },
+  { icon: RotateCcw,  label: 'Buyers can report a problem before releasing payment' },
 ];
 
 function AppleIcon({ className = "w-4 h-4" }: { className?: string }) {

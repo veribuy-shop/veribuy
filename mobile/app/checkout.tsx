@@ -650,7 +650,7 @@ export default function CheckoutScreen() {
           <Text className="text-xs font-black text-emerald-900 mb-0.5">How Buyer Protection works</Text>
           <Text className="text-[11px] text-emerald-800 leading-relaxed">
             Your payment is held until you confirm the device arrived as described. If it doesn’t match the listing,
-            report a problem from your order within 48 hours of delivery.
+            report a problem from your order before you release payment.
           </Text>
         </View>
       </ScrollView>

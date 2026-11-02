@@ -63,8 +63,8 @@ const verificationSteps = [
   {
     step: '04',
     icon: RotateCcw,
-    title: '48-Hour Inspection Window',
-    description: 'Buyer tests the device for 48 hours (2 days). Once satisfied, escrow funds release to the seller with £0 seller commission.',
+    title: 'Check Before You Release',
+    description: 'The buyer checks the device after delivery. Once they confirm it, funds release to the seller with £0 seller commission.',
   },
 ];
 
@@ -80,8 +80,8 @@ const comparisonPoints = [
     others: 'Often bank transfer or cash, with no buyer protection',
   },
   {
-    feature: 'Money-Back Guarantee',
-    veribuy: '48-hour (2 days) full refund guarantee on misrepresented items',
+    feature: 'If something is wrong',
+    veribuy: 'Report a problem before releasing payment; we review it and can refund',
     others: 'Often sold as seen',
   },
   {
@@ -283,7 +283,7 @@ export default function HomeContent() {
             </div>
             <div className="flex items-center justify-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl py-2.5 px-3">
               <RotateCcw className="w-4 h-4 text-emerald-300 shrink-0" />
-              <span>48-Hour Money-Back Guarantee</span>
+              <span>Payment Held Until You Confirm</span>
             </div>
             <div className="flex items-center justify-center gap-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl py-2.5 px-3">
               <Percent className="w-4 h-4 text-emerald-300 shrink-0" />

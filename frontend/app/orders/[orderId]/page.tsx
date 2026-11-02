@@ -353,7 +353,7 @@ export default function OrderConfirmationPage() {
           let next: { title: string; body: string; href?: string; cta?: string; tone: 'action' | 'info' } | null = null;
           if (isBuyer) {
             if (order.status === 'SHIPPED') {
-              next = { title: 'Has your parcel arrived?', body: 'Confirm delivery to start your 48-hour inspection window.', href: `/orders/${order.id}/tracking#actions`, cta: 'Confirm delivery', tone: 'action' };
+              next = { title: 'Has your parcel arrived?', body: 'Confirm delivery, then check the device before releasing payment.', href: `/orders/${order.id}/tracking#actions`, cta: 'Confirm delivery', tone: 'action' };
             } else if (order.status === 'DELIVERED') {
               next = { title: 'Check your device', body: 'If it matches the listing, release payment to the seller. If not, report a problem before releasing.', href: `/orders/${order.id}/tracking#actions`, cta: 'Release payment or report a problem', tone: 'action' };
             } else if (order.status === 'ESCROW_HELD' || order.status === 'PAYMENT_RECEIVED') {
@@ -466,7 +466,7 @@ export default function OrderConfirmationPage() {
                     <CircleCheck className="w-4 h-4" />
                   </div>
                   <span className="text-[11px] font-semibold text-[var(--color-text)]">4. Delivered</span>
-                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">48hr review</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Your check</span>
                 </div>
 
                 {/* Step 5: Completed */}

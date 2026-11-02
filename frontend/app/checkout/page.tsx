@@ -1062,8 +1062,8 @@ function CheckoutForm({
           <div className="flex items-start gap-2">
             <RotateCcw className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" aria-hidden="true" />
             <div>
-              <strong className="text-[var(--color-text)] block">48-Hour Refund</strong>
-              Full protection if the device doesn&apos;t match verification.
+              <strong className="text-[var(--color-text)] block">Report a Problem</strong>
+              Payment stays held if the device isn&apos;t as described.
             </div>
           </div>
           <div className="flex items-start gap-2">
@@ -1450,7 +1450,7 @@ function CheckoutPageContent() {
                   <span>Buyer Protection Included</span>
                 </div>
                 <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                  The {feePercent}% protection fee secures your payment in escrow, covers Trust Lens verification, and guarantees a 48-hour (2 days) refund if the device does not match.
+                  The {feePercent}% protection fee secures your payment in escrow, covers Trust Lens verification, and lets you report a problem before payment is released.
                 </p>
               </div>
             </div>

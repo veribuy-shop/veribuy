@@ -23,7 +23,7 @@ import { SOCIAL_SIGN_IN_ENABLED } from '@/lib/social-auth';
 const WHY_SIGNIN = [
   { icon: ShieldCheck, label: 'Trust Lens™ checks before listings go live' },
   { icon: Lock,        label: 'Payment held in escrow until you confirm delivery' },
-  { icon: RotateCcw,  label: '48-hour window to report a problem with your item' },
+  { icon: RotateCcw,  label: 'Report a problem before you release payment' },
   { icon: BadgeCheck,  label: '0% seller commission' },
 ];
 

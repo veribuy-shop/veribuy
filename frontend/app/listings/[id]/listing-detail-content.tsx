@@ -602,7 +602,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
       statusLabel: verificationSummary.checks.warrantyDetails || (isWarrantyActive ? 'Active / Valid' : 'Expired / Out of Warranty'),
       description: isWarrantyActive
         ? (verificationSummary.checks.warrantyDetails ? `Manufacturer coverage: ${verificationSummary.checks.warrantyDetails}` : 'Manufacturer hardware warranty is verified active.')
-        : 'Manufacturer limited warranty expired. Covered by VeriBuy 48-Hour Escrow Protection.',
+        : 'Manufacturer limited warranty expired. Covered by VeriBuy Buyer Protection.',
       passed: isWarrantyActive,
       icon: Award,
     });
@@ -641,7 +641,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
       id: 'warranty',
       title: 'Warranty Status',
       statusLabel: 'Verified Authentic',
-      description: 'Device authenticity confirmed. Covered by VeriBuy 48-Hour Escrow Protection.',
+      description: 'Device authenticity confirmed. Covered by VeriBuy Buyer Protection.',
       passed: true,
       icon: Award,
     });
@@ -1100,7 +1100,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                   <div className="w-6 h-6 rounded-full bg-emerald-50 text-[var(--color-green)] flex items-center justify-center shrink-0">
                     <RotateCcw className="w-3.5 h-3.5" />
                   </div>
-                  <span><strong>48-Hour Money-Back Guarantee:</strong> Return if not as described.</span>
+                  <span><strong>Buyer Protection:</strong> Report a problem if it isn&apos;t as described.</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <div className="w-6 h-6 rounded-full bg-emerald-50 text-[var(--color-green)] flex items-center justify-center shrink-0">
@@ -1338,7 +1338,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
             {[
               { icon: Lock, title: '100% Escrow Holding', desc: 'Seller receives funds only after you confirm delivery.' },
               { icon: ShieldCheck, title: 'Trust Lens™ Verified', desc: 'IMEI, cloud locks, and blacklist databases audited.' },
-              { icon: RotateCcw, title: '48-Hour Inspection Return', desc: 'Full money-back refund if item is misrepresented.' },
+              { icon: RotateCcw, title: 'Check It First', desc: 'Report a problem before releasing payment if it isn\'t as described.' },
               { icon: Scale, title: 'UK Dispute Support', desc: 'Dedicated resolution team for dispute escalation.' },
             ].map((item) => {
               const ItemIcon = item.icon;

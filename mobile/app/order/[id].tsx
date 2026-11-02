@@ -81,7 +81,7 @@ export default function OrderDetailScreen() {
     setBusy(true);
     try {
       await ordersService.updateStatus(id, { status: 'DELIVERED' });
-      Alert.alert('Delivery confirmed', 'You now have 48 hours to check the device. Release the payment when you’re happy, or report a problem.');
+      Alert.alert('Delivery confirmed', 'Check the device, then release the payment or report a problem.');
       await load();
     } catch (e: any) {
       setError(e?.message || 'Could not confirm delivery.');
@@ -623,11 +623,11 @@ export default function OrderDetailScreen() {
               </View>
               <View className="flex-1">
                 <View className="flex-row items-center justify-between">
-                  <Text className="text-xs font-black text-text">4. 48-hour check</Text>
+                  <Text className="text-xs font-black text-text">4. Final check</Text>
                   <Text className="text-[11px] font-bold text-emerald-700">{order.status === 'COMPLETED' ? 'Done' : isDelivered ? 'In progress' : 'Next'}</Text>
                 </View>
                 <Text className="text-[11px] text-text-muted leading-tight mt-0.5">
-                  {isSellerView ? 'The buyer checks the device. You’re paid once they confirm it.' : 'Check the device matches the listing. Report any problem within 48 hours.'}
+                  {isSellerView ? 'The buyer checks the device. You’re paid once they confirm it.' : 'Check the device matches the listing. Report a problem before you release payment.'}
                 </Text>
               </View>
             </View>

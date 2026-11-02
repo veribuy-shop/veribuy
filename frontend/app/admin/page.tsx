@@ -2165,7 +2165,7 @@ function AdminDashboardContent() {
                       color: 'bg-blue-500',
                     },
                     {
-                      label: 'Delivered (48h Inspection Window)',
+                      label: 'Delivered',
                       count: orders.filter((o) => o.status === 'DELIVERED').length,
                       val: orders.filter((o) => o.status === 'DELIVERED').reduce((s, o) => s + Number(o.amount || 0), 0),
                       color: 'bg-indigo-500',

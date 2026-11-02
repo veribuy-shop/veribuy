@@ -534,7 +534,7 @@ export class EmailService {
 
       <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:20px 0;font-size:13px;color:#065f46;">
         <p style="margin:0 0 8px 0;font-weight:700;font-size:14px;">&#128737; VeriBuy Buyer Escrow Protection</p>
-        <p style="margin:0;line-height:1.5;">Your payment is safely held in escrow. The seller will only be paid after your parcel arrives and you have 48 hours to inspect your device to verify it matches its listed condition.</p>
+        <p style="margin:0;line-height:1.5;">Your payment is safely held in escrow. The seller will only be paid after your parcel arrives and you confirm it matches its listed condition.</p>
       </div>
 
       <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:20px 0;">
@@ -657,7 +657,7 @@ export class EmailService {
       </div>
 
       <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:14px;margin:20px 0;font-size:13px;color:#065f46;">
-        &#128176; <strong>Escrow Release:</strong> Once the tracking confirms delivery and the buyer's 48-hour inspection period concludes, your funds will be released automatically.
+        &#128176; <strong>Escrow Release:</strong> Once delivery is confirmed and the buyer has checked the device, your funds will be released.
       </div>
     `;
 
@@ -746,7 +746,7 @@ export class EmailService {
 
       <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:16px;margin:20px 0;font-size:13px;color:#065f46;">
         <p style="margin:0 0 8px 0;font-weight:700;font-size:14px;">&#128737; Protected by VeriBuy Escrow</p>
-        <p style="margin:0;line-height:1.5;">Your payment remains safely vaulted in escrow while the parcel travels. When your delivery arrives, you will have a 48-hour inspection window to ensure the device matches its listed condition before funds are released to the seller.</p>
+        <p style="margin:0;line-height:1.5;">Your payment remains safely vaulted in escrow while the parcel travels. When your delivery arrives, check that the device matches its listed condition before releasing funds to the seller.</p>
       </div>
 
       <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:20px 0;">
@@ -818,7 +818,7 @@ export class EmailService {
       </div>
 
       <div style="background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;padding:14px;margin:20px 0;font-size:13px;color:#065f46;">
-        &#10004; The buyer has been notified with your tracking information. Once the courier confirms delivery, the buyer will have a 48-hour inspection period, after which your payout will be released directly to your account.
+        &#10004; The buyer has been notified with your tracking information. Once the courier confirms delivery, the buyer can check the device. Your payout is released once they confirm it.
       </div>
     `;
 

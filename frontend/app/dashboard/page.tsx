@@ -1242,7 +1242,7 @@ function DashboardContent() {
                   No matching purchases found
                 </h3>
                 <p className={cn('text-xs mb-6', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                  Find certified electronics backed by 48-hour (2 days) escrow inspection guarantee
+                  Find certified electronics backed by escrow and Buyer Protection
                 </p>
                 <Link
                   href="/browse"

@@ -294,7 +294,7 @@ export default function ListingDetailScreen() {
           <Text className="text-sm font-black text-emerald-900 mb-1">Buyer Protection</Text>
           <Text className="text-xs text-emerald-800 leading-relaxed">
             Your payment is held until you confirm the device arrived as described. If it doesn’t match the listing,
-            report a problem from your order within 48 hours of delivery.
+            report a problem from your order before you release payment.
           </Text>
         </View>
 
