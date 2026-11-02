@@ -1,4 +1,5 @@
 import * as SplashScreen from 'expo-splash-screen';
+import { LogBox } from 'react-native';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 import '../global.css';
@@ -9,6 +10,9 @@ import { StripeProvider } from '@/src/lib/stripe';
 
 import { AuthProvider } from '@/src/context/AuthContext';
 import { useAuth } from '@/src/context/AuthContext';
+
+// Raised by a dependency, not this app, and its banner covers the bottom of every screen in dev.
+LogBox.ignoreLogs(['ImageBackground is deprecated']);
 
 const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
 

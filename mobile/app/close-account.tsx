@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
 
-import { Button, Input, Screen } from '@/src/components/ui';
+import { Button, Input, Screen, KeyboardArea } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { usersService } from '@/src/services';
 
@@ -47,6 +47,7 @@ export default function CloseAccountScreen() {
 
   return (
     <Screen>
+      <KeyboardArea>
       <ScrollView keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets>
         <Text className="text-[15px] font-semibold text-text mb-2">What happens when you close your account</Text>
         <View className="bg-surface border border-borderc rounded-2xl p-4 mb-5 gap-2.5">
@@ -72,6 +73,7 @@ export default function CloseAccountScreen() {
           Close my account
         </Button>
       </ScrollView>
+      </KeyboardArea>
     </Screen>
   );
 }

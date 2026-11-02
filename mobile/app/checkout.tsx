@@ -13,8 +13,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Screen } from '@/src/components/ui';
+import { Screen, KeyboardArea } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
 import { calculateBuyerProtectionFee, getBuyerProtectionFeePercent } from '@/src/lib/fees';
@@ -80,6 +81,7 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 export default function CheckoutScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<CheckoutParams>();
   const { user } = useAuth();
 
@@ -418,9 +420,10 @@ export default function CheckoutScreen() {
 
   return (
     <Screen>
+      <KeyboardArea>
       <ScrollView
         ref={scrollRef}
-        contentContainerStyle={{ paddingBottom: 140 }}
+        contentContainerStyle={{ paddingBottom: 140 + insets.bottom }}
         showsVerticalScrollIndicator={false}
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
@@ -654,10 +657,11 @@ export default function CheckoutScreen() {
           </Text>
         </View>
       </ScrollView>
+      </KeyboardArea>
 
       <View
         className="absolute bottom-0 left-0 right-0 bg-white border-t border-borderc p-3.5"
-        style={Platform.OS === 'web' ? { position: 'fixed' as any } : undefined}
+        style={[{ paddingBottom: 14 + insets.bottom }, Platform.OS === 'web' ? { position: 'fixed' as any } : null]}
       >
         {formError ? (
           <Text accessibilityLiveRegion="polite" className="text-rose-600 text-xs font-semibold mb-2 text-center">

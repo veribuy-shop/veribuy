@@ -1,7 +1,8 @@
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { useHeaderHeight } from '@react-navigation/elements';
-import { FlatList, Text, TextInput, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
+import { FlatList, Keyboard, Text, TextInput, View, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { shortDate } from '@/src/lib/format';
 import { useAuth } from '@/src/context/AuthContext';
@@ -9,6 +10,20 @@ import { messagesService } from '@/src/services';
 import { Message } from '@/src/types/entities';
 
 export default function ConversationScreen() {
+  const insets = useSafeAreaInsets();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  // The composer sits on the keyboard when it's open, and clear of the home
+  // indicator or Android's navigation bar when it isn't.
+  useEffect(() => {
+    const shown = Keyboard.addListener('keyboardDidShow', () => setKeyboardOpen(true));
+    const hidden = Keyboard.addListener('keyboardDidHide', () => setKeyboardOpen(false));
+    return () => {
+      shown.remove();
+      hidden.remove();
+    };
+  }, []);
+
   const headerHeight = useHeaderHeight();
   const { otherUserId, listingId, title } = useLocalSearchParams<{
     otherUserId: string;
@@ -66,7 +81,7 @@ export default function ConversationScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       keyboardVerticalOffset={headerHeight}
       className="flex-1 bg-warm-beige"
       style={{ paddingTop: 8 }}
@@ -103,7 +118,10 @@ export default function ConversationScreen() {
           {error}
         </Text>
       ) : null}
-      <View className="flex-row items-center border-t border-borderc bg-surface px-3 py-2">
+      <View
+        className="flex-row items-center border-t border-borderc bg-surface px-3 pt-2"
+        style={{ paddingBottom: 8 + (keyboardOpen ? 0 : insets.bottom) }}
+      >
         <TextInput
           value={input}
           onChangeText={setInput}

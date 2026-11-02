@@ -81,6 +81,7 @@
       [
         "expo-image-picker",
         {
+          "microphonePermission": false,
           "photosPermission": "Allow VeriBuy to access your photos so you can add evidence to your listings.",
           "cameraPermission": "Allow VeriBuy to access your camera so you can take photos and evidence for device verification."
         }

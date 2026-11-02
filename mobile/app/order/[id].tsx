@@ -18,7 +18,7 @@ import {
   View,
 } from 'react-native';
 
-import { Button, Input, Screen } from '@/src/components/ui';
+import { Button, Input, Screen, KeyboardArea } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { ApiError } from '@/src/types/api';
 import { formatPrice } from '@/src/lib/currency';
@@ -278,6 +278,7 @@ export default function OrderDetailScreen() {
 
   return (
     <Screen>
+      <KeyboardArea>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 60 }}
         showsVerticalScrollIndicator={false}
@@ -796,6 +797,7 @@ export default function OrderDetailScreen() {
           </>
         ) : null}
       </ScrollView>
+      </KeyboardArea>
 
       {/* ── Post Office QR drop-off Modal ──────────────────────── */}
       <Modal visible={showQrModal} transparent animationType="fade">

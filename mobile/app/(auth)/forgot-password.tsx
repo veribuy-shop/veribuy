@@ -27,7 +27,7 @@ export default function ForgotPasswordScreen() {
   return (
     <Screen safeTop>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         className="flex-1 justify-center"
       >
         <Text className="text-[28px] font-bold text-text mb-2">Reset password</Text>

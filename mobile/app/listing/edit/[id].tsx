@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, EmptyState, Input, LoadingState, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
@@ -41,6 +42,7 @@ function fieldsFrom(listing: Listing): FormFields {
 }
 
 export default function EditListingScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
@@ -253,10 +255,14 @@ export default function EditListingScreen() {
     <Screen>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         keyboardVerticalOffset={96}
       >
-        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: insets.bottom }}
+        >
           <Text className="text-[13px] text-text-muted leading-[18px] mb-4">
             The device’s IMEI, serial number and verification result can’t be changed.
           </Text>

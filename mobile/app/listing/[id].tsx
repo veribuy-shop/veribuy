@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, Input, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
@@ -37,6 +38,7 @@ function galleryImages(listing: Listing, evidence: EvidenceItem[]): string[] {
 }
 
 export default function ListingDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { user, isAuthenticated } = useAuth();
   const [listing, setListing] = useState<Listing | null>(null);
@@ -245,7 +247,7 @@ export default function ListingDetailScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ paddingBottom: 110 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 110 + insets.bottom }} showsVerticalScrollIndicator={false}>
         {/* Photos */}
         <View className="w-full h-72 rounded-2xl overflow-hidden bg-white border border-borderc mb-2">
           {images.length > 0 ? (
@@ -393,7 +395,7 @@ export default function ListingDetailScreen() {
       {/* Actions */}
       <View
         className="absolute bottom-0 left-0 right-0 bg-white border-t border-borderc p-3.5 flex-row items-center gap-3"
-        style={Platform.OS === 'web' ? { position: 'fixed' as any } : undefined}
+        style={[{ paddingBottom: 14 + insets.bottom }, Platform.OS === 'web' ? { position: 'fixed' as any } : null]}
       >
         {isOwn ? (
           listing.status === 'SOLD' ? (
@@ -487,7 +489,7 @@ export default function ListingDetailScreen() {
 
       {/* Place a bid */}
       <Modal visible={bidModalVisible} transparent animationType="slide" onRequestClose={() => setBidModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 bg-black/60 justify-end">
+        <KeyboardAvoidingView behavior="padding" className="flex-1 bg-black/60 justify-end">
           <View className="bg-white rounded-t-3xl p-6 pb-10">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-xl font-bold text-text">Place a bid</Text>

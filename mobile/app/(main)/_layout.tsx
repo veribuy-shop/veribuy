@@ -1,7 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MainLayout() {
+  // Keeps the labels clear of the iOS home indicator and Android's navigation bar.
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -11,8 +15,8 @@ export default function MainLayout() {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E3E3E3',
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          height: 60 + insets.bottom,
+          paddingBottom: 8 + insets.bottom,
           paddingTop: 8,
           shadowColor: '#232F3E',
           shadowOffset: { width: 0, height: -2 },

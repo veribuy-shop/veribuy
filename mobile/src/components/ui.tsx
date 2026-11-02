@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,6 +12,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PropsWithChildren<T = unknown> = T & { children?: React.ReactNode };
@@ -113,6 +116,23 @@ export function Screen({ children, style, safeTop }: PropsWithChildren<{ style?:
     <View className="flex-1 bg-surface-canvas px-4 pt-4" style={[safeTop ? { paddingTop: insets.top + 8 } : null, style]}>
       {children}
     </View>
+  );
+}
+
+/**
+ * Keeps a scrolling form above the keyboard under a native header. iOS scroll
+ * views handle this with automaticallyAdjustKeyboardInsets, which Android ignores.
+ */
+export function KeyboardArea({ children }: PropsWithChildren) {
+  const headerHeight = useHeaderHeight();
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'android' ? 'padding' : undefined}
+      keyboardVerticalOffset={headerHeight}
+    >
+      {children}
+    </KeyboardAvoidingView>
   );
 }
 

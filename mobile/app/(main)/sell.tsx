@@ -394,7 +394,7 @@ export default function SellScreen() {
 
   return (
     <Screen safeTop>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
         <View className="mb-3">
           <View className="flex-row items-end justify-between mb-2">
             <Text className="text-[28px] font-bold text-text">Sell your device</Text>
