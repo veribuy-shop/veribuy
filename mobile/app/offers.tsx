@@ -2,7 +2,9 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 
+import { GuestGate } from '@/src/components/GuestGate';
 import { Button, EmptyState, LoadingState, Screen } from '@/src/components/ui';
+import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
 import { buyerFacingPrice } from '@/src/lib/fees';
 import { Offer, offersService } from '@/src/services';
@@ -24,6 +26,7 @@ function payBy(expiresAt: string): string {
 
 /** Offers on the seller's listings and the ones they have made, same as /offers on the web. */
 export default function OffersScreen() {
+  const { isAuthenticated } = useAuth();
   const [received, setReceived] = useState<Offer[]>([]);
   const [sent, setSent] = useState<Offer[]>([]);
   const [tab, setTab] = useState<Tab | null>(null);
@@ -33,6 +36,7 @@ export default function OffersScreen() {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
+    if (!isAuthenticated) return;
     try {
       const [asSeller, asBuyer] = await Promise.all([offersService.mine('seller'), offersService.mine('buyer')]);
       setReceived(asSeller);
@@ -50,7 +54,7 @@ export default function OffersScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [isAuthenticated]);
 
   useFocusEffect(
     useCallback(() => {
@@ -95,6 +99,10 @@ export default function OffersScreen() {
       { text: 'Withdraw', style: 'destructive', onPress: () => respond(offer, 'WITHDRAW') },
     ]);
   };
+
+  if (!isAuthenticated) {
+    return <GuestGate title="Sign in to see your offers" subtitle="Offers you've made and received will appear here." />;
+  }
 
   if (loading) return <LoadingState />;
 

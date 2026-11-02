@@ -27,9 +27,16 @@ async function markOnSquare(file, size, markWidth, background) {
 
 // iOS rounds the corners itself and rejects transparency, so the icon is opaque.
 await markOnSquare('icon.png', 1024, 720, WHITE);
-// Android crops adaptive icons to the middle 66%, so the mark stays inside that.
-await markOnSquare('adaptive-icon.png', 1024, 580, CLEAR);
+// Android crops adaptive icons to a shape within the middle 66%, often a circle, so the mark's corners stay inside that.
+await markOnSquare('adaptive-icon.png', 1024, 500, CLEAR);
 await markOnSquare('favicon.png', 48, 40, WHITE);
+
+// Android 12+ clips splash icons to a circle, so the wordmark needs room around it.
+const lockup = await sharp(brand('veribuy-logo.svg'), { density: 600 }).resize({ width: 640 }).png().toBuffer();
+await sharp({ create: { width: 1000, height: 1000, channels: 4, background: CLEAR } })
+  .composite([{ input: lockup, gravity: 'centre' }])
+  .png()
+  .toFile(output('splash-icon-android.png'));
 
 for (const [file, width] of [
   ['splash-icon.png', 1000],

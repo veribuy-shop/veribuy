@@ -28,6 +28,7 @@ import {
 import { buyerFacingPrice, getBuyerProtectionFeePercent } from '@/lib/fees';
 import { formatPrice } from '@/lib/currency';
 import { prepareImageForUpload } from '@/lib/prepare-image';
+import { DEVICE_BRANDS } from '@veribuy/common/devices';
 import { getEvidenceRequirements, validateImeiChecksum } from '@veribuy/common/evidence';
 
 
@@ -126,17 +127,6 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
   DESKTOP: 'Desktop',
   GAMING_CONSOLE: 'Gaming Console',
   OTHER: 'Other',
-};
-
-const POPULAR_BRANDS: Record<string, string[]> = {
-  SMARTPHONE: ['Apple', 'Samsung', 'Google', 'OnePlus', 'Xiaomi', 'Motorola', 'Other'],
-  TABLET: ['Apple', 'Samsung', 'Microsoft', 'Lenovo', 'Amazon', 'Other'],
-  LAPTOP: ['Apple', 'Dell', 'HP', 'Lenovo', 'Asus', 'Acer', 'Microsoft', 'Other'],
-  SMARTWATCH: ['Apple', 'Samsung', 'Garmin', 'Fitbit', 'Other'],
-  AIRPODS: ['Apple', 'Other'],
-  DESKTOP: ['Apple', 'Dell', 'HP', 'Lenovo', 'Asus', 'Acer', 'Other'],
-  GAMING_CONSOLE: ['Sony', 'Microsoft', 'Nintendo', 'Valve', 'Other'],
-  OTHER: ['Other'],
 };
 
 // Device type values + labels are fetched from the backend so the form always
@@ -915,7 +905,7 @@ export default function CreateListingPage() {
                     ? deviceTypeOptions.map(type => (
                       <option key={type.value} value={type.value}>{type.label}</option>
                     ))
-                    : Object.keys(POPULAR_BRANDS).map(value => (
+                    : Object.keys(DEVICE_BRANDS).map(value => (
                       <option key={value} value={value}>{DEVICE_TYPE_LABELS[value] ?? value}</option>
                     ))}
                 </select>
@@ -933,7 +923,7 @@ export default function CreateListingPage() {
                   className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                 >
                   <option value="">Select a brand</option>
-                  {(POPULAR_BRANDS[formData.deviceType] ?? ['Other']).map(brand => (
+                  {(DEVICE_BRANDS[formData.deviceType] ?? ['Other']).map(brand => (
                     <option key={brand} value={brand}>{brand}</option>
                   ))}
                 </select>

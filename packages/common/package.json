@@ -24,6 +24,10 @@
     "./auction": {
       "types": "./dist/auction/index.d.ts",
       "default": "./dist/auction/index.js"
+    },
+    "./devices": {
+      "types": "./dist/devices/index.d.ts",
+      "default": "./dist/devices/index.js"
     }
   },
   "scripts": {

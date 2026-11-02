@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 
+import { GuestGate } from '@/src/components/GuestGate';
 import { Button, Input, Screen, KeyboardArea } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { ApiError } from '@/src/types/api';
@@ -40,7 +41,7 @@ interface DropoffLocation {
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [downloadingLabel, setDownloadingLabel] = useState(false);
   const [showProblemForm, setShowProblemForm] = useState(false);
   const [problemReason, setProblemReason] = useState('');
@@ -62,6 +63,7 @@ export default function OrderDetailScreen() {
   const [searchingDropoff, setSearchingDropoff] = useState(false);
 
   const load = useCallback(async () => {
+    if (!isAuthenticated) return;
     try {
       const o = await ordersService.get(id);
       setOrder(o);
@@ -229,6 +231,10 @@ export default function OrderDetailScreen() {
       setSearchingDropoff(false);
     }
   };
+
+  if (!isAuthenticated) {
+    return <GuestGate title="Sign in to see this order" subtitle="Your orders and their progress are kept in your account." />;
+  }
 
   if (loading) {
     return (

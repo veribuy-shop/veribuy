@@ -26,7 +26,7 @@ import {
   ShippingQuote,
 } from '@/src/lib/shipping';
 import { initPaymentSheet, presentPaymentSheet } from '@/src/lib/stripe';
-import { listingsService, ordersService, usersService } from '@/src/services';
+import { evidenceService, listingsService, ordersService, usersService } from '@/src/services';
 import { ApiError } from '@/src/types/api';
 import { Listing, Order } from '@/src/types/entities';
 
@@ -167,6 +167,14 @@ export default function CheckoutScreen() {
 
       const l = await listingsService.get(params.listingId);
       setListing(l);
+      // Listing details don't include the photo, so fetch it for the summary (best effort).
+      evidenceService
+        .forListing(l.id)
+        .then((items) => {
+          const photo = items.find((item) => item.url)?.url;
+          if (photo) setListing((current) => (current ? { ...current, imageUrl: photo } : current));
+        })
+        .catch(() => {});
 
       // Create (or resume) the pending order now so the price shown is the
       // server's price and the item is held while the buyer checks out.

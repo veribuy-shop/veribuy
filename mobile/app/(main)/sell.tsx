@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { DEVICE_BRANDS } from '@veribuy/common/devices';
 import { getEvidenceRequirements, validateImeiChecksum } from '@veribuy/common/evidence';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -216,7 +217,7 @@ export default function SellScreen() {
   const stepError = (current: number): string | null => {
     if (current === 1) {
       if (!fields.deviceType) return 'Choose the type of device.';
-      if (!fields.brand.trim() || !fields.model.trim()) return 'Enter the brand and model.';
+      if (!fields.brand.trim() || !fields.model.trim()) return 'Choose the brand and enter the model.';
       if (!fields.conditionGrade) return 'Choose the condition.';
     }
     if (current === 2) {
@@ -435,8 +436,25 @@ export default function SellScreen() {
           {step === 1 ? (
             <>
               <Label>Device type</Label>
-              <ChipRow options={DEVICE_TYPES} value={fields.deviceType} onChange={(v) => update('deviceType', v)} />
-              <Input label="Brand" placeholder="e.g. Apple" value={fields.brand} onChangeText={(v) => update('brand', v)} />
+              <ChipRow
+                options={DEVICE_TYPES}
+                value={fields.deviceType}
+                onChange={(v) => {
+                  update('deviceType', v);
+                  // Each type has its own brands, the same as the web form.
+                  update('brand', '');
+                }}
+              />
+              {fields.deviceType ? (
+                <>
+                  <Label>Brand</Label>
+                  <ChipRow
+                    options={DEVICE_BRANDS[fields.deviceType] ?? ['Other']}
+                    value={fields.brand}
+                    onChange={(v) => update('brand', v)}
+                  />
+                </>
+              ) : null}
               <Input label="Model" placeholder="e.g. iPhone 14 Pro" value={fields.model} onChangeText={(v) => update('model', v)} />
               <Label>Condition</Label>
               <ChipRow options={CONDITION_GRADES} value={fields.conditionGrade} onChange={(v) => update('conditionGrade', v)} />

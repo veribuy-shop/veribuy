@@ -107,7 +107,12 @@
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#FFFFFF",
-          "imageWidth": 220
+          "imageWidth": 220,
+          "android": {
+            "image": "./assets/images/splash-icon-android.png",
+            "imageWidth": 288,
+            "backgroundColor": "#FFFFFF"
+          }
         }
       ],
       [
@@ -115,9 +120,13 @@
         {
           "ios": {
             "useFrameworks": "dynamic"
+          },
+          "android": {
+            "extraProguardRules": "# Stripe push provisioning is an optional add-on we do not ship.\n-dontwarn com.stripe.android.pushProvisioning.**"
           }
         }
-      ]
+      ],
+      "./plugins/with-no-release-lint"
     ],
     "experiments": {
       "typedRoutes": true
