@@ -169,6 +169,16 @@ export function getBuyerProtectionFeeRate(): number {
   return parsed >= 1 ? parsed / 100 : parsed;
 }
 
+// Stripe rejects the whole PaymentIntent when any listed method can't take the
+// amount, so Clearpay is only offered up to its limit.
+const CLEARPAY_MAX_GBP = 1200;
+
+function paymentMethodTypesFor(totalAmount: number): string[] {
+  return totalAmount <= CLEARPAY_MAX_GBP
+    ? ['card', 'klarna', 'afterpay_clearpay']
+    : ['card', 'klarna'];
+}
+
 @Injectable()
 export class TransactionsService implements OnModuleInit {
   private readonly logger = new Logger(TransactionsService.name);
@@ -385,6 +395,7 @@ export class TransactionsService implements OnModuleInit {
           await this.stripe.paymentIntents.update(existingPendingOrder.paymentIntentId, {
             amount: Math.round(totalAmount * 100),
             currency: currency.toLowerCase(),
+            payment_method_types: paymentMethodTypesFor(totalAmount),
           });
 
           const updatedOrder = await this.prisma.order.update({
@@ -463,7 +474,7 @@ export class TransactionsService implements OnModuleInit {
           deliveryMethod,
           donationAmount: donationAmount.toString(),
         },
-        payment_method_types: ['card', 'klarna', 'afterpay_clearpay'],
+        payment_method_types: paymentMethodTypesFor(totalAmount),
       });
     } catch (err) {
       await this.releaseListingReservation(listingId).catch(() => undefined);
@@ -588,6 +599,7 @@ export class TransactionsService implements OnModuleInit {
     // Update Stripe PaymentIntent amount
     await this.stripe.paymentIntents.update(order.paymentIntentId, {
       amount: Math.round(newTotal * 100),
+      payment_method_types: paymentMethodTypesFor(newTotal),
       metadata: {
         orderId: order.id,
         buyerId: order.buyerId,
@@ -750,7 +762,7 @@ export class TransactionsService implements OnModuleInit {
       sellerId: updatedOrder.sellerId,
       recipientId: updatedOrder.buyerId,
       subject: 'Payment secured in escrow',
-      content: `Your payment of ${updatedOrder.currency} ${updatedOrder.totalAmount ?? updatedOrder.amount} has been secured in escrow for order #${updatedOrder.id.substring(0, 8)}. The seller will now prepare your item for shipment.`,
+      content: `Your payment of £${Number(updatedOrder.totalAmount ?? updatedOrder.amount).toFixed(2)} has been secured in escrow for order #${updatedOrder.id.substring(0, 8)}. The seller will now prepare your item for shipment.`,
     }).catch((err) => {
       this.logger.error('Failed to send buyer escrow notification', err?.stack ?? err);
     });
@@ -761,7 +773,7 @@ export class TransactionsService implements OnModuleInit {
       sellerId: updatedOrder.sellerId,
       recipientId: updatedOrder.sellerId,
       subject: 'New order — payment received',
-      content: `You have a new order (#${updatedOrder.id.substring(0, 8)}) with payment of ${updatedOrder.currency} ${updatedOrder.totalAmount ?? updatedOrder.amount} secured in escrow. Please prepare the item and mark it as shipped once dispatched.`,
+      content: `You have a new order (#${updatedOrder.id.substring(0, 8)}) with payment of £${Number(updatedOrder.totalAmount ?? updatedOrder.amount).toFixed(2)} secured in escrow. Please prepare the item and mark it as shipped once dispatched.`,
     }).catch((err) => {
       this.logger.error('Failed to send seller escrow notification', err?.stack ?? err);
     });

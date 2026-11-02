@@ -22,6 +22,7 @@ import { NotificationsService } from './notifications.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { ContactUsDto } from './dto/contact-us.dto';
 import { RequestCallbackDto } from './dto/request-callback.dto';
+import { ConversationQueryDto } from './dto/conversation-query.dto';
 import { JwtAuthGuard, RolesGuard, Public, CurrentUser, PaginationDto, assertEmailVerified } from '@veribuy/common';
 
 @Controller('notifications')
@@ -125,16 +126,14 @@ export class NotificationsController {
   // Get conversation between two users
   @Get('messages/conversation')
   async getConversation(
-    @Query('userId') userId: string,
-    @Query('otherUserId') otherUserId: string,
-    @Query('listingId') listingId: string | undefined,
-    @Query() pagination: PaginationDto,
+    @Query() query: ConversationQueryDto,
     @CurrentUser() user: { userId: string; role: string },
   ) {
+    const { userId, otherUserId, listingId, page, limit } = query;
     if (userId !== user.userId) {
       throw new ForbiddenException('You can only view your own conversations');
     }
-    return this.notificationsService.getConversation(userId, otherUserId, listingId, pagination);
+    return this.notificationsService.getConversation(userId, otherUserId, listingId, { page, limit });
   }
 
   // Get messages by listing

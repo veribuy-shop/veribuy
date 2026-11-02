@@ -387,6 +387,23 @@ describe('TransactionsService', () => {
         status: 'ACTIVE',
       };
 
+      it('offers Clearpay within its limit and drops it above, so the payment is not rejected', async () => {
+        const buy = async (price: number) => {
+          (service as any).fetchListing = jest.fn().mockResolvedValue({ ...listing, price });
+          prisma.order.create.mockResolvedValue({ id: `ord-${price}` });
+          await service.createOrder({
+            buyerId: 'buyer-1',
+            sellerId: 'seller-1',
+            listingId: 'listing-1',
+            currency: 'GBP',
+          });
+          return mockPaymentIntents.create.mock.lastCall[0].payment_method_types;
+        };
+
+        expect(await buy(500)).toEqual(['card', 'klarna', 'afterpay_clearpay']);
+        expect(await buy(1599)).toEqual(['card', 'klarna']);
+      });
+
       it('always charges in GBP even if the client asks for another currency', async () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
         prisma.order.create.mockResolvedValue({ id: 'ord-ccy' });
