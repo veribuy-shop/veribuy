@@ -11,6 +11,7 @@ import {
   getBidIncrement,
   CountdownParts,
 } from '@/lib/auction';
+import { auctionPaymentDeadline } from '@veribuy/common/auction';
 import {
   Gavel,
   Timer,
@@ -384,6 +385,13 @@ export default function AuctionBiddingCard({
               <p className="text-xs font-bold text-emerald-900">
                 🎉 Congratulations! You won this auction at {formatPrice(effectiveCurrentBid, currency)}.
               </p>
+              {auctionEndsAt && (
+                <p className="text-xs text-emerald-900">
+                  Pay by{' '}
+                  {auctionPaymentDeadline(auctionEndsAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })},
+                  or the sale is cancelled.
+                </p>
+              )}
               <button
                 type="button"
                 onClick={() => router.push(`/checkout?listingId=${listingId}`)}

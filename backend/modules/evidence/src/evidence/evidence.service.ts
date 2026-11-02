@@ -13,6 +13,7 @@ import { UploadEvidenceDto } from './dto/upload-evidence.dto';
 import { EvidenceType } from '.prisma/veribuy-client';
 import { v4 as uuidv4 } from 'uuid';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
+import { RedisService } from '@veribuy/redis-cache';
 
 /** Maximum number of evidence items per pack. */
 const MAX_ITEMS_PER_PACK = 20;
@@ -38,6 +39,7 @@ export class EvidenceService {
     private prisma: PrismaService,
     private cloudinaryService: CloudinaryService,
     private trustLensSync: TrustLensSyncService,
+    private redis: RedisService,
   ) {}
 
   /**
@@ -97,6 +99,7 @@ export class EvidenceService {
     // SECURITY: only the listing owner (or an admin) may attach evidence —
     // uploads also fulfil TrustLens checklist items for the listing.
     await this.assertListingOwner(dto.listingId, dto.sellerId, isAdmin);
+    if (!isAdmin) await this.assertPhotosCanChange(dto.listingId);
 
     // Ensure evidence pack exists (upsert handles race conditions)
     const pack = await this.createEvidencePack({
@@ -157,6 +160,8 @@ export class EvidenceService {
     });
 
     this.logger.log(`Uploaded evidence ${evidenceItem.id} for listing ${dto.listingId}`);
+
+    if (!isAdmin) await this.returnToReviewIfVerified(dto.listingId);
 
     // Notify trust-lens-service to mark the corresponding checklist item fulfilled.
     // Fire-and-forget — evidence upload must never fail because trust-lens is unreachable.
@@ -244,6 +249,9 @@ export class EvidenceService {
       throw new ForbiddenException('You can only delete your own evidence items');
     }
 
+    const isAdmin = requestingRole === 'ADMIN';
+    if (!isAdmin) await this.assertPhotosCanChange(item.pack.listingId);
+
     // Attempt to delete the Cloudinary asset
     const cloudinaryPublicId =
       (item.metadata as any)?.cloudinaryPublicId ??
@@ -262,7 +270,41 @@ export class EvidenceService {
 
     await this.prisma.evidenceItem.delete({ where: { id: itemId } });
 
+    if (!isAdmin) await this.returnToReviewIfVerified(item.pack.listingId);
+
     this.logger.log(`Deleted evidence item ${itemId}`);
+  }
+
+  /** A buyer's dispute relies on these photos, so they're fixed once there's a buyer. */
+  private async assertPhotosCanChange(listingId: string): Promise<void> {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { status: true },
+    });
+    if (listing?.status === 'SOLD' || listing?.status === 'AUCTION_ENDED') {
+      throw new BadRequestException('Photos can’t be changed once the device has a buyer');
+    }
+  }
+
+  /**
+   * Trust Lens reviewed the photos, so changing them invalidates a pass, the
+   * same as editing the description (bait-and-switch protection).
+   */
+  private async returnToReviewIfVerified(listingId: string): Promise<void> {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id: listingId },
+      select: { status: true, trustLensStatus: true },
+    });
+    if (listing?.trustLensStatus !== 'PASSED') return;
+
+    await this.prisma.listing.update({
+      where: { id: listingId },
+      data: {
+        trustLensStatus: 'REQUIRES_REVIEW',
+        ...(listing.status === 'ACTIVE' && { status: 'UNDER_REVIEW' }),
+      },
+    });
+    await this.redis.del(`listing:${listingId}`).catch(() => {});
   }
 
   /**

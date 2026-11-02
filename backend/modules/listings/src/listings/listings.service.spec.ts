@@ -250,6 +250,39 @@ describe('UlistingsService', () => {
     });
   });
 
+  describe('releaseUnpaidAuctions', () => {
+    const lapsed = {
+      id: 'lst-auc',
+      title: 'Pixel 8',
+      sellerId: 'seller-1',
+      highestBidderId: 'winner-1',
+      currentBid: 200,
+      reservePrice: null,
+    };
+
+    it('cancels the win and tells both people', async () => {
+      prisma.listing.findMany.mockResolvedValue([lapsed]);
+      prisma.listing.updateMany.mockResolvedValue({ count: 1 });
+
+      await expect(service.releaseUnpaidAuctions()).resolves.toBe(1);
+
+      expect(prisma.listing.updateMany).toHaveBeenCalledWith({
+        where: { id: 'lst-auc', status: 'AUCTION_ENDED' },
+        data: { status: 'DELISTED', highestBidderId: null, highestMaxBid: null },
+      });
+      const recipients = prisma.message.create.mock.calls.map((c: any[]) => c[0].data.recipientId);
+      expect(recipients).toEqual(['winner-1', 'seller-1']);
+    });
+
+    it('sends nothing when another run already released it', async () => {
+      prisma.listing.findMany.mockResolvedValue([lapsed]);
+      prisma.listing.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.releaseUnpaidAuctions()).resolves.toBe(0);
+      expect(prisma.message.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('placeBid', () => {
     it('should reject bids on non-auction listings', async () => {
       prisma.listing.findUnique.mockResolvedValue({
@@ -533,6 +566,20 @@ describe('UlistingsService', () => {
         where: { id: 'lst-1' },
         data: expect.objectContaining({ status: 'UNDER_REVIEW', trustLensStatus: 'REQUIRES_REVIEW' }),
       });
+    });
+
+    it('refuses a price change once an auction has bids', async () => {
+      prisma.listing.findUnique.mockResolvedValue({
+        id: 'lst-auc',
+        status: 'ACTIVE',
+        format: 'AUCTION',
+        bidCount: 2,
+        price: 100,
+        trustLensStatus: 'PASSED',
+      });
+
+      await expect(service.update('lst-auc', { price: 50 } as any)).rejects.toThrow('once bidding has started');
+      expect(prisma.listing.update).not.toHaveBeenCalled();
     });
 
     it('lets the seller change only the price without re-review', async () => {

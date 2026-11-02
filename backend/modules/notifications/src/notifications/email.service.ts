@@ -977,11 +977,18 @@ export class EmailService {
     listingTitle: string;
     listingId: string;
     winningBid: number;
+    checkoutDeadline: string;
   }): Promise<void> {
+    const payBy = new Date(data.checkoutDeadline).toLocaleString('en-GB', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: 'Europe/London',
+    });
     const bodyHtml = `
       <p style="margin-top:0;">Hi <strong>${this.escape(data.winnerName)}</strong>,</p>
       <p>You won <strong>${this.escape(data.listingTitle)}</strong> with a bid of <strong>£${Number(data.winningBid).toFixed(2)}</strong>.</p>
-      <p style="margin-bottom:0;">Complete your purchase to confirm delivery and payment. Buyer Protection and Royal Mail shipping are added at checkout.</p>
+      <p>Please complete your purchase by <strong>${payBy}</strong>. After that the sale is cancelled and you lose this item.</p>
+      <p style="margin-bottom:0;">Buyer Protection and Royal Mail shipping are added at checkout.</p>
     `;
 
     const html = this.buildEmailTemplate({

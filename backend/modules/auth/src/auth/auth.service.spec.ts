@@ -121,6 +121,7 @@ describe('AuthService', () => {
       prisma.profile.create.mockResolvedValue({ id: 'prof-1', userId: 'usr-1', accountType: 'INDIVIDUAL' });
 
       const result = await service.register({
+        acceptedTerms: true,
         name: 'John Doe',
         email: 'john@example.com',
         password: 'Password123!',
@@ -133,7 +134,11 @@ describe('AuthService', () => {
         country: 'GB',
       });
 
-      expect(prisma.user.create).toHaveBeenCalled();
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ termsAcceptedAt: expect.any(Date), termsVersion: expect.any(String) }),
+        }),
+      );
       expect(prisma.profile.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -167,6 +172,7 @@ describe('AuthService', () => {
       });
 
       const result = await service.register({
+        acceptedTerms: true,
         name: 'Jane Smith',
         email: 'jane@electronicsltd.co.uk',
         password: 'SecureBizPassword123!',
@@ -211,6 +217,7 @@ describe('AuthService', () => {
       prisma.profile.create.mockResolvedValue({ id: 'prof-bob', userId: 'referred-1' });
 
       const result = await service.register({
+        acceptedTerms: true,
         name: 'Bob Newbie',
         email: 'bob@example.com',
         password: 'Password123!',
@@ -249,6 +256,7 @@ describe('AuthService', () => {
 
       await expect(
         service.register({
+          acceptedTerms: true,
           name: 'Existing User',
           email: 'duplicate@example.com',
           password: 'Password123!',

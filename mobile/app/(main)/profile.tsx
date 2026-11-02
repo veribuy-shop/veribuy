@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { openLegalPage } from '@/src/lib/legal';
 import { GuestGate } from '@/src/components/GuestGate';
 import { Button, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
@@ -224,6 +225,15 @@ export default function ProfileScreen() {
         <Pressable onPress={() => router.push('/close-account')} accessibilityRole="button" className="items-center py-4 mt-1">
           <Text className="text-sm font-medium text-danger">Close my account</Text>
         </Pressable>
+
+        <View className="flex-row justify-center mb-6">
+          <Pressable onPress={() => openLegalPage('privacy')} accessibilityRole="link" className="min-h-11 justify-center px-3">
+            <Text className="text-[13px] font-medium text-text-muted">Privacy Policy</Text>
+          </Pressable>
+          <Pressable onPress={() => openLegalPage('terms')} accessibilityRole="link" className="min-h-11 justify-center px-3">
+            <Text className="text-[13px] font-medium text-text-muted">Terms of Service</Text>
+          </Pressable>
+        </View>
       </ScrollView>
     </Screen>
   );

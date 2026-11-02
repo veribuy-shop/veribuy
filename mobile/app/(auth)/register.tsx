@@ -5,6 +5,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -16,6 +17,7 @@ import { Field } from '@/src/components/Field';
 import { Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { api } from '@/src/lib/api';
+import { openLegalPage } from '@/src/lib/legal';
 import { usersService } from '@/src/services';
 
 export default function RegisterScreen() {
@@ -31,6 +33,7 @@ export default function RegisterScreen() {
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [postcodeNote, setPostcodeNote] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [validatingRef, setValidatingRef] = useState(false);
   const [referrerName, setReferrerName] = useState<string | null>(null);
   const [refError, setRefError] = useState<string | null>(null);
@@ -129,6 +132,10 @@ export default function RegisterScreen() {
       setError('Enter your address, town and postcode.');
       return;
     }
+    if (!agreedToTerms) {
+      setError('Please agree to the Terms of Service and Privacy Policy to continue.');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -142,6 +149,7 @@ export default function RegisterScreen() {
         city: city.trim(),
         postalCode: postalCode.trim().toUpperCase(),
         referralCode: referralCode.trim() || undefined,
+        acceptedTerms: agreedToTerms,
       });
       router.replace(result.autoVerified ? '/(main)' : '/check-email');
     } catch (e: any) {
@@ -233,6 +241,32 @@ export default function RegisterScreen() {
               <Field label="Postcode" icon="location-outline" placeholder="e.g. M1 1AE" value={postalCode} onChangeText={(value) => setPostalCode(value.toUpperCase())} autoCapitalize="characters" autoCorrect={false} autoComplete="postal-code" textContentType="postalCode" error={!!postcodeNote} />
               {postcodeNote ? <Text className="text-[13px] text-danger -mt-2 mb-4">{postcodeNote}</Text> : null}
               <Field label="Town or city" icon="map-outline" value={city} onChangeText={setCity} textContentType="addressCity" />
+              <View className="flex-row items-start mb-4">
+                <Pressable
+                  onPress={() => {
+                    setAgreedToTerms((agreed) => !agreed);
+                    setError('');
+                  }}
+                  accessibilityRole="checkbox"
+                  accessibilityLabel="I agree to the Terms of Service and Privacy Policy"
+                  accessibilityState={{ checked: agreedToTerms }}
+                  hitSlop={10}
+                  className={`w-6 h-6 rounded-md border items-center justify-center mr-3 mt-0.5 ${agreedToTerms ? 'bg-primary border-primary' : 'bg-surface border-border-strong'}`}
+                >
+                  {agreedToTerms ? <Ionicons name="checkmark" size={16} color="#FFFFFF" /> : null}
+                </Pressable>
+                <Text className="flex-1 text-[13px] text-text-muted leading-5">
+                  I agree to the{' '}
+                  <Text onPress={() => openLegalPage('terms')} accessibilityRole="link" className="font-semibold text-green">
+                    Terms of Service
+                  </Text>{' '}
+                  and{' '}
+                  <Text onPress={() => openLegalPage('privacy')} accessibilityRole="link" className="font-semibold text-green">
+                    Privacy Policy
+                  </Text>
+                  .
+                </Text>
+              </View>
             </>
           )}
 

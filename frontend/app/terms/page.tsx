@@ -17,6 +17,7 @@ const TOC = [
   { id: 'verification', label: '3. Trust Lens™ Device Verification' },
   { id: 'fees', label: '4. Fees, Pricing & Seller Payouts' },
   { id: 'escrow', label: '5. Escrow Payment & Buyer Protection' },
+  { id: 'auctions', label: 'Auctions & Binding Bids' },
   { id: 'prohibited', label: '6. Prohibited Items & Activities' },
   { id: 'ip', label: '7. Intellectual Property Rights' },
   { id: 'liability', label: '8. Limitation of Liability' },
@@ -30,7 +31,7 @@ export default function TermsPage() {
       <LegalHeader
         title="Terms and Conditions"
         subtitle="The legal agreement governing your access to and use of the VeriBuy marketplace, Trust Lens™ verification service, and escrow payments."
-        lastUpdated="September 4, 2026"
+        lastUpdated="November 2, 2026"
         badge="Contractual Terms"
       />
 
@@ -175,6 +176,13 @@ export default function TermsPage() {
             </section>
 
             {/* Section 6 */}
+            <section id="auctions" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
+              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">Auctions &amp; Binding Bids</h2>
+              <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
+                Bids are binding. The highest bidder when an auction ends, with any reserve price met, must pay within 48 hours of the auction ending. If they don&apos;t, the sale is cancelled and the seller may list the device again. A seller can&apos;t change the price of an auction once bidding has started. Changing the details or photos of a verified listing returns it to Trust Lens review.
+              </p>
+            </section>
+
             <section id="prohibited" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">6. Prohibited Items & Activities</h2>
               <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-3">

@@ -18,6 +18,8 @@ import {
   PaginatedResponse,
   calculateMinimumNextBid,
   calculateProxyBidOutcome,
+  AUCTION_PAYMENT_WINDOW_HOURS,
+  auctionPaymentDeadline,
   anonymizeBidderHandle,
 } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
@@ -148,6 +150,9 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
     this.settleTimer = setInterval(() => {
       this.settleExpiredAuctions().catch((err) =>
         this.logger.warn(`Auction settlement run failed: ${(err as Error).message}`),
+      );
+      this.releaseUnpaidAuctions().catch((err) =>
+        this.logger.warn(`Unpaid auction run failed: ${(err as Error).message}`),
       );
     }, 60 * 1000);
     this.settleTimer.unref?.();
@@ -898,6 +903,17 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         throw new BadRequestException('Sold listings cannot be edited');
       }
 
+      // Bidders committed to the auction as it stood.
+      if (
+        !isAdmin &&
+        current.format === ListingFormat.AUCTION &&
+        (current.bidCount ?? 0) > 0 &&
+        dto.price !== undefined &&
+        Number(dto.price) !== Number(current.price)
+      ) {
+        throw new BadRequestException('The price can’t change once bidding has started');
+      }
+
       // Same state machines as the dedicated status endpoint, so the generic
       // PATCH can't be used to bypass verification.
       let targetStatus = dto.status !== undefined && dto.status !== current.status ? dto.status : undefined;
@@ -1292,11 +1308,11 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
             listing.highestBidderId,
             listing.id,
             'You won the auction',
-            `You won ${listing.title} at £${curBid.toFixed(2)}. Open the listing to complete your purchase.`,
+            `You won ${listing.title} at £${curBid.toFixed(2)}. Open the listing and pay within ${AUCTION_PAYMENT_WINDOW_HOURS} hours, or the sale lapses.`,
           );
           const winnerInfo = await this.getBidderInfo(listing.highestBidderId);
           if (winnerInfo) {
-            const checkoutDeadline = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+            const checkoutDeadline = auctionPaymentDeadline(listing.auctionEndsAt ?? new Date()).toISOString();
             this.notifications.notifyAuctionWon({
               winnerEmail: winnerInfo.email,
               winnerName: winnerInfo.name,
@@ -1318,6 +1334,66 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
   /**
    * Fetch user info for bidder notifications.
    */
+  /**
+   * Takes back an auction the winner didn't pay for in time, so it doesn't sit
+   * unsold and the seller can list it again. A checkout in progress holds the
+   * listing as INACTIVE, so it's left alone until that checkout ends.
+   */
+  async releaseUnpaidAuctions(): Promise<number> {
+    const cutoff = new Date(Date.now() - AUCTION_PAYMENT_WINDOW_HOURS * 60 * 60 * 1000);
+    const lapsed = await this.prisma.listing.findMany({
+      where: {
+        format: ListingFormat.AUCTION,
+        status: ListingStatus.AUCTION_ENDED,
+        highestBidderId: { not: null },
+        auctionEndsAt: { lte: cutoff },
+      },
+      select: {
+        id: true,
+        title: true,
+        sellerId: true,
+        highestBidderId: true,
+        currentBid: true,
+        reservePrice: true,
+      },
+    });
+
+    let released = 0;
+    for (const listing of lapsed) {
+      try {
+        const { count } = await this.prisma.listing.updateMany({
+          where: { id: listing.id, status: ListingStatus.AUCTION_ENDED },
+          data: { status: ListingStatus.DELISTED, highestBidderId: null, highestMaxBid: null },
+        });
+        if (count !== 1) continue;
+        released++;
+        await this.redis.del(`listing:${listing.id}`).catch(() => {});
+
+        // Below the reserve nobody won, so there's no missed payment to report.
+        const won = !listing.reservePrice || Number(listing.currentBid) >= Number(listing.reservePrice);
+        if (won && listing.highestBidderId) {
+          await this.recordAuctionNotice(
+            listing.sellerId,
+            listing.highestBidderId,
+            listing.id,
+            'Your auction win has lapsed',
+            `You didn’t pay for ${listing.title} within ${AUCTION_PAYMENT_WINDOW_HOURS} hours, so the sale has been cancelled.`,
+          );
+          await this.recordAuctionNotice(
+            listing.highestBidderId,
+            listing.sellerId,
+            listing.id,
+            'The winning bidder didn’t pay',
+            `The winner of ${listing.title} didn’t pay within ${AUCTION_PAYMENT_WINDOW_HOURS} hours. The listing is off sale, and you can list the device again.`,
+          );
+        }
+      } catch (err) {
+        this.logger.error(`Failed to release unpaid auction ${listing.id}: ${(err as Error).message}`);
+      }
+    }
+    return released;
+  }
+
   /** Shows in the bidder's VeriBuy updates, so the app can tell them as well as email. */
   private async recordAuctionNotice(
     senderId: string,

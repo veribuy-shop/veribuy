@@ -338,6 +338,19 @@ describe('TransactionsService', () => {
         ).rejects.toThrow(BadRequestException);
       });
 
+      it('rejects the winner once the payment window has passed', async () => {
+        (service as any).fetchListing = jest.fn().mockResolvedValue({
+          ...auction,
+          status: 'AUCTION_ENDED',
+          highestBidderId: 'buyer-1',
+          auctionEndsAt: new Date(Date.now() - 49 * 3600_000).toISOString(),
+        });
+
+        await expect(
+          service.createOrder({ buyerId: 'buyer-1', sellerId: 'seller-1', listingId: 'listing-1' }),
+        ).rejects.toThrow('window to pay');
+      });
+
       it('rejects Buy It Now once bidding has reached that price', async () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue({
           ...auction,

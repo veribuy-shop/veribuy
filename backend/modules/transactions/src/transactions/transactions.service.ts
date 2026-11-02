@@ -17,7 +17,10 @@ import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
 import Stripe from 'stripe';
-import { PaginationDto, PaginatedResponse, getInternalApiUrl, RoyalMailServiceTier } from '@veribuy/common';
+import { PaginationDto, PaginatedResponse, getInternalApiUrl, RoyalMailServiceTier,
+  AUCTION_PAYMENT_WINDOW_HOURS,
+  auctionPaymentDeadline,
+} from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
 import { RoyalMailService, ShippingLabelOrderData } from '../shipping/royal-mail.service';
 
@@ -275,6 +278,11 @@ export class TransactionsService implements OnModuleInit {
         }
         if (listing.reservePrice != null && Number(listing.currentBid) < Number(listing.reservePrice)) {
           throw new BadRequestException('The reserve price for this auction was not met');
+        }
+        if (listing.auctionEndsAt && auctionPaymentDeadline(listing.auctionEndsAt).getTime() <= Date.now()) {
+          throw new BadRequestException(
+            `The ${AUCTION_PAYMENT_WINDOW_HOURS}-hour window to pay for this auction has passed`,
+          );
         }
       } else if (!(Number(listing.buyItNowPrice) > 0)) {
         throw new BadRequestException('This auction is still running and has no Buy It Now price');

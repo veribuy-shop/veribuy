@@ -232,3 +232,11 @@ export function formatAuctionCountdown(endsAt: Date | string | null | undefined)
     seconds,
   };
 }
+
+/** How long the winning bidder has to pay once an auction ends. */
+export const AUCTION_PAYMENT_WINDOW_HOURS = 48;
+
+/** When the winning bidder's right to buy lapses. */
+export function auctionPaymentDeadline(auctionEndsAt: Date | string): Date {
+  return new Date(new Date(auctionEndsAt).getTime() + AUCTION_PAYMENT_WINDOW_HOURS * 60 * 60 * 1000);
+}

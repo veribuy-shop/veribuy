@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 const TOC = [
   { id: 'overview', label: '1. Overview & Data Controller' },
   { id: 'collection', label: '2. Information We Collect' },
+  { id: 'mobile-app', label: 'Our Mobile App' },
   { id: 'purposes', label: '3. How & Why We Use Your Data' },
   { id: 'sharing', label: '4. Third-Party Data Sharing' },
   { id: 'security', label: '5. Security & Encryption Standards' },
@@ -28,7 +29,7 @@ export default function PrivacyPage() {
       <LegalHeader
         title="Privacy Policy"
         subtitle="How VeriBuy collects, processes, secures, and protects your personal data and device verification records in compliance with UK GDPR."
-        lastUpdated="September 4, 2026"
+        lastUpdated="November 2, 2026"
         badge="UK GDPR & DPA 2018 Compliant"
       />
 
@@ -132,6 +133,21 @@ export default function PrivacyPage() {
                   </tbody>
                 </table>
               </div>
+            </section>
+
+            {/* Mobile app */}
+            <section id="mobile-app" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
+              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">Our Mobile App</h2>
+              <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-3">
+                This policy also covers the VeriBuy app for iOS and Android. In the app:
+              </p>
+              <ul className="list-disc pl-5 space-y-2 text-sm text-[var(--color-text-muted)]">
+                <li><strong>Camera and photos:</strong> we only access these when you choose to add photos of a device. Photos are resized and location data is removed on your phone before upload.</li>
+                <li><strong>Sign-in:</strong> your session tokens are kept in your phone&apos;s secure storage rather than in cookies.</li>
+                <li><strong>Payments:</strong> card details go directly to Stripe and never reach our servers.</li>
+                <li><strong>Tracking:</strong> the app doesn&apos;t track you across other companies&apos; apps or websites, and contains no advertising.</li>
+                <li><strong>Deleting your account:</strong> you can close your account from Account in the app. Records we must keep by law are retained as set out in the retention section below.</li>
+              </ul>
             </section>
 
             {/* Section 3 & 4 */}

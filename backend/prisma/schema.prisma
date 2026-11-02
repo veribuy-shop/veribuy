@@ -20,6 +20,8 @@ model User {
   isEmailVerified          Boolean        @default(false) @map("is_email_verified")
   isActive                 Boolean        @default(true) @map("is_active")
   lastLoginAt              DateTime?      @map("last_login_at")
+  termsAcceptedAt          DateTime?      @map("terms_accepted_at")
+  termsVersion             String?        @map("terms_version")
   deletedAt                DateTime?      @map("deleted_at")
   emailVerificationToken   String?        @map("email_verification_token")
   emailVerificationExpiry  DateTime?      @map("email_verification_expiry")

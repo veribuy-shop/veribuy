@@ -572,7 +572,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
           <h2 className="text-xl font-bold text-[var(--color-text)] mb-1">Photos &amp; Evidence</h2>
           <p className="text-[var(--color-text-muted)] text-sm mb-6">
             Manage your listing photos. Images are grouped by type. Adding clear photos helps buyers
-            trust your listing.
+            trust your listing. Changing the photos on a verified listing sends it back to review,
+            and it won&apos;t be for sale until it passes again.
           </p>
 
           {/* Existing images */}

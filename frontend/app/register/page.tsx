@@ -256,6 +256,7 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register({
+        acceptedTerms: agreedToTerms,
         name: name.trim(),
         email: email.trim(),
         password,

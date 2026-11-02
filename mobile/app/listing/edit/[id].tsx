@@ -191,6 +191,7 @@ export default function EditListingScreen() {
         );
       }
       setPhotos((current) => [...current, ...added]);
+      if (added.length > 0) refreshListing();
     } catch (e: any) {
       Alert.alert('Photo not added', e?.message || 'Please try another photo.');
       // Some of a batch may have landed before the failure.
@@ -198,6 +199,26 @@ export default function EditListingScreen() {
     } finally {
       setPhotoBusy(false);
     }
+  };
+
+  /** Trust Lens reviewed the photos, so changing them on a verified listing means another review. */
+  const confirmPhotoChange = (change: () => void) => {
+    if (listing.trustLensStatus !== 'PASSED') {
+      change();
+      return;
+    }
+    Alert.alert(
+      'This goes back to review',
+      'Changing the photos of a verified listing takes it off sale until it’s reviewed again.',
+      [
+        { text: 'Keep it as it is', style: 'cancel' },
+        { text: 'Continue', onPress: change },
+      ],
+    );
+  };
+
+  const refreshListing = () => {
+    listingsService.get(listing.id).then(setListing).catch(() => {});
   };
 
   const takePhoto = async () => {
@@ -229,7 +250,11 @@ export default function EditListingScreen() {
       Alert.alert('Keep at least one photo', 'Add another photo before removing this one.');
       return;
     }
-    Alert.alert('Remove this photo?', 'Buyers will no longer see it.', [
+    const message =
+      listing.trustLensStatus === 'PASSED'
+        ? 'Buyers will no longer see it, and your listing goes off sale until it’s reviewed again.'
+        : 'Buyers will no longer see it.';
+    Alert.alert('Remove this photo?', message, [
       { text: 'Keep it', style: 'cancel' },
       {
         text: 'Remove',
@@ -239,6 +264,7 @@ export default function EditListingScreen() {
           try {
             await evidenceService.remove(item.id);
             setPhotos((current) => current.filter((photo) => photo.id !== item.id));
+            refreshListing();
           } catch (e: any) {
             Alert.alert('Photo not removed', e?.message || 'Please try again.');
           } finally {
@@ -286,8 +312,8 @@ export default function EditListingScreen() {
             ))}
             {photos.length < MAX_PHOTOS
               ? [
-                  { label: 'Camera', icon: 'camera-outline' as const, onPress: takePhoto },
-                  { label: 'Library', icon: 'images-outline' as const, onPress: choosePhotos },
+                  { label: 'Camera', icon: 'camera-outline' as const, onPress: () => confirmPhotoChange(takePhoto) },
+                  { label: 'Library', icon: 'images-outline' as const, onPress: () => confirmPhotoChange(choosePhotos) },
                 ].map((source) => (
                   <Pressable
                     key={source.label}

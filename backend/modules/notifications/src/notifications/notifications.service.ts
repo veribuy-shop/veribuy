@@ -410,6 +410,7 @@ export class NotificationsService {
           listingTitle: data.payload['listingTitle'],
           listingId: data.payload['listingId'],
           winningBid: data.payload['winningBid'],
+          checkoutDeadline: data.payload['checkoutDeadline'],
         });
         break;
       case 'raw':

@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional, IsEnum } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional, IsEnum, Equals } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { AccountType } from '.prisma/veribuy-client';
 
@@ -92,6 +92,9 @@ export class RegisterDto {
   @MaxLength(50)
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
   referralCode?: string;
+
+  @Equals(true, { message: 'Please agree to the Terms of Service and Privacy Policy.' })
+  acceptedTerms: boolean;
 }
 
 

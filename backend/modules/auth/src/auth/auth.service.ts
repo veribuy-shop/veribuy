@@ -66,6 +66,9 @@ const OTP_MAX_SENDS_PER_HOUR = 5;
 const SESSION_REVOCATION_TTL_SECONDS = 24 * 60 * 60;
 const REFRESH_TOKEN_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
 
+/** The "last updated" date on /terms and /privacy. Change it whenever either page changes. */
+const CURRENT_TERMS_VERSION = '2026-11-02';
+
 @Injectable()
 export class AuthService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AuthService.name);
@@ -147,6 +150,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
           name: dto.name,
           email: dto.email,
           passwordHash,
+          termsAcceptedAt: new Date(),
+          termsVersion: CURRENT_TERMS_VERSION,
           isEmailVerified: autoVerify,
           referralCode: newReferralCode,
           referredById: referredById || null,

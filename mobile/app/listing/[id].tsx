@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { calculateMinimumNextBid, formatAuctionCountdown } from '@veribuy/common/auction';
+import { auctionPaymentDeadline, calculateMinimumNextBid, formatAuctionCountdown } from '@veribuy/common/auction';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -310,7 +310,7 @@ export default function ListingDetailScreen() {
                 {formatPrice(Number(listing.currentBid ?? listing.startingBid ?? askingPrice), currency)}
               </Text>
               <Text className="text-xs text-text-muted mt-1">
-                {countdown.formattedText} · {wonAuction ? 'You won · ' : isHighestBidder ? 'You’re the highest bidder · ' : ''}{listing.bidCount ? `${listing.bidCount} bid${listing.bidCount === 1 ? '' : 's'}` : 'Starting bid'} · Buyer Protection and shipping added at checkout.
+                {countdown.formattedText} · {wonAuction && listing.auctionEndsAt ? `You won · Pay by ${auctionPaymentDeadline(listing.auctionEndsAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} · ` : isHighestBidder ? 'You’re the highest bidder · ' : ''}{listing.bidCount ? `${listing.bidCount} bid${listing.bidCount === 1 ? '' : 's'}` : 'Starting bid'} · Buyer Protection and shipping added at checkout.
               </Text>
             </>
           ) : (

@@ -46,6 +46,7 @@ export interface RegisterDetails {
   city: string;
   postalCode: string;
   referralCode?: string;
+  acceptedTerms: boolean;
 }
 
 interface AuthContextValue {

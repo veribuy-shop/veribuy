@@ -33,6 +33,7 @@ export interface RegisterData {
   companyNumber?: string;
   vatNumber?: string;
   referralCode?: string;
+  acceptedTerms: boolean;
 }
 
 interface AuthContextType {
