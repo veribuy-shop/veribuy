@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalHeader } from '@/components/legal-nav';
 import { Cookie, ShieldCheck, CheckCircle2, Lock, Settings2, ArrowRight } from 'lucide-react';
+import { CookieSettingsButton } from '@/components/analytics-consent';
 
 export const metadata: Metadata = {
   title: 'Cookie Policy & Local Storage',
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 const TOC = [
   { id: 'what-are-cookies', label: '1. What Are Cookies?' },
   { id: 'cookies-we-use', label: '2. Cookies & Storage We Use' },
-  { id: 'no-tracking', label: '3. No Ad Tracking or Profiling' },
+  { id: 'no-tracking', label: '3. Analytics & Advertising' },
   { id: 'managing-cookies', label: '4. How to Control & Manage Cookies' },
   { id: 'contact', label: '5. Questions & Updates' },
 ];
@@ -24,9 +25,9 @@ export default function CookiePolicyPage() {
     <div className="min-h-screen bg-[var(--color-surface)]">
       <LegalHeader
         title="Cookie Policy"
-        subtitle="Transparent information on how VeriBuy uses strictly necessary cookies and browser storage to keep your session secure without invasive tracking."
-        lastUpdated="September 4, 2026"
-        badge="Zero-Tracker Guarantee"
+        subtitle="The cookies and browser storage VeriBuy uses, what each is for, and how to change your choice."
+        lastUpdated="November 2, 2026"
+        badge="Analytics only with your consent"
       />
 
       <div className="max-w-6xl mx-auto px-4 py-10">
@@ -71,12 +72,12 @@ export default function CookiePolicyPage() {
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-[var(--color-text-muted)]">
                 <div className="p-3 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)]/60">
-                  <strong className="text-[var(--color-text)] block mb-1">Strictly Essential</strong>
-                  We only set cookies required for secure login authentication, CSRF defense, and session persistence.
+                  <strong className="text-[var(--color-text)] block mb-1">Essential Cookies</strong>
+                  Needed for secure sign-in and fraud prevention, so these are always on.
                 </div>
                 <div className="p-3 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)]/60">
-                  <strong className="text-[var(--color-text)] block mb-1">Zero Ad Trackers</strong>
-                  No third-party marketing pixels (e.g. Meta Pixel, TikTok pixel) or behavioral ad cookies.
+                  <strong className="text-[var(--color-text)] block mb-1">Analytics Is Your Choice</strong>
+                  Google Analytics only runs if you accept it, and we use no advertising cookies or marketing pixels.
                 </div>
                 <div className="p-3 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)]/60">
                   <strong className="text-[var(--color-text)] block mb-1">HttpOnly Security</strong>
@@ -97,7 +98,7 @@ export default function CookiePolicyPage() {
             <section id="cookies-we-use" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-xl font-bold text-[var(--color-text)] mb-4">2. Cookies & Storage We Use</h2>
               <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
-                The following cookies and local storage keys are essential to the operation of the VeriBuy platform:
+                These are the cookies and browser storage VeriBuy uses. Only Google Analytics needs your consent:
               </p>
               
               <div className="overflow-x-auto">
@@ -129,6 +130,18 @@ export default function CookiePolicyPage() {
                       <td className="p-3">Embedded by Stripe to prevent payment fraud and detect fraudulent charge attempts during checkout.</td>
                       <td className="p-3">Session / 1 year</td>
                     </tr>
+                    <tr>
+                      <td className="p-3 font-mono font-bold text-[var(--color-text)]">veribuy-analytics-consent</td>
+                      <td className="p-3 font-semibold text-[var(--color-green)]">Strictly Essential</td>
+                      <td className="p-3">Browser storage that remembers your cookie choice, so we don&apos;t ask on every visit.</td>
+                      <td className="p-3">Asked again after 1 year</td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 font-mono font-bold text-[var(--color-text)]">_ga / _ga_*</td>
+                      <td className="p-3 font-semibold text-amber-700">Analytics (only if you accept)</td>
+                      <td className="p-3">Set by Google Analytics to measure how the website is used, by distinguishing visitors and sessions. Usage data is sent to Google.</td>
+                      <td className="p-3">Up to 2 years</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -136,9 +149,9 @@ export default function CookiePolicyPage() {
 
             {/* Section 3 */}
             <section id="no-tracking" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
-              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">3. No Advertising or Tracking Cookies</h2>
+              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">3. Analytics &amp; Advertising</h2>
               <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-3">
-                VeriBuy takes user privacy seriously:
+                Google Analytics helps us understand how the website is used. It loads only after you accept it in our cookie banner. The VeriBuy app doesn&apos;t use it.
               </p>
               <ul className="space-y-2 text-sm text-[var(--color-text-muted)]">
                 <li className="flex items-start gap-2">
@@ -147,7 +160,7 @@ export default function CookiePolicyPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" />
-                  <span>We do not sell user analytics or device search histories to third-party data brokers.</span>
+                  <span>We do not sell analytics data or device search histories to data brokers.</span>
                 </li>
               </ul>
             </section>
@@ -157,7 +170,11 @@ export default function CookiePolicyPage() {
               <div>
                 <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">4. How to Control & Manage Cookies</h2>
                 <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
-                  Most modern web browsers allow you to control cookies through their settings preferences:
+                  You can accept or reject analytics, or change your mind, at any time:
+                </p>
+                <CookieSettingsButton className="mb-4 min-h-11 px-5 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold" />
+                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
+                  You can also control cookies in your browser&apos;s settings. Blocking essential cookies will stop sign-in working.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[var(--color-text-muted)]">
                   <div className="p-3.5 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)]">
@@ -183,8 +200,8 @@ export default function CookiePolicyPage() {
                 <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">5. Questions & Updates</h2>
                 <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
                   If you have questions regarding our cookie implementation, please email{' '}
-                  <a href="mailto:privacy@veribuy.shop" className="text-[var(--color-green)] font-semibold hover:underline">
-                    privacy@veribuy.shop
+                  <a href="mailto:moyosorebaiye@veribuy.shop" className="text-[var(--color-green)] font-semibold hover:underline">
+                    moyosorebaiye@veribuy.shop
                   </a>{' '}
                   or review our{' '}
                   <Link href="/privacy" className="text-[var(--color-green)] font-semibold hover:underline">

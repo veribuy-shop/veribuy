@@ -229,7 +229,7 @@ export default function TermsPage() {
                   or via our{' '}
                   <Link href="/contact" className="text-[var(--color-green)] font-semibold hover:underline">
                     Contact Support Page
-                  </Link>.
+                  </Link>. VeriBuy LTD is registered in England &amp; Wales (Company No. 17391481). Registered with the ICO: ZC226120. Bartle House, 9 Oxford Court, Manchester, M2 3WQ. Phone: 0333 880 9869.
                 </p>
               </div>
             </section>

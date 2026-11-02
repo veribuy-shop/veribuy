@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { BrandLogo } from '@/components/brand-logo';
+import { CookieSettingsButton } from '@/components/analytics-consent';
 
 export function Footer() {
   return (
@@ -45,6 +46,7 @@ export function Footer() {
               <li><Link href="/terms" className="hover:text-white transition-colors">Terms &amp; Conditions</Link></li>
               <li><Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
               <li><Link href="/cookies" className="hover:text-white transition-colors">Cookie Policy</Link></li>
+              <li><CookieSettingsButton className="hover:text-white transition-colors" /></li>
             </ul>
           </div>
         </div>
@@ -52,7 +54,12 @@ export function Footer() {
 
       <div className="border-t border-white/10 py-5 text-center px-4">
         <p className="text-xs text-white/40">
-          &copy; {new Date().getFullYear()} VeriBuy. All rights reserved.
+          &copy; {new Date().getFullYear()} VeriBuy LTD. All rights reserved.
+        </p>
+        <p className="text-xs text-white/40 mt-1">
+          Registered in England &amp; Wales, Company No. 17391481. ICO registration ZC226120.
+          {' '}Bartle House, 9 Oxford Court, Manchester, M2 3WQ.{' '}
+          <a href="tel:03338809869" className="hover:text-white transition-colors">0333 880 9869</a>
         </p>
       </div>
     </footer>

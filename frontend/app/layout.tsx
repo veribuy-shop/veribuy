@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from 'next';
-import Script from 'next/script';
 import './globals.css';
+import { AnalyticsConsent } from '@/components/analytics-consent';
 import { ClientLayout } from '@/components/client-layout';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
@@ -50,23 +50,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <head>
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-SQ22TQ686Z"
-          strategy="afterInteractive"
-        />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-
-            gtag('config', 'G-SQ22TQ686Z');
-          `}
-        </Script>
-      </head>
       <body className="min-h-screen flex flex-col">
         <ClientLayout>{children}</ClientLayout>
+        <AnalyticsConsent />
       </body>
     </html>
   );

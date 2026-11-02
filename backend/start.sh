@@ -18,6 +18,8 @@ fi
 # PENDING because no IMEI check could run.
 if [ -n "$REDIS_URL" ]; then
   echo "Testing Redis connection..."
+  # pnpm keeps ioredis under the backend package, so the probe must run from there.
+  cd /app/backend
   # Run the probe as an `if` condition so a failed test (non-zero exit) does NOT
   # abort the script under `set -e` — this is a warning, not a hard failure.
   if TEST_OUTPUT=$(timeout 5 node -e "

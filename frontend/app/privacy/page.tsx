@@ -1,26 +1,55 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalHeader } from '@/components/legal-nav';
-import { Shield, Lock, Eye, UserCheck, Database, KeyRound, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Shield, Eye, ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy & Data Protection',
-  description: 'VeriBuy Privacy Policy - UK GDPR and Data Protection Act 2018 compliance, personal information processing, and device data security.',
+  description: 'How VeriBuy collects and uses personal data on its website and app, who it is shared with, and your rights under UK data protection law.',
   alternates: {
     canonical: '/privacy',
   },
 };
 
 const TOC = [
-  { id: 'overview', label: '1. Overview & Data Controller' },
-  { id: 'collection', label: '2. Information We Collect' },
-  { id: 'mobile-app', label: 'Our Mobile App' },
-  { id: 'purposes', label: '3. How & Why We Use Your Data' },
-  { id: 'sharing', label: '4. Third-Party Data Sharing' },
-  { id: 'security', label: '5. Security & Encryption Standards' },
-  { id: 'rights', label: '6. Your UK GDPR Rights' },
-  { id: 'retention', label: '7. Data Retention & Deletion' },
-  { id: 'contact', label: '8. Data Protection Officer' },
+  { id: 'overview', label: '1. Who we are' },
+  { id: 'collection', label: '2. Information we collect' },
+  { id: 'purposes', label: '3. How we use your data' },
+  { id: 'sharing', label: '4. Who we share it with' },
+  { id: 'transfers', label: '5. International transfers' },
+  { id: 'mobile-app', label: '6. Our mobile app' },
+  { id: 'cookies', label: '7. Cookies & analytics' },
+  { id: 'security', label: '8. Security' },
+  { id: 'retention', label: '9. How long we keep data' },
+  { id: 'rights', label: '10. Your rights' },
+  { id: 'contact', label: '11. Contact & complaints' },
+];
+
+const SECTION = 'bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm';
+const HEADING = 'text-xl font-bold text-[var(--color-text)] mb-3';
+const BODY = 'text-sm text-[var(--color-text-muted)] leading-relaxed';
+const LIST = 'list-disc pl-5 space-y-2 text-sm text-[var(--color-text-muted)] leading-relaxed';
+
+const DATA_CATEGORIES = [
+  ['Account & profile', 'Name, email address, hashed password, phone number, address, and business details if you register as a business.', 'Contract'],
+  ['Listings', 'Device details, IMEI and serial number, photos, condition, price and listing drafts.', 'Contract; legitimate interests (fraud prevention)'],
+  ['Orders & delivery', 'Delivery address, Royal Mail tracking, order history and any disputes.', 'Contract; legal obligation'],
+  ['Payments', 'A payment reference from Stripe. Card details go directly to Stripe and we never store them.', 'Contract; legal obligation'],
+  ['Marketplace activity', 'Bids, offers, messages, ratings and referrals.', 'Contract'],
+  ['Records of agreement', 'When you accepted our Terms and this policy, and which version.', 'Legal obligation; legitimate interests'],
+  ['Technical', 'IP address and request information, used for security and rate limiting. Website usage data if you accept analytics.', 'Legitimate interests'],
+];
+
+const PROVIDERS = [
+  ['Stripe', 'Takes and holds payments.'],
+  ['Royal Mail', 'Delivery names, addresses and tracking.'],
+  ['imeicheck.com', 'Receives IMEI numbers to check device status.'],
+  ['Cloudinary', 'Stores listing and evidence photos.'],
+  ['Resend', 'Sends our emails.'],
+  ['Twilio', 'Sends phone verification codes.'],
+  ['postcodes.io', 'Looks up postcodes you enter.'],
+  ['Render', 'Hosts our website, servers and databases.'],
+  ['Google Analytics', 'Measures how our website is used, if you accept it.'],
 ];
 
 export default function PrivacyPage() {
@@ -28,9 +57,9 @@ export default function PrivacyPage() {
     <div className="min-h-screen bg-[var(--color-surface)]">
       <LegalHeader
         title="Privacy Policy"
-        subtitle="How VeriBuy collects, processes, secures, and protects your personal data and device verification records in compliance with UK GDPR."
+        subtitle="What personal data VeriBuy collects, why we use it, who we share it with, and the rights you have over it."
         lastUpdated="November 2, 2026"
-        badge="UK GDPR & DPA 2018 Compliant"
+        badge="UK GDPR & Data Protection Act 2018"
       />
 
       <div className="max-w-6xl mx-auto px-4 py-10">
@@ -67,197 +96,157 @@ export default function PrivacyPage() {
 
           {/* Main Content */}
           <main className="lg:col-span-3 space-y-8">
-            {/* Quick Principles Banner */}
-            <div className="bg-white border border-[var(--color-border)] rounded-2xl p-6 shadow-sm">
+            <div className={SECTION}>
               <h2 className="text-base font-bold text-[var(--color-text)] mb-3 flex items-center gap-2">
                 <Shield className="w-5 h-5 text-[var(--color-green)]" aria-hidden="true" />
-                Our Privacy Commitments
+                The short version
               </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-[var(--color-text-muted)]">
-                <div className="p-3 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)]/60">
-                  <strong className="text-[var(--color-text)] block mb-1">Zero Data Selling</strong>
-                  We never sell, rent, or monetize your personal or transaction data with data brokers or ad networks.
-                </div>
-                <div className="p-3 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)]/60">
-                  <strong className="text-[var(--color-text)] block mb-1">Encrypted Identifiers</strong>
-                  IMEI and serial numbers are encrypted and isolated exclusively for fraud prevention and Trust Lens checks.
-                </div>
-                <div className="p-3 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)]/60">
-                  <strong className="text-[var(--color-text)] block mb-1">Essential Cookies Only</strong>
-                  We don&apos;t use invasive third-party ad trackers, cross-site beacons, or behavioral profiling cookies.
-                </div>
-              </div>
+              <ul className={LIST}>
+                <li>We use your data to run the marketplace: verifying devices, taking payment, arranging delivery and resolving disputes.</li>
+                <li>We don&apos;t sell your personal data or show advertising.</li>
+                <li>Card details go directly to Stripe and never reach our servers.</li>
+                <li>IMEI and serial numbers are never shown publicly. We use them to check devices and prevent fraud.</li>
+              </ul>
             </div>
 
-            {/* Section 1 */}
-            <section id="overview" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
-              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">1. Overview & Data Controller</h2>
-              <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
-                VeriBuy Ltd (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) is the Data Controller responsible for your personal data collected through <code className="bg-[var(--color-surface-alt)] px-1.5 py-0.5 rounded text-xs font-mono text-[var(--color-text)]">veribuy.shop</code> and associated API services under the UK General Data Protection Regulation (UK GDPR) and Data Protection Act 2018.
+            <section id="overview" className={SECTION}>
+              <h2 className={HEADING}>1. Who we are</h2>
+              <p className={BODY}>
+                VeriBuy LTD (&ldquo;we&rdquo;, &ldquo;us&rdquo;) is the data controller for personal data collected through veribuy.shop and the VeriBuy app for iOS and Android. This policy explains what we collect and why, under the UK GDPR and the Data Protection Act 2018. VeriBuy is for people aged 18 and over.
+              </p>
+              <p className={`${BODY} mt-3`}>
+                VeriBuy LTD is registered in England &amp; Wales (Company No. 17391481) and with the Information Commissioner&apos;s Office (ZC226120). Our address is Bartle House, 9 Oxford Court, Manchester, M2 3WQ.
               </p>
             </section>
 
-            {/* Section 2 */}
-            <section id="collection" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
-              <h2 className="text-xl font-bold text-[var(--color-text)] mb-4">2. Categories of Information We Collect</h2>
+            <section id="collection" className={SECTION}>
+              <h2 className={HEADING}>2. Information we collect</h2>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border border-[var(--color-border)] rounded-xl overflow-hidden">
                   <thead className="bg-[var(--color-surface-alt)] text-[var(--color-text)] font-semibold border-b border-[var(--color-border)]">
                     <tr>
-                      <th className="p-3">Data Category</th>
-                      <th className="p-3">Specific Data Elements</th>
-                      <th className="p-3">Lawful Basis (UK GDPR)</th>
+                      <th className="p-3">Type of data</th>
+                      <th className="p-3">What it includes</th>
+                      <th className="p-3">Lawful basis</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--color-border)]/50 text-[var(--color-text-muted)]">
-                    <tr>
-                      <td className="p-3 font-semibold text-[var(--color-text)]">Account & Profile</td>
-                      <td className="p-3">Full name, email address, password hash, contact phone number.</td>
-                      <td className="p-3">Contract performance (Art. 6(1)(b))</td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-semibold text-[var(--color-text)]">Device Identifiers</td>
-                      <td className="p-3">IMEI (15-digit), Serial Number, evidence photos, battery metrics.</td>
-                      <td className="p-3">Legitimate interests & fraud prevention (Art. 6(1)(f))</td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-semibold text-[var(--color-text)]">Order & Delivery</td>
-                      <td className="p-3">Delivery address, Royal Mail tracking numbers, transaction timestamps.</td>
-                      <td className="p-3">Contract performance (Art. 6(1)(b))</td>
-                    </tr>
-                    <tr>
-                      <td className="p-3 font-semibold text-[var(--color-text)]">Payment Details</td>
-                      <td className="p-3">Tokenised payment reference (processed strictly via Stripe; full card numbers are never stored on our servers).</td>
-                      <td className="p-3">Legal obligation & Contract (Art. 6(1)(c))</td>
-                    </tr>
+                    {DATA_CATEGORIES.map(([category, detail, basis]) => (
+                      <tr key={category}>
+                        <td className="p-3 font-semibold text-[var(--color-text)]">{category}</td>
+                        <td className="p-3">{detail}</td>
+                        <td className="p-3">{basis}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             </section>
 
-            {/* Mobile app */}
-            <section id="mobile-app" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
-              <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">Our Mobile App</h2>
-              <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-3">
-                This policy also covers the VeriBuy app for iOS and Android. In the app:
-              </p>
-              <ul className="list-disc pl-5 space-y-2 text-sm text-[var(--color-text-muted)]">
-                <li><strong>Camera and photos:</strong> we only access these when you choose to add photos of a device. Photos are resized and location data is removed on your phone before upload.</li>
-                <li><strong>Sign-in:</strong> your session tokens are kept in your phone&apos;s secure storage rather than in cookies.</li>
-                <li><strong>Payments:</strong> card details go directly to Stripe and never reach our servers.</li>
-                <li><strong>Tracking:</strong> the app doesn&apos;t track you across other companies&apos; apps or websites, and contains no advertising.</li>
-                <li><strong>Deleting your account:</strong> you can close your account from Account in the app. Records we must keep by law are retained as set out in the retention section below.</li>
+            <section id="purposes" className={SECTION}>
+              <h2 className={HEADING}>3. How we use your data</h2>
+              <ul className={LIST}>
+                <li><strong>Running your account and orders:</strong> sign-in, listings, bids, offers, messages, payment, delivery and account emails.</li>
+                <li><strong>Verifying devices:</strong> Trust Lens checks combine automated IMEI checks with review of photos and details by our team. An automated result can flag or hold a listing. Contact us if you think a decision about your listing is wrong, and a person will look at it.</li>
+                <li><strong>Holding payments and resolving disputes:</strong> we use order records, messages and device photos to work out what happened.</li>
+                <li><strong>Preventing fraud and abuse:</strong> including spotting devices listed repeatedly or reported as a problem.</li>
+                <li><strong>Meeting legal duties:</strong> such as tax and accounting records.</li>
               </ul>
             </section>
 
-            {/* Section 3 & 4 */}
-            <section id="purposes" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-              <div>
-                <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">3. How & Why We Use Your Data</h2>
-                <ul className="space-y-2 text-sm text-[var(--color-text-muted)]">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" />
-                    <span><strong>Operating Trust Lens™:</strong> Conducting automated GSMA blacklist verification, stolen device cross-referencing, and cloud lock verification.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" />
-                    <span><strong>Escrow Transactions:</strong> Processing Stripe PaymentIntents and releasing funds after verified delivery and inspection.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" />
-                    <span><strong>Dispute Mediation:</strong> Inspecting timestamped device evidence packs to resolve condition discrepancies fairly.</span>
-                  </li>
-                </ul>
+            <section id="sharing" className={SECTION}>
+              <h2 className={HEADING}>4. Who we share it with</h2>
+              <p className={`${BODY} mb-3`}>
+                <strong>Other users:</strong> your display name, listings and ratings are visible on VeriBuy. A seller receives the buyer&apos;s name and delivery address when there is an order to post.
+              </p>
+              <p className={`${BODY} mb-3`}>
+                <strong>Service providers:</strong> we share only what each provider needs to do its job.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[var(--color-text)] mb-3">
+                {PROVIDERS.map(([name, purpose]) => (
+                  <div key={name} className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
+                    <strong>{name}</strong>
+                    <p className="text-[var(--color-text-muted)] mt-1">{purpose}</p>
+                  </div>
+                ))}
               </div>
-
-              <div id="sharing" className="pt-4 border-t border-[var(--color-border)]">
-                <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">4. Third-Party Service Providers</h2>
-                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-3">
-                  We disclose data strictly to vetted service providers bound by Data Processing Agreements (DPAs):
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[var(--color-text)]">
-                  <div className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-                    <strong>Stripe Payments UK</strong>
-                    <p className="text-[var(--color-text-muted)] mt-1">PCI-DSS Level 1 payment processor for escrow handling.</p>
-                  </div>
-                  <div className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-                    <strong>Cloudinary Media</strong>
-                    <p className="text-[var(--color-text-muted)] mt-1">Encrypted storage for timestamped evidence photos.</p>
-                  </div>
-                  <div className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-alt)]">
-                    <strong>Royal Mail Logistics</strong>
-                    <p className="text-[var(--color-text-muted)] mt-1">Tracked parcel dispatch & delivery confirmation.</p>
-                  </div>
-                </div>
-              </div>
+              <p className={BODY}>
+                We may also share data where the law requires it, for example with HMRC or the police, or to protect people from fraud.
+              </p>
             </section>
 
-            {/* Section 5 & 6 */}
-            <section id="security" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-              <div>
-                <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">5. Security & Encryption Standards</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
-                  <div className="p-3.5 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)] flex items-start gap-2.5">
-                    <Lock className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="text-[var(--color-text)] block mb-0.5">TLS 1.3 in Transit</strong>
-                      All browser-to-server communications use modern cryptographic ciphers with strict HSTS.
-                    </div>
-                  </div>
-                  <div className="p-3.5 bg-[var(--color-surface-alt)] rounded-xl border border-[var(--color-border)] flex items-start gap-2.5">
-                    <KeyRound className="w-4 h-4 text-[var(--color-green)] shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="text-[var(--color-text)] block mb-0.5">HttpOnly Session Cookies</strong>
-                      Authentication tokens are stored in HttpOnly, SameSite=Strict cookies inaccessible to client scripts.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div id="rights" className="pt-4 border-t border-[var(--color-border)]">
-                <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">6. Your UK GDPR Rights</h2>
-                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed mb-4">
-                  Under UK data protection law, you have enforceable statutory rights regarding your personal data:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-[var(--color-text-muted)]">
-                  <div className="p-3 border border-[var(--color-border)] rounded-xl">
-                    <strong className="text-[var(--color-text)] block mb-1">Right to Access:</strong>
-                    Request a copy of all personal data we hold about you.
-                  </div>
-                  <div className="p-3 border border-[var(--color-border)] rounded-xl">
-                    <strong className="text-[var(--color-text)] block mb-1">Right to Erasure:</strong>
-                    Request deletion of your account and associated personal data.
-                  </div>
-                  <div className="p-3 border border-[var(--color-border)] rounded-xl">
-                    <strong className="text-[var(--color-text)] block mb-1">Right to Rectification:</strong>
-                    Correct any inaccurate or incomplete personal details.
-                  </div>
-                  <div className="p-3 border border-[var(--color-border)] rounded-xl">
-                    <strong className="text-[var(--color-text)] block mb-1">Right to Data Portability:</strong>
-                    Obtain your listing and order history in standard machine-readable JSON format.
-                  </div>
-                </div>
-              </div>
+            <section id="transfers" className={SECTION}>
+              <h2 className={HEADING}>5. International transfers</h2>
+              <p className={BODY}>
+                Our servers are hosted in Frankfurt, Germany. Some providers may also process data in other countries, including the United States. Where data leaves the UK, we rely on UK adequacy regulations or the safeguards the law requires, such as the ICO&apos;s International Data Transfer Agreement. Contact us for more detail.
+              </p>
             </section>
 
-            {/* Section 7 & 8 */}
-            <section id="retention" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-              <div>
-                <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">7. Data Retention Policy</h2>
-                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
-                  We retain user profile data for as long as your account remains active. Transaction and VAT invoice records are retained for 6 years in accordance with UK statutory accounting obligations (HMRC requirements), after which they are permanently anonymised or destroyed.
-                </p>
-              </div>
+            <section id="mobile-app" className={SECTION}>
+              <h2 className={HEADING}>6. Our mobile app</h2>
+              <ul className={LIST}>
+                <li><strong>Camera and photos:</strong> used only when you choose to add photos of a device. You choose which photos to share. They are resized and location data is removed on your phone before upload.</li>
+                <li><strong>Sign-in:</strong> session tokens are kept in your phone&apos;s secure storage.</li>
+                <li><strong>Tracking:</strong> the app contains no advertising or analytics tools and doesn&apos;t track you across other companies&apos; apps or websites.</li>
+                <li><strong>Closing your account:</strong> you can do this from Account in the app.</li>
+              </ul>
+            </section>
 
-              <div id="contact" className="pt-4 border-t border-[var(--color-border)]">
-                <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">8. Data Protection Officer & Contact</h2>
-                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
-                  To exercise your privacy rights or submit a Data Subject Access Request (DSAR), please contact our Data Protection Officer at{' '}
-                  <a href="mailto:dpo@veribuy.shop" className="text-[var(--color-green)] font-semibold hover:underline">
-                    dpo@veribuy.shop
-                  </a>. If you are unsatisfied with our response, you have the right to lodge a complaint with the UK Information Commissioner&apos;s Office (ICO) at <a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer" className="text-[var(--color-green)] font-semibold hover:underline">ico.org.uk</a>.
-                </p>
-              </div>
+            <section id="cookies" className={SECTION}>
+              <h2 className={HEADING}>7. Cookies &amp; analytics</h2>
+              <p className={BODY}>
+                Our website uses essential cookies to keep you signed in and secure. If you accept, it also uses Google Analytics to understand how the site is used, which sets its own cookies and sends usage data to Google. You can change your mind at any time using Cookie settings in the website footer. We don&apos;t use advertising cookies or marketing pixels. See our{' '}
+                <Link href="/cookies" className="text-[var(--color-green)] font-semibold hover:underline">Cookie Policy</Link>.
+              </p>
+            </section>
+
+            <section id="security" className={SECTION}>
+              <h2 className={HEADING}>8. Security</h2>
+              <ul className={LIST}>
+                <li>Data is sent over encrypted connections (TLS).</li>
+                <li>Passwords are stored only as salted hashes.</li>
+                <li>On the website, sign-in tokens are kept in cookies that page scripts can&apos;t read.</li>
+                <li>IMEI and serial numbers are removed from public listing data, and access is limited to the seller and the staff who need them.</li>
+              </ul>
+              <p className={`${BODY} mt-3`}>No system is completely secure. If a breach is likely to put you at risk, we will tell you and the ICO as the law requires.</p>
+            </section>
+
+            <section id="retention" className={SECTION}>
+              <h2 className={HEADING}>9. How long we keep data</h2>
+              <ul className={LIST}>
+                <li><strong>Accounts:</strong> for as long as your account is open.</li>
+                <li><strong>When you close your account:</strong> we remove your name, email address, profile, address and listing drafts straight away, and take your listings off sale.</li>
+                <li><strong>Orders and payments:</strong> we keep these records, with related messages and device photos, for 6 years for tax and accounting and to deal with claims.</li>
+                <li><strong>IMEI records:</strong> we keep a record of device identifiers after a listing ends, to prevent fraud and the resale of stolen devices.</li>
+              </ul>
+            </section>
+
+            <section id="rights" className={SECTION}>
+              <h2 className={HEADING}>10. Your rights</h2>
+              <p className={`${BODY} mb-3`}>Under UK data protection law you can ask us to:</p>
+              <ul className={LIST}>
+                <li>give you a copy of your data</li>
+                <li>correct anything inaccurate</li>
+                <li>delete your data</li>
+                <li>restrict how we use it, or object to uses based on our legitimate interests</li>
+                <li>give you your data in a portable format</li>
+                <li>have a person review a decision made by automated means</li>
+              </ul>
+              <p className={`${BODY} mt-3`}>
+                These rights have limits, for example where we must keep records by law. We normally reply within one month.
+              </p>
+            </section>
+
+            <section id="contact" className={SECTION}>
+              <h2 className={HEADING}>11. Contact &amp; complaints</h2>
+              <p className={BODY}>
+                To use your rights or ask a question, contact our Data Protection Officer, Moyosore Baiye, at{' '}
+                <a href="mailto:moyosorebaiye@veribuy.shop" className="text-[var(--color-green)] font-semibold hover:underline">moyosorebaiye@veribuy.shop</a>, or write to Bartle House, 9 Oxford Court, Manchester, M2 3WQ. For general support, call{' '}
+                <a href="tel:03338809869" className="text-[var(--color-green)] font-semibold hover:underline">0333 880 9869</a>.
+                {' '}If you&apos;re unhappy with our response, you can complain to the Information Commissioner&apos;s Office at{' '}
+                <a href="https://ico.org.uk" target="_blank" rel="noopener noreferrer" className="text-[var(--color-green)] font-semibold hover:underline">ico.org.uk</a>.
+                {' '}If we change this policy in a meaningful way, we&apos;ll update the date above and tell you where appropriate.
+              </p>
             </section>
           </main>
         </div>
