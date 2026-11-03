@@ -17,13 +17,6 @@ function getInternalServiceToken(): string {
   return token;
 }
 
-// Initialize Stripe lazily to avoid build-time errors
-function getStripe() {
-  return new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-    apiVersion: '2026-01-28.clover',
-  });
-}
-
 function getWebhookSecret(): string {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) {
@@ -36,7 +29,6 @@ function getWebhookSecret(): string {
 }
 
 export async function POST(request: NextRequest) {
-  const stripe = getStripe();
   const webhookSecret = getWebhookSecret();
   try {
     const body = await request.text();
@@ -53,7 +45,8 @@ export async function POST(request: NextRequest) {
     // Verify webhook signature
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      // Checks the signature locally: this route never calls the Stripe API, the backend does.
+      event = Stripe.webhooks.constructEvent(body, signature, webhookSecret);
     } catch (err) {
       console.error('[Stripe Webhook] Signature verification failed:', err);
       return NextResponse.json(

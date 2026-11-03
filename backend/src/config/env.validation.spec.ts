@@ -21,7 +21,6 @@ describe('validateEnv', () => {
     NODE_ENV: 'production',
     ALLOWED_ORIGINS: 'https://www.veribuy.shop',
     STRIPE_SECRET_KEY: 'sk_live_abc123',
-    STRIPE_WEBHOOK_SECRET: 'whsec_abc123',
   };
 
   it('accepts a valid development configuration', () => {
@@ -77,11 +76,6 @@ describe('validateEnv', () => {
     expect(() =>
       validateEnv({ ...baseProd, STRIPE_SECRET_KEY: 'sk_test_abc' }),
     ).not.toThrow();
-  });
-
-  it('warns (but does not block) a missing webhook secret', () => {
-    const { STRIPE_WEBHOOK_SECRET, ...noWebhook } = baseProd;
-    expect(() => validateEnv(noWebhook)).not.toThrow();
   });
 
   it('rejects a missing Stripe secret key in production', () => {

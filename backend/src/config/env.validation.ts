@@ -22,7 +22,6 @@ const PRODUCTION_SECRETS = [
   'JWT_REFRESH_SECRET',
   'INTERNAL_SERVICE_TOKEN',
   'STRIPE_SECRET_KEY',
-  'STRIPE_WEBHOOK_SECRET',
 ] as const;
 
 /** Variables required in every environment. */
@@ -69,16 +68,6 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
     for (const key of PRODUCTION_SECRETS) {
       const value = get(key);
       if (!value) {
-        // Missing webhook secret is demoted to warning — the Stripe webhook
-        // endpoint fails closed without it, so a missing value cannot enable
-        // forged webhook acceptance.
-        if (key === 'STRIPE_WEBHOOK_SECRET') {
-          warnings.push(
-            'STRIPE_WEBHOOK_SECRET is not set — webhook endpoint will reject ' +
-              'requests until it is configured.',
-          );
-          continue;
-        }
         errors.push(`${key} is required in production but was not set.`);
         continue;
       }
