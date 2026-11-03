@@ -25,4 +25,5 @@ export * from './evidence/requirements';
 
 // Auction & Proxy Bidding Engine
 export * from './auction/bidding-engine';
+export * from './checkout';
 

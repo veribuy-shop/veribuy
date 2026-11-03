@@ -19,6 +19,7 @@ import {
   ArrowLeft,
   Store,
 } from 'lucide-react';
+import { checkoutMinutesLeft } from '@veribuy/common/checkout';
 
 type OrderStatus =
   | 'PENDING'
@@ -124,8 +125,7 @@ export default function OrdersPage() {
         const activeOrders = rawOrders.filter((o: Order) => {
           if (o.status === 'CANCELLED') return false;
           if (o.status === 'PENDING') {
-            const elapsed = (Date.now() - new Date(o.createdAt).getTime()) / (1000 * 60);
-            return elapsed < 30;
+            return checkoutMinutesLeft(o.createdAt) > 0;
           }
           return true;
         });

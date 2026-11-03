@@ -171,6 +171,8 @@ export const ordersService = {
     api.get<{ rating: number; comment?: string | null } | null>(`/transactions/orders/${orderId}/rating`),
   updateShipping: (orderId: string, data: Record<string, unknown>) =>
     api.patch<Order>(`/transactions/orders/${orderId}/shipping`, data),
+  /** Gives up an unpaid checkout and releases the item. */
+  cancelCheckout: (orderId: string) => api.del<unknown>(`/transactions/orders/${orderId}`),
   updateStatus: (orderId: string, data: Record<string, unknown>) =>
     api.patch<Order>(`/transactions/orders/${orderId}/status`, data),
   refund: (orderId: string) => api.post<Order>(`/transactions/orders/${orderId}/refund`, {}),

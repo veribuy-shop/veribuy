@@ -28,8 +28,10 @@ import {
 import { formatPrice } from '@/lib/currency';
 import { formatShippingService } from '@/lib/shipping';
 import { calculateProtectionFee, getBuyerProtectionFeePercent } from '@/lib/fees';
+import { checkoutMinutesLeft } from '@veribuy/common/checkout';
 
 interface Order {
+  listingId?: string | null;
   id: string;
   amount: number;
   currency: string;
@@ -336,6 +338,23 @@ export default function OrderConfirmationPage() {
                 Dispatched via {formatShippingService(order.shippingService)}.
               </p>
             </>
+          ) : order.status === 'PENDING' ? (
+            <>
+              <h1 className="text-3xl font-bold text-[var(--color-text)] mb-1">Payment Not Completed</h1>
+              <p className="text-sm text-[var(--color-text-muted)]">
+                Order #{order.id.substring(0, 8).toUpperCase()} hasn&apos;t been paid, and nothing has been charged.
+              </p>
+            </>
+          ) : order.status === 'CANCELLED' || order.status === 'REFUNDED' ? (
+            <>
+              <h1 className="text-3xl font-bold text-[var(--color-text)] mb-1">
+                {order.status === 'REFUNDED' ? 'Order Refunded' : 'Order Cancelled'}
+              </h1>
+              <p className="text-sm text-[var(--color-text-muted)]">
+                Order #{order.id.substring(0, 8).toUpperCase()}{' '}
+                {order.status === 'REFUNDED' ? 'was refunded to the original payment method.' : "wasn't paid, so nothing was charged."}
+              </p>
+            </>
           ) : (
             <>
               <ShieldCheck aria-hidden="true" className="w-16 h-16 text-[var(--color-green)] mx-auto mb-3" />
@@ -352,7 +371,18 @@ export default function OrderConfirmationPage() {
           const shortId = order.id.substring(0, 8).toUpperCase();
           let next: { title: string; body: string; href?: string; cta?: string; tone: 'action' | 'info' } | null = null;
           if (isBuyer) {
-            if (order.status === 'SHIPPED') {
+            if (order.status === 'PENDING' && order.listingId) {
+              const minutesLeft = checkoutMinutesLeft(order.createdAt);
+              next = minutesLeft > 0
+                ? {
+                    title: 'Finish paying to keep this item',
+                    body: `You haven't been charged. We're holding it for you for ${minutesLeft} more ${minutesLeft === 1 ? 'minute' : 'minutes'}.`,
+                    href: `/checkout?listingId=${order.listingId}`,
+                    cta: 'Continue checkout',
+                    tone: 'action',
+                  }
+                : { title: 'Your hold on this item has ended', body: "You weren't charged, and the item is back on sale.", tone: 'info' };
+            } else if (order.status === 'SHIPPED') {
               next = { title: 'Has your parcel arrived?', body: 'Confirm delivery, then check the device before releasing payment.', href: `/orders/${order.id}/tracking#actions`, cta: 'Confirm delivery', tone: 'action' };
             } else if (order.status === 'DELIVERED') {
               next = { title: 'Check your device', body: 'If it matches the listing, release payment to the seller. If not, report a problem before releasing.', href: `/orders/${order.id}/tracking#actions`, cta: 'Release payment or report a problem', tone: 'action' };
@@ -421,7 +451,7 @@ export default function OrderConfirmationPage() {
                     <Lock className="w-4 h-4" />
                   </div>
                   <span className="text-[11px] font-semibold text-[var(--color-text)]">1. Escrow</span>
-                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">Payment held</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)] hidden sm:block">{order.status === 'PENDING' ? 'Payment needed' : 'Payment held'}</span>
                 </div>
 
                 {/* Step 2: Prepare */}

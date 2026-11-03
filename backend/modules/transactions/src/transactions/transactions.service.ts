@@ -20,6 +20,7 @@ import Stripe from 'stripe';
 import { PaginationDto, PaginatedResponse, getInternalApiUrl, RoyalMailServiceTier,
   AUCTION_PAYMENT_WINDOW_HOURS,
   auctionPaymentDeadline,
+  CHECKOUT_HOLD_MINUTES,
 } from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
 import { RoyalMailService, ShippingLabelOrderData } from '../shipping/royal-mail.service';
@@ -207,13 +208,13 @@ export class TransactionsService implements OnModuleInit {
       apiVersion: '2026-01-28.clover',
     });
 
-    // Run initial and recurring background cleanup for expired pending orders (30 min timeout)
+    // Run initial and recurring background cleanup for expired pending orders (see CHECKOUT_HOLD_MINUTES)
     this.cleanupExpiredPendingOrders().catch(() => {});
     setInterval(() => {
       this.cleanupExpiredPendingOrders().catch((err) => {
         this.logger.warn(`Cleanup expired pending orders error: ${err.message}`);
       });
-    }, 5 * 60 * 1000);
+    }, 60 * 1000);
   }
 
   async createOrder(createOrderDto: CreateOrderDto) {
@@ -1254,11 +1255,11 @@ export class TransactionsService implements OnModuleInit {
   }
 
   /**
-   * Automatically cancel unpaid PENDING checkout orders older than 30 minutes
+   * Automatically cancel unpaid PENDING checkout orders once their hold ends
    * and restore listings back to ACTIVE status.
    */
   async cleanupExpiredPendingOrders() {
-    const expiryThreshold = new Date(Date.now() - 30 * 60 * 1000);
+    const expiryThreshold = new Date(Date.now() - CHECKOUT_HOLD_MINUTES * 60 * 1000);
     const staleOrders = await this.prisma.order.findMany({
       where: {
         status: 'PENDING',
@@ -1387,10 +1388,10 @@ export class TransactionsService implements OnModuleInit {
     const { page = 1, limit = 10 } = pagination;
     const skip = (page - 1) * limit;
 
-    // Proactively clean up any expired pending orders older than 30 mins
+    // Proactively clean up any expired pending orders
     this.cleanupExpiredPendingOrders().catch(() => {});
 
-    const expiryThreshold = new Date(Date.now() - 30 * 60 * 1000);
+    const expiryThreshold = new Date(Date.now() - CHECKOUT_HOLD_MINUTES * 60 * 1000);
 
     const where = {
       buyerId,

@@ -1,3 +1,4 @@
+import { checkoutMinutesLeft } from '@veribuy/common/checkout';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, View, Pressable } from 'react-native';
@@ -85,6 +86,12 @@ export default function OrdersScreen() {
                   <View className="bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     <Text className="text-[11px] font-mono font-bold text-emerald-800">
                       {item.trackingNumber}
+                    </Text>
+                  </View>
+                ) : item.status === 'PENDING' ? (
+                  <View className="bg-amber-100 px-2 py-0.5 rounded">
+                    <Text className="text-[11px] font-bold text-amber-900">
+                      Continue checkout · {checkoutMinutesLeft(item.createdAt)} min left
                     </Text>
                   </View>
                 ) : view === 'SELLER' && item.status !== 'CANCELLED' && item.status !== 'REFUNDED' ? (

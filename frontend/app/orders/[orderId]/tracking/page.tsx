@@ -17,6 +17,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
+import { CHECKOUT_HOLD_MINUTES, checkoutMinutesLeft } from '@veribuy/common/checkout';
 
 interface Order {
   id: string;
@@ -489,9 +490,7 @@ export default function OrderTrackingPage() {
 
         {/* Pending Checkout Actions */}
         {order.status === 'PENDING' && (() => {
-          const createdAtMs = new Date(order.createdAt).getTime();
-          const elapsedMinutes = Math.floor((Date.now() - createdAtMs) / (1000 * 60));
-          const remainingMinutes = Math.max(0, 30 - elapsedMinutes);
+          const remainingMinutes = checkoutMinutesLeft(order.createdAt);
           const isExpired = remainingMinutes <= 0;
 
           if (isExpired) {
@@ -504,7 +503,7 @@ export default function OrderTrackingPage() {
                   <div className="flex-1">
                     <h3 className="text-base md:text-lg font-bold text-slate-900 mb-1">Checkout Session Expired</h3>
                     <p className="text-xs md:text-sm text-slate-500 mb-4 leading-relaxed">
-                      This checkout attempt was held for 30 minutes and has now expired. The device has been returned to the marketplace.
+                      This checkout attempt was held for {CHECKOUT_HOLD_MINUTES} minutes and has now expired. The device has been returned to the marketplace.
                     </p>
                     <Link
                       href="/browse"
@@ -537,7 +536,7 @@ export default function OrderTrackingPage() {
                   <div className="flex flex-wrap items-center gap-3">
                     {(listing?.id || order.listingId) && (
                       <Link
-                        href={`/checkout/${listing?.id || order.listingId}`}
+                        href={`/checkout?listingId=${listing?.id || order.listingId}`}
                         className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm rounded-xl transition-all shadow-sm inline-flex items-center gap-2"
                       >
                         Complete Checkout

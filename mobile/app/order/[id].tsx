@@ -1,3 +1,4 @@
+import { checkoutMinutesLeft } from '@veribuy/common/checkout';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -24,7 +25,7 @@ import { useAuth } from '@/src/context/AuthContext';
 import { ApiError } from '@/src/types/api';
 import { formatPrice } from '@/src/lib/currency';
 import { formatShippingService, resolveDeviceWeightProfile } from '@/src/lib/shipping';
-import { ordersService } from '@/src/services';
+import { offersService, ordersService } from '@/src/services';
 import { Order } from '@/src/types/entities';
 
 interface DropoffLocation {
@@ -162,6 +163,44 @@ export default function OrderDetailScreen() {
     }
   };
 
+  const onContinueCheckout = async () => {
+    if (!order?.listingId) return;
+    setBusy(true);
+    try {
+      // An order doesn't record its offer, and without it checkout would charge the full price.
+      const offers = await offersService.mine('buyer').catch(() => []);
+      const offer = offers.find((item) => item.listingId === order.listingId && item.status === 'ACCEPTED');
+      router.replace({
+        pathname: '/checkout',
+        params: { listingId: order.listingId, ...(offer ? { offerId: offer.id } : {}) },
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onCancelCheckout = () => {
+    Alert.alert('Cancel this checkout?', 'The item goes back on sale for other buyers. You haven’t been charged.', [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Cancel checkout',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          setError('');
+          try {
+            await ordersService.cancelCheckout(id);
+            router.replace('/(main)/orders');
+          } catch (e: any) {
+            setError(e?.message || 'We could not cancel this checkout. Please try again.');
+          } finally {
+            setBusy(false);
+          }
+        },
+      },
+    ]);
+  };
+
   const onDownloadLabel = async () => {
     setDownloadingLabel(true);
     try {
@@ -270,6 +309,69 @@ export default function OrderDetailScreen() {
   // What the buyer paid and escrow holds: item, Buyer Protection and shipping.
   // Each person sees only their side of the order; the server enforces this too.
   const isSellerView = user?.id === order.sellerId;
+
+  // Nothing is held on these, so none of the payment protection wording below applies.
+  if (order.status === 'CANCELLED' || order.status === 'REFUNDED' || (order.status === 'PENDING' && isSellerView)) {
+    const refunded = order.status === 'REFUNDED';
+    const amount = formatPrice(order.totalAmount || order.amount, order.currency);
+    return (
+      <Screen style={{ justifyContent: 'center' }}>
+        <View className="items-center mb-5">
+          <View className="w-16 h-16 rounded-2xl bg-surface-container items-center justify-center mb-4">
+            <Ionicons name={refunded ? 'return-down-back-outline' : 'close-circle-outline'} size={30} color="#565959" />
+          </View>
+          <Text className="text-2xl font-bold text-text text-center">
+            {refunded ? 'Order refunded' : order.status === 'PENDING' ? 'Waiting for payment' : 'Checkout cancelled'}
+          </Text>
+          <Text className="text-sm text-text-muted text-center mt-2 leading-5">
+            {refunded
+              ? isSellerView
+                ? `${amount} was returned to the buyer.`
+                : `${amount} was returned to your original payment method.`
+              : order.status === 'PENDING'
+                ? 'The buyer hasn’t paid yet, so there’s nothing to post.'
+                : isSellerView
+                  ? 'This order wasn’t paid, so there’s nothing to post.'
+                  : `This order wasn’t paid, so you weren’t charged, and ${order.listingTitle || 'the item'} is no longer held for you.`}
+          </Text>
+        </View>
+        <Button onPress={() => router.replace('/(main)/orders')}>Back to orders</Button>
+      </Screen>
+    );
+  }
+
+  if (order.status === 'PENDING' && !isSellerView) {
+    const minutesLeft = checkoutMinutesLeft(order.createdAt);
+    return (
+      <Screen style={{ justifyContent: 'center' }}>
+        <View className="items-center mb-5">
+          <View className="w-16 h-16 rounded-2xl bg-amber-100 items-center justify-center mb-4">
+            <Ionicons name="time-outline" size={30} color="#92400E" />
+          </View>
+          <Text className="text-2xl font-bold text-text text-center">Payment not completed</Text>
+          <Text className="text-sm text-text-muted text-center mt-2 leading-5">
+            You haven’t been charged.{' '}
+            {minutesLeft > 0
+              ? `We’re holding ${order.listingTitle || 'this item'} for you for ${minutesLeft} more ${minutesLeft === 1 ? 'minute' : 'minutes'}.`
+              : 'Your hold on this item has ended.'}
+          </Text>
+        </View>
+        {error ? <Text className="text-sm text-danger text-center mb-3">{error}</Text> : null}
+        {minutesLeft > 0 ? (
+          <>
+            <Button variant="green" onPress={onContinueCheckout} loading={busy}>
+              Continue checkout
+            </Button>
+            <Pressable onPress={onCancelCheckout} disabled={busy} accessibilityRole="button" className="min-h-11 items-center justify-center mt-2">
+              <Text className="text-sm font-medium text-text-muted">Cancel and release this item</Text>
+            </Pressable>
+          </>
+        ) : (
+          <Button onPress={() => router.replace('/(main)')}>Back to Explore</Button>
+        )}
+      </Screen>
+    );
+  }
   const isBuyerView = user?.id === order.buyerId;
   const amountFormatted = formatPrice(order.totalAmount ?? order.amount, order.currency || 'GBP');
   const isDispatched =

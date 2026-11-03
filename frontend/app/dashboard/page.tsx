@@ -62,6 +62,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { PasswordInput } from '@/components/password-input';
 
 // ─────────────────────────────────────────────
 // Types
@@ -2228,8 +2229,8 @@ function DashboardContent() {
                   <label className={cn('text-xs font-semibold block mb-1.5', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
                     Current Password
                   </label>
-                  <input
-                    type="password"
+                  <PasswordInput
+                    toggleLabel="current password"
                     required
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
@@ -2243,8 +2244,8 @@ function DashboardContent() {
                   <label className={cn('text-xs font-semibold block mb-1.5', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
                     New Password
                   </label>
-                  <input
-                    type="password"
+                  <PasswordInput
+                    toggleLabel="new password"
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
@@ -2258,8 +2259,8 @@ function DashboardContent() {
                   <label className={cn('text-xs font-semibold block mb-1.5', isDarkMode ? 'text-neutral-300' : 'text-slate-700')}>
                     Confirm New Password
                   </label>
-                  <input
-                    type="password"
+                  <PasswordInput
+                    toggleLabel="password confirmation"
                     required
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}

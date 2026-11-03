@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +15,8 @@ import {
 } from 'react-native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { usePasswordVisibility } from '../lib/password-visibility';
 
 type PropsWithChildren<T = unknown> = T & { children?: React.ReactNode };
 
@@ -76,16 +79,20 @@ export function Input({ label, error, onFocus, onBlur, ...props }: InputProps) {
   const [focused, setFocused] = useState(false);
   // iOS number pads have no return key, so give people a way to close them.
   const showDone = focused && NUMERIC_KEYBOARDS.includes(props.keyboardType ?? '');
+  const password = usePasswordVisibility(props.value, props.onChangeText);
+  const isPassword = !!props.secureTextEntry;
 
   return (
     <View className="mb-4">
       {label ? <Text className="text-[13px] font-medium text-text mb-1.5">{label}</Text> : null}
       <View className="justify-center">
         <TextInput
+          ref={password.inputRef}
           placeholderTextColor="#8A8A8A"
           className={`bg-surface border rounded-xl px-3.5 min-h-12 py-3 text-[15px] text-text ${error ? 'border-danger' : 'border-border-strong'}`}
           onFocus={(e) => {
             setFocused(true);
+            if (isPassword) password.onFocus();
             onFocus?.(e);
           }}
           onBlur={(e) => {
@@ -93,7 +100,21 @@ export function Input({ label, error, onFocus, onBlur, ...props }: InputProps) {
             onBlur?.(e);
           }}
           {...props}
+          {...(isPassword
+            ? { secureTextEntry: !password.revealed, onChangeText: password.onChangeText, autoCapitalize: 'none' as const, autoCorrect: false, spellCheck: false, style: [props.style, { paddingRight: 44 }] }
+            : {})}
         />
+        {isPassword ? (
+          <Pressable
+            onPress={password.toggle}
+            accessibilityRole="button"
+            accessibilityLabel={password.revealed ? 'Hide password' : 'Show password'}
+            hitSlop={8}
+            className="absolute right-1 h-10 w-10 items-center justify-center"
+          >
+            <Ionicons name={password.revealed ? 'eye-off-outline' : 'eye-outline'} size={20} color="#565959" />
+          </Pressable>
+        ) : null}
         {showDone ? (
           <Pressable
             onPress={Keyboard.dismiss}
@@ -180,6 +201,9 @@ export function StatusPill({ status }: { status: string }) {
   } else if (normalized === 'ESCROW_HELD' || normalized === 'PAID' || normalized === 'PAYMENT_RECEIVED') {
     color = 'bg-amber-50 text-amber-800 border border-amber-200';
     label = 'Payment held';
+  } else if (normalized === 'PENDING') {
+    color = 'bg-surface-alt text-text-muted border border-borderc';
+    label = 'Not paid';
   } else if (normalized === 'SHIPPED') {
     color = 'bg-grade-b-bg text-grade-b-text border border-blue-200';
     label = 'Dispatched';

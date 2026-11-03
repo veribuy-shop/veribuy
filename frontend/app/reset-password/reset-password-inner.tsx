@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CircleCheck, CircleX, KeyRound, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
+import { PasswordInput } from '@/components/password-input';
 
 type Status = 'idle' | 'submitting' | 'success' | 'error';
 
@@ -126,9 +127,9 @@ export default function ResetPasswordInner() {
                 <label htmlFor="new-password" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
                   New Password
                 </label>
-                <input
+                <PasswordInput
+                  toggleLabel="new password"
                   id="new-password"
-                  type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
@@ -143,9 +144,9 @@ export default function ResetPasswordInner() {
                 <label htmlFor="confirm-password" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
                   Confirm New Password
                 </label>
-                <input
+                <PasswordInput
+                  toggleLabel="password confirmation"
                   id="confirm-password"
-                  type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
