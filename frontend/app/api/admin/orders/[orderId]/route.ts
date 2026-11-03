@@ -1,3 +1,4 @@
+import { friendlyApiError } from '@/lib/api-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeOrder } from '@/lib/sanitize';
@@ -59,7 +60,7 @@ export async function PATCH(
       {
         method: 'PATCH',
         headers: createAuthHeaders(authResult.token),
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, ...(body.reason ? { reason: String(body.reason).slice(0, 1000) } : {}) }),
       }
     );
 
@@ -68,7 +69,7 @@ export async function PATCH(
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
       return NextResponse.json(
-        { error: 'Failed to update order status' },
+        { error: friendlyApiError(await response.json().catch(() => null), 'We could not update this order.') },
         { status: response.status }
       );
     }
@@ -122,7 +123,7 @@ export async function DELETE(
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
       return NextResponse.json(
-        { error: 'Failed to cancel order' },
+        { error: friendlyApiError(await response.json().catch(() => null), 'We could not cancel this order.') },
         { status: response.status }
       );
     }

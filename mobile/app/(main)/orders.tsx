@@ -1,4 +1,5 @@
 import { checkoutMinutesLeft } from '@veribuy/common/checkout';
+import { getMarketplaceConfig } from '@/src/lib/marketplace-config';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, View, Pressable } from 'react-native';
@@ -91,7 +92,7 @@ export default function OrdersScreen() {
                 ) : item.status === 'PENDING' ? (
                   <View className="bg-amber-100 px-2 py-0.5 rounded">
                     <Text className="text-[11px] font-bold text-amber-900">
-                      Continue checkout · {checkoutMinutesLeft(item.createdAt)} min left
+                      Continue checkout · {checkoutMinutesLeft(item.createdAt, getMarketplaceConfig().checkoutHoldMinutes)} min left
                     </Text>
                   </View>
                 ) : view === 'SELLER' && item.status !== 'CANCELLED' && item.status !== 'REFUNDED' ? (

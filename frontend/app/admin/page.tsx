@@ -23,46 +23,37 @@ import {
   CheckCircle2,
   LogOut,
   RefreshCw,
-  Server,
-  Database,
   Shield,
   ShieldCheck,
-  Layers,
   Lock,
-  Package,
   CreditCard,
-  Camera,
-  Bell,
-  Cpu,
-  Save,
   AlertTriangle,
   ChevronRight,
   Sun,
   Moon,
   ArrowLeft,
-  Percent,
   ExternalLink,
   Smartphone,
   TrendingUp,
   ArrowUpRight,
-  Filter,
-  Hash,
-  Zap,
   Trash2,
+  History,
 } from 'lucide-react';
-import ConfirmModal from '@/components/confirm-modal';
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
-  Legend,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { ActivityLog } from './_desk/activity-log';
+import { ListingsDesk } from './_desk/listings-desk';
+import { NeedsAttention, useDeskSummary } from './_desk/needs-attention';
+import { OrdersDesk } from './_desk/orders-desk';
+import { ReviewQueue } from './_desk/review-queue';
+import { SystemHealth } from './_desk/system-health';
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -143,46 +134,19 @@ interface ImeiRegistryItem {
   createdAt: string;
 }
 
-type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'users' | 'analytics' | 'health' | 'settings';
+type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'activity' | 'users' | 'analytics' | 'health' | 'settings';
 
-const STATUS_PRIORITY: Record<string, number> = {
-  COMPLETED: 10,
-  DELIVERED: 9,
-  SHIPPED: 8,
-  ESCROW_HELD: 7,
-  PAYMENT_RECEIVED: 6,
-  DISPUTED: 5,
-  PENDING: 4,
-  REFUNDED: 2,
-  CANCELLED: 1,
+const TAB_HEADINGS: Record<TabId, { title: string; subtitle: string }> = {
+  dashboard: { title: 'Overview', subtitle: 'What needs doing, and how the marketplace is performing.' },
+  verification: { title: 'Review queue', subtitle: 'Listings waiting for a decision, and the device identifier register.' },
+  listings: { title: 'Listings', subtitle: 'Find, check and take down listings.' },
+  orders: { title: 'Orders and escrow', subtitle: 'Payments held, disputes, refunds and unpaid checkouts.' },
+  activity: { title: 'Activity log', subtitle: 'Who did what, and when.' },
+  users: { title: 'Users', subtitle: 'Search accounts and manage access.' },
+  analytics: { title: 'Analytics', subtitle: 'Sales, fees and listing trends.' },
+  health: { title: 'System health', subtitle: 'The status of the API, database, cache and connected services.' },
+  settings: { title: 'Settings', subtitle: 'Marketplace fees and dashboard preferences.' },
 };
-
-function deduplicateOrders(orders: Order[]): Order[] {
-  const groups = new Map<string, Order[]>();
-
-  for (const order of orders) {
-    const key =
-      order.listingId ||
-      order.listing?.id ||
-      (order.listing?.title ? `title:${order.listing.title.trim().toLowerCase()}` : order.id);
-    const existing = groups.get(key) || [];
-    existing.push(order);
-    groups.set(key, existing);
-  }
-
-  const result: Order[] = [];
-  for (const group of groups.values()) {
-    group.sort((a, b) => {
-      const pA = STATUS_PRIORITY[a.status] || 0;
-      const pB = STATUS_PRIORITY[b.status] || 0;
-      if (pA !== pB) return pB - pA;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-    result.push(group[0]);
-  }
-
-  return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
 
 // ============================================================================
 // MAIN COMPONENT
@@ -208,10 +172,6 @@ function AdminDashboardContent() {
 
   // Search & Filter state
   const [userSearch, setUserSearch] = useState('');
-  const [listingSearch, setListingSearch] = useState('');
-  const [listingStatusFilter, setListingStatusFilter] = useState('ALL');
-  const [orderSearch, setOrderSearch] = useState('');
-  const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
   const [imeiSearch, setImeiSearch] = useState('');
   const [imeiFlaggedOnly, setImeiFlaggedOnly] = useState(false);
 
@@ -232,7 +192,9 @@ function AdminDashboardContent() {
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Refund modal state
-  const [refundOrderId, setRefundOrderId] = useState<string | null>(null);
+  const [deskView, setDeskView] = useState<string | undefined>(undefined);
+  const [deskVersion, setDeskVersion] = useState(0);
+  const deskSummary = useDeskSummary(deskVersion);
 
   // Load theme preference per admin user
   useEffect(() => {
@@ -295,7 +257,7 @@ function AdminDashboardContent() {
       if (ordVal?.ok) {
         const d = await ordVal.json();
         const rawOrders: Order[] = Array.isArray(d.orders) ? d.orders : Array.isArray(d) ? d : [];
-        setOrders(deduplicateOrders(rawOrders));
+        setOrders(rawOrders);
       }
 
       const verVal = settleOk(verRes);
@@ -334,49 +296,15 @@ function AdminDashboardContent() {
     router.replace(`/admin?${params.toString()}`, { scroll: false });
   };
 
-  const handleVerificationReview = async (id: string, action: 'PASSED' | 'FAILED') => {
-    setActionLoading(true);
-    setActionMessage(null);
-    try {
-      const res = await authFetch(`/api/trust-lens/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: action,
-          reviewNotes: `Admin manual review marked as ${action}`,
-        }),
-      });
-      if (!res.ok) throw new Error('Failed to update verification status');
-      setActionMessage({ type: 'success', text: `Verification marked as ${action}` });
-      await fetchAll();
-      setTimeout(() => setActionMessage(null), 3000);
-    } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Action failed' });
-    } finally {
-      setActionLoading(false);
-    }
+  const openDesk = (tab: 'verification' | 'listings' | 'orders', view?: string) => {
+    setDeskView(view);
+    handleTabClick(tab);
   };
 
-  const handleRerunVerification = async (listingId: string) => {
-    setActionLoading(true);
-    setActionMessage(null);
-    try {
-      const res = await authFetch(`/api/trust-lens?listingId=${listingId}&action=rerun`, {
-        method: 'POST',
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || data.error || 'Failed to re-run IMEI verification check');
-      }
-      setActionMessage({ type: 'success', text: `IMEI verification check re-triggered for listing ${listingId.substring(0, 8)}...` });
-      await fetchAll();
-      setTimeout(() => setActionMessage(null), 3500);
-    } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Re-run check failed' });
-    } finally {
-      setActionLoading(false);
-    }
-  };
+  const refreshAll = useCallback(() => {
+    setDeskVersion((version) => version + 1);
+    fetchAll();
+  }, [fetchAll]);
 
   const handleToggleUserRole = async (targetUser: User) => {
     const newRole = targetUser.role === 'ADMIN' ? 'USER' : 'ADMIN';
@@ -434,84 +362,16 @@ function AdminDashboardContent() {
     }
   };
 
-  const handleUpdateListingStatus = async (listingId: string, newStatus: string) => {
-    setActionLoading(true);
-    setActionMessage(null);
-    try {
-      const res = await authFetch(`/api/admin/listings/${listingId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || data.message || 'Failed to update listing status');
-      }
-      setActionMessage({ type: 'success', text: `Listing status updated to ${newStatus}` });
-      await fetchAll();
-      setTimeout(() => setActionMessage(null), 3000);
-    } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Status change failed' });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleExecuteRefund = async () => {
-    if (!refundOrderId) return;
-    setActionLoading(true);
-    setActionMessage(null);
-    try {
-      const res = await authFetch(`/api/admin/orders/${refundOrderId}/refund`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!res.ok) throw new Error('Failed to process refund');
-      setActionMessage({ type: 'success', text: `Order #${refundOrderId.substring(0, 8)} refunded successfully` });
-      setRefundOrderId(null);
-      await fetchAll();
-      setTimeout(() => setActionMessage(null), 3000);
-    } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Refund failed' });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDeleteOrder = async (orderId: string) => {
-    if (!confirm('Are you sure you want to remove this unpaid order attempt and restore the listing to active queue?')) return;
-    setActionLoading(true);
-    setActionMessage(null);
-    try {
-      const res = await authFetch(`/api/admin/orders/${orderId}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || 'Failed to delete order');
-      }
-      setActionMessage({ type: 'success', text: `Order attempt #${orderId.substring(0, 8)} removed successfully` });
-      await fetchAll();
-      setTimeout(() => setActionMessage(null), 3000);
-    } catch (err: any) {
-      setActionMessage({ type: 'error', text: err.message || 'Failed to delete order' });
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   // Metrics & Core Calculations
   const activeListingsCount = listings.filter((l) => l.status === 'ACTIVE').length;
-  const pendingVerifications = verifications.filter((v) => ['PENDING', 'IN_PROGRESS', 'REQUIRES_REVIEW'].includes(v.status));
-  // Listings waiting on an admin that have no open verification request (e.g.
-  // a listing flagged REQUIRES_REVIEW, or a material edit sent back to review).
-  const pendingListingIds = new Set(pendingVerifications.map((v) => v.listingId));
-  const listingsAwaitingReview = listings.filter(
-    (l) =>
-      !pendingListingIds.has(l.id) &&
-      (l.trustLensStatus === 'REQUIRES_REVIEW' || l.trustLensStatus === 'PENDING' || l.status === 'UNDER_REVIEW'),
+  // Sold and taken down listings no longer need a reviewer.
+  const listingStatusById = new Map(listings.map((l) => [l.id, l.status]));
+  const pendingVerifications = verifications.filter(
+    (v) =>
+      ['PENDING', 'IN_PROGRESS', 'REQUIRES_REVIEW'].includes(v.status) &&
+      !['SOLD', 'DELISTED', 'REJECTED'].includes(listingStatusById.get(v.listingId) ?? ''),
   );
-  const reviewQueueCount = pendingVerifications.length + listingsAwaitingReview.length;
+  const reviewQueueCount = deskSummary?.reviewWaiting ?? pendingVerifications.length;
   const listingTitleById = new Map(listings.map((l) => [l.id, l.title]));
   const flaggedImeis = imeiRegistry.filter((i) => i.isFlagged);
 
@@ -527,7 +387,7 @@ function AdminDashboardContent() {
 
   const totalGmv = paidOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0);
   const totalProtectionFees = paidOrders.reduce(
-    (sum, o) => sum + Number(o.protectionFee || (Number(o.amount || 0) * 0.05)),
+    (sum, o) => sum + Number(o.protectionFee ?? (Number(o.amount || 0) * feeRatePercent) / 100),
     0
   );
   const activeEscrowVault = activeEscrowOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0);
@@ -557,7 +417,7 @@ function AdminDashboardContent() {
     );
     const dayGmv = dayPaid.reduce((sum, o) => sum + Number(o.amount || 0), 0);
     const dayFees = dayPaid.reduce(
-      (sum, o) => sum + Number(o.protectionFee || (Number(o.amount || 0) * 0.05)),
+      (sum, o) => sum + Number(o.protectionFee ?? (Number(o.amount || 0) * feeRatePercent) / 100),
       0
     );
     const dayUnpaid = dayOrders.filter((o) => o.status === 'PENDING').length;
@@ -606,59 +466,20 @@ function AdminDashboardContent() {
   }));
 
   const navItems: { id: TabId; label: string; icon: any; count?: number; alert?: boolean }[] = [
-    { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
-    { id: 'verification', label: 'Verification Queue', icon: ClipboardCheck, count: reviewQueueCount, alert: reviewQueueCount > 0 },
-    { id: 'listings', label: 'Listings Moderation', icon: Store, count: listings.length },
-    { id: 'orders', label: 'Orders & Escrow', icon: Wallet, count: orders.length },
-    { id: 'users', label: 'User Directory', icon: Users, count: users.length },
-    { id: 'analytics', label: 'Platform Analytics', icon: BarChart3 },
-    { id: 'health', label: 'System Health', icon: Activity },
-    { id: 'settings', label: 'Platform Settings', icon: Settings },
+    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'verification', label: 'Review queue', icon: ClipboardCheck, count: reviewQueueCount, alert: reviewQueueCount > 0 },
+    { id: 'listings', label: 'Listings', icon: Store },
+    { id: 'orders', label: 'Orders and escrow', icon: Wallet, alert: !!deskSummary?.disputes, count: deskSummary?.disputes || undefined },
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'activity', label: 'Activity log', icon: History },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'health', label: 'System health', icon: Activity },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   const filteredUsers = users.filter((u) => {
     const term = userSearch.toLowerCase();
     return !term || (u.name && u.name.toLowerCase().includes(term)) || (u.email && u.email.toLowerCase().includes(term));
-  });
-
-  const filteredListings = listings.filter((l) => {
-    let matchesFilter: boolean;
-    if (listingStatusFilter === 'ALL') {
-      matchesFilter = true;
-    } else if (listingStatusFilter === 'UNDER_REVIEW') {
-      matchesFilter = l.status === 'UNDER_REVIEW' || l.status === 'DRAFT';
-    } else if (listingStatusFilter === 'INACTIVE') {
-      matchesFilter = l.status === 'INACTIVE';
-    } else if (listingStatusFilter === 'DELISTED') {
-      matchesFilter = l.status === 'DELISTED' || l.status === 'REJECTED';
-    } else {
-      matchesFilter = l.status === listingStatusFilter;
-    }
-    const term = listingSearch.toLowerCase();
-    const matchesSearch =
-      !term ||
-      (l.title && l.title.toLowerCase().includes(term)) ||
-      (l.brand && l.brand.toLowerCase().includes(term)) ||
-      (l.model && l.model.toLowerCase().includes(term)) ||
-      (l.id && l.id.toLowerCase().includes(term)) ||
-      (l.sellerId && l.sellerId.toLowerCase().includes(term));
-    return matchesFilter && matchesSearch;
-  });
-
-  const filteredOrders = orders.filter((o) => {
-    const matchesFilter =
-      orderStatusFilter === 'ALL' ||
-      (orderStatusFilter === 'PAID' && ['ESCROW_HELD', 'PAYMENT_RECEIVED', 'SHIPPED', 'DELIVERED', 'COMPLETED'].includes(o.status)) ||
-      (orderStatusFilter === 'PENDING' && o.status === 'PENDING') ||
-      o.status === orderStatusFilter;
-    const term = orderSearch.toLowerCase();
-    const matchesSearch =
-      !term ||
-      o.id.toLowerCase().includes(term) ||
-      (o.listingId && o.listingId.toLowerCase().includes(term)) ||
-      (o.buyer?.displayName && o.buyer.displayName.toLowerCase().includes(term)) ||
-      (o.seller?.displayName && o.seller.displayName.toLowerCase().includes(term));
-    return matchesFilter && matchesSearch;
   });
 
   const filteredImeis = imeiRegistry.filter((item) => {
@@ -747,7 +568,7 @@ function AdminDashboardContent() {
               <p className={cn('text-xs font-bold truncate', isDarkMode ? 'text-white' : 'text-slate-900')}>
                 {user?.name || 'Administrator'}
               </p>
-              <span className="text-[11px] text-emerald-600 font-semibold">Superuser Access</span>
+              <span className="text-[11px] text-emerald-600 font-semibold">Administrator</span>
             </div>
           </div>
 
@@ -811,7 +632,7 @@ function AdminDashboardContent() {
                 : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 shadow-sm'
             )}
           >
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'motion-safe:animate-spin')} /> Refresh Telemetry
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'motion-safe:animate-spin')} /> Refresh
           </button>
           <button
             onClick={() => logout()}
@@ -839,7 +660,10 @@ function AdminDashboardContent() {
             )}
           >
             {actionMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-            <span>{actionMessage.text}</span>
+            <span className="flex-1">{actionMessage.text}</span>
+            <button type="button" onClick={() => setActionMessage(null)} aria-label="Dismiss message" className="p-0.5 rounded hover:bg-black/5">
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
           </div>
         )}
 
@@ -847,24 +671,10 @@ function AdminDashboardContent() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className={cn('text-2xl sm:text-3xl font-bold tracking-tight', isDarkMode ? 'text-white' : 'text-slate-900')}>
-              {activeTab === 'dashboard' && 'Operations Command Center'}
-              {activeTab === 'verification' && 'Trust Lens™ Verification Queue'}
-              {activeTab === 'listings' && 'Inventory Moderation'}
-              {activeTab === 'orders' && 'Escrow & Transaction Desk'}
-              {activeTab === 'users' && 'User & Identity Directory'}
-              {activeTab === 'analytics' && 'Platform Analytics'}
-              {activeTab === 'health' && 'System Health & Infrastructure'}
-              {activeTab === 'settings' && 'Global Marketplace Settings'}
+              {TAB_HEADINGS[activeTab].title}
             </h1>
             <p className={cn('text-sm mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-              {activeTab === 'dashboard' && 'Real-time marketplace overview, volume, and operational metrics.'}
-              {activeTab === 'verification' && 'Manage Trust Lens™ hardware verification checks, IMEI scans, and device reviews.'}
-              {activeTab === 'listings' && 'Manage marketplace inventory, catalog items, and listing moderation.'}
-              {activeTab === 'orders' && 'Monitor escrow states, buyer/seller fulfillment, releases, and disputes.'}
-              {activeTab === 'users' && 'Search, manage, and audit registered buyer, seller, and administrator accounts.'}
-              {activeTab === 'analytics' && 'Platform volume, transaction velocity, fee revenue, and conversion insights.'}
-              {activeTab === 'health' && 'Core Monolith API, PostgreSQL 17, Redis Cache, and service dependencies.'}
-              {activeTab === 'settings' && 'Configure dynamic platform fees, buyer protection rates, and preferences.'}
+              {TAB_HEADINGS[activeTab].subtitle}
             </p>
           </div>
 
@@ -884,23 +694,13 @@ function AdminDashboardContent() {
               <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
             </button>
 
-            {activeTab === 'health' && (
-              <div
-                className={cn(
-                  'inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-mono font-semibold',
-                  isDarkMode ? 'bg-neutral-900 border-neutral-800 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-sm'
-                )}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
-                API: 200 OK
-              </div>
-            )}
           </div>
         </div>
 
         {/* ─── TAB 1: COMMAND CENTER (OVERVIEW) ─── */}
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
+            <NeedsAttention summary={deskSummary} isDarkMode={isDarkMode} onOpen={openDesk} />
             {/* KPI Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div
@@ -910,11 +710,11 @@ function AdminDashboardContent() {
                 )}
               >
                 <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                  Total Platform GMV
+                  Total sales
                 </span>
                 <p className="text-2xl font-bold text-emerald-600">{formatPrice(totalRevenue, 'GBP')}</p>
                 <span className={cn('text-xs mt-2 block', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
-                  {orders.length} unique active orders
+                  {paidOrders.length} paid orders
                 </span>
               </div>
 
@@ -925,7 +725,7 @@ function AdminDashboardContent() {
                 )}
               >
                 <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                  Pending Verification
+                  Waiting for review
                 </span>
                 <p className="text-2xl font-bold text-amber-600">{reviewQueueCount}</p>
                 <button
@@ -947,7 +747,7 @@ function AdminDashboardContent() {
                 </span>
                 <p className={cn('text-2xl font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>{activeListingsCount}</p>
                 <span className={cn('text-xs mt-2 block', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
-                  {listings.length} total catalog items
+                  {listings.length} listings in total
                 </span>
               </div>
 
@@ -977,10 +777,10 @@ function AdminDashboardContent() {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className={cn('text-base font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                    Platform Transaction Volume
+                    Sales over time
                   </h3>
                   <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    14-day trailing gross sales
+                    Last 14 days
                   </p>
                 </div>
               </div>
@@ -1005,7 +805,7 @@ function AdminDashboardContent() {
                         color: isDarkMode ? '#fff' : '#0f172a',
                         boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
                       }}
-                      formatter={(val: any) => [`£${val}`, 'Gross Revenue']}
+                      formatter={(val: any) => [`£${val}`, 'Sales']}
                     />
                     <Area type="monotone" dataKey="revenue" stroke="#059669" strokeWidth={2.5} fill="url(#adminEmeraldGradLight)" />
                   </AreaChart>
@@ -1022,7 +822,7 @@ function AdminDashboardContent() {
             >
               <div className="flex items-center justify-between mb-4">
                 <h3 className={cn('text-base font-bold flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                  <ClipboardCheck className="w-5 h-5 text-emerald-600" /> Pending Hardware Approvals
+                  <ClipboardCheck className="w-5 h-5 text-emerald-600" /> Waiting for review
                 </h3>
                 <button
                   onClick={() => setActiveTab('verification')}
@@ -1035,11 +835,11 @@ function AdminDashboardContent() {
               {reviewQueueCount === 0 ? (
                 <div className={cn('text-center py-8 text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
                   <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
-                  All Trust Lens™ verification checks are clear. Zero backlog.
+                  Nothing is waiting for review.
                 </div>
               ) : pendingVerifications.length === 0 ? (
                 <p className={cn('text-xs py-4', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
-                  {listingsAwaitingReview.length} listing{listingsAwaitingReview.length === 1 ? '' : 's'} awaiting manual review — open the Verification Queue.
+                  {reviewQueueCount} {reviewQueueCount === 1 ? 'listing is' : 'listings are'} waiting. Open the review queue to see them.
                 </p>
               ) : (
                 <div className="space-y-3">
@@ -1065,22 +865,12 @@ function AdminDashboardContent() {
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          disabled={actionLoading}
-                          onClick={() => handleVerificationReview(v.id, 'PASSED')}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-sm transition-colors"
-                        >
-                          Approve Pass
-                        </button>
-                        <button
-                          disabled={actionLoading}
-                          onClick={() => handleVerificationReview(v.id, 'FAILED')}
-                          className="px-3.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold text-xs rounded-xl transition-colors"
-                        >
-                          Reject
-                        </button>
-                      </div>
+                      <Link
+                        href={`/admin/review/${v.listingId}`}
+                        className="shrink-0 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-xl text-xs"
+                      >
+                        Review
+                      </Link>
                     </div>
                   ))}
                 </div>
@@ -1092,153 +882,7 @@ function AdminDashboardContent() {
         {/* ─── TAB 2: VERIFICATION QUEUE ─── */}
         {activeTab === 'verification' && (
           <div className="space-y-6">
-            <div
-              className={cn(
-                'border rounded-3xl p-6 shadow-sm',
-                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-              )}
-            >
-              <h3 className={cn('text-base font-bold mb-1', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                Trust Lens™ Telemetry Queue
-              </h3>
-              <p className={cn('text-xs mb-6', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                Automated carrier checks, blacklist scans, and manual reviews.
-              </p>
-
-              {listingsAwaitingReview.length > 0 && (
-                <div className="mb-6">
-                  <h4 className={cn('text-sm font-bold mb-3', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                    Listings awaiting review ({listingsAwaitingReview.length})
-                  </h4>
-                  <ul className="space-y-3">
-                    {listingsAwaitingReview.map((l) => (
-                      <li
-                        key={l.id}
-                        className={cn(
-                          'p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3',
-                          isDarkMode ? 'bg-neutral-950/70 border-neutral-800' : 'bg-amber-50/60 border-amber-200'
-                        )}
-                      >
-                        <div className="min-w-0">
-                          <p className={cn('text-sm font-bold truncate', isDarkMode ? 'text-white' : 'text-slate-900')}>{l.title}</p>
-                          <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
-                            Listing {l.status.replace(/_/g, ' ').toLowerCase()} · Trust Lens {l.trustLensStatus.replace(/_/g, ' ').toLowerCase()}
-                          </p>
-                        </div>
-                        <Link
-                          href={`/admin/review/${l.id}`}
-                          className="shrink-0 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl text-center"
-                        >
-                          Review listing
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {verifications.length === 0 ? (
-                <div className={cn('text-center py-12 text-sm', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                  <ClipboardCheck className="w-10 h-10 text-slate-400 mx-auto mb-3" />
-                  No verification items found in queue.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {verifications.map((v) => (
-                    <div
-                      key={v.id}
-                      className={cn(
-                        'p-5 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4',
-                        isDarkMode ? 'bg-neutral-950/70 border-neutral-800' : 'bg-slate-50 border-slate-200'
-                      )}
-                    >
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={cn('font-mono text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                            ID: {v.id.substring(0, 12)}
-                          </span>
-                          <span
-                            className={cn(
-                              'px-2.5 py-0.5 rounded-full text-xs font-semibold border',
-                              v.status === 'PASSED'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : v.status === 'FAILED'
-                                ? 'bg-red-50 text-red-700 border-red-200'
-                                : 'bg-amber-50 text-amber-700 border-amber-200'
-                            )}
-                          >
-                            {v.status}
-                          </span>
-                          {v.integrityFlags && v.integrityFlags.includes('DUPLICATE_IMEI') && (
-                            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 border border-red-300 flex items-center gap-1">
-                              <AlertTriangle className="w-3 h-3" /> Duplicate IMEI
-                            </span>
-                          )}
-                        </div>
-                        <p className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          {listingTitleById.get(v.listingId) ?? `Listing ${v.listingId.substring(0, 8)}`}
-                        </p>
-                        {v.conditionGrade && (
-                          <span className={cn('text-xs block mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                            Condition: <strong className={isDarkMode ? 'text-white' : 'text-slate-800'}>{v.conditionGrade}</strong>
-                          </span>
-                        )}
-                        {v.reviewNotes && (
-                          <p className={cn('text-xs mt-1 italic', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>{v.reviewNotes}</p>
-                        )}
-                      </div>
-
-                      <div className={cn('flex flex-wrap items-center gap-2 border-t md:border-t-0 pt-3 md:pt-0', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
-                        <Link
-                          href={`/admin/review/${v.listingId}`}
-                          className={cn(
-                            'px-3 py-1.5 font-semibold text-xs rounded-xl border transition-colors inline-flex items-center gap-1',
-                            isDarkMode
-                              ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700'
-                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-xs'
-                          )}
-                          title="Review evidence, checklist, and inspection telemetry"
-                        >
-                          <span>Review</span>
-                        </Link>
-                        <button
-                          disabled={actionLoading}
-                          onClick={() => handleRerunVerification(v.listingId)}
-                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold text-xs rounded-xl transition-colors disabled:opacity-50 inline-flex items-center gap-1 shadow-xs"
-                          title="Re-run automated Trust Lens IMEI check"
-                        >
-                          <RefreshCw className={cn('w-3 h-3', actionLoading && 'animate-spin')} />
-                          <span>Re-run Check</span>
-                        </button>
-                        <Link
-                          href={`/verification/${v.listingId}`}
-                          className={cn(
-                            'px-3 py-1.5 font-semibold text-xs rounded-xl border transition-colors',
-                            isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-300' : 'bg-white border-slate-200 text-slate-700 shadow-xs'
-                          )}
-                        >
-                          Certificate
-                        </Link>
-                        <button
-                          disabled={actionLoading}
-                          onClick={() => handleVerificationReview(v.id, 'PASSED')}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors disabled:opacity-50"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          disabled={actionLoading}
-                          onClick={() => handleVerificationReview(v.id, 'FAILED')}
-                          className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors disabled:opacity-50"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ReviewQueue isDarkMode={isDarkMode} />
 
             {/* IMEI Security & Duplicate Tracker Card */}
             <div
@@ -1371,467 +1015,14 @@ function AdminDashboardContent() {
 
         {/* ─── TAB 3: LISTINGS MODERATION ─── */}
         {activeTab === 'listings' && (
-          <div className="space-y-6">
-            <div
-              className={cn(
-                'border rounded-3xl overflow-hidden shadow-sm',
-                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-              )}
-            >
-              {/* Card Header with total count & search */}
-              <div
-                className={cn(
-                  'p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4',
-                  isDarkMode ? 'border-neutral-800' : 'border-slate-200'
-                )}
-              >
-                <div>
-                  <h3 className={cn('text-base font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                    Catalog & Inventory Moderation
-                  </h3>
-                  <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Showing marketplace listings ({listings.length} total) across all lifecycle statuses
-                  </p>
-                </div>
-
-                <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search by title, brand, model, ID..."
-                    value={listingSearch}
-                    onChange={(e) => setListingSearch(e.target.value)}
-                    className={cn(
-                      'border rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-emerald-500 w-full sm:w-72 transition-colors',
-                      isDarkMode
-                        ? 'bg-neutral-950 border-neutral-800 text-white placeholder-neutral-500'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400'
-                    )}
-                  />
-                </div>
-              </div>
-
-              {/* Status Filter Tabs */}
-              <div
-                className={cn(
-                  'px-6 py-3 border-b flex items-center gap-2 overflow-x-auto scrollbar-none',
-                  isDarkMode ? 'bg-neutral-950/40 border-neutral-800' : 'bg-slate-50/70 border-slate-200'
-                )}
-              >
-                {[
-                  { id: 'ALL', label: 'All Listings', count: listings.length },
-                  { id: 'ACTIVE', label: 'Active', count: listings.filter((l) => l.status === 'ACTIVE').length },
-                  { id: 'UNDER_REVIEW', label: 'Under Review', count: listings.filter((l) => l.status === 'UNDER_REVIEW' || l.status === 'DRAFT').length },
-                  { id: 'INACTIVE', label: 'In Checkout / Reserved', count: listings.filter((l) => l.status === 'INACTIVE').length },
-                  { id: 'SOLD', label: 'Sold', count: listings.filter((l) => l.status === 'SOLD').length },
-                  { id: 'DELISTED', label: 'Delisted / Suspended', count: listings.filter((l) => l.status === 'DELISTED' || l.status === 'REJECTED').length },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setListingStatusFilter(tab.id)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5',
-                      listingStatusFilter === tab.id
-                        ? 'bg-emerald-600 text-white shadow-sm'
-                        : isDarkMode
-                        ? 'bg-neutral-800/80 text-neutral-400 hover:text-white hover:bg-neutral-800'
-                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80 shadow-xs'
-                    )}
-                  >
-                    <span>{tab.label}</span>
-                    <span
-                      className={cn(
-                        'px-1.5 py-0.2 text-[10px] rounded-full font-mono font-bold',
-                        listingStatusFilter === tab.id
-                          ? 'bg-emerald-700/80 text-white'
-                          : isDarkMode
-                          ? 'bg-neutral-900 text-neutral-400'
-                          : 'bg-slate-100 text-slate-500'
-                      )}
-                    >
-                      {tab.count}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Table or Empty State */}
-              {filteredListings.length === 0 ? (
-                <div className="text-center py-16 px-4">
-                  <div
-                    className={cn(
-                      'w-12 h-12 rounded-2xl mx-auto mb-3 flex items-center justify-center border',
-                      isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-400' : 'bg-slate-100 border-slate-200 text-slate-400'
-                    )}
-                  >
-                    <Package className="w-6 h-6" />
-                  </div>
-                  <h4 className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                    No listings found
-                  </h4>
-                  <p className={cn('text-xs max-w-sm mx-auto mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    {listingSearch
-                      ? `No marketplace items matched "${listingSearch}". Try searching by another keyword.`
-                      : 'No marketplace items currently match this status filter.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead
-                      className={cn(
-                        'uppercase tracking-wider border-b',
-                        isDarkMode ? 'bg-neutral-950/80 text-neutral-400 border-neutral-800' : 'bg-slate-50 text-slate-500 border-slate-200'
-                      )}
-                    >
-                      <tr>
-                        <th className="py-4 px-6">Product / Device</th>
-                        <th className="py-4 px-6">Price</th>
-                        <th className="py-4 px-6">Condition</th>
-                        <th className="py-4 px-6">Listing Status</th>
-                        <th className="py-4 px-6">Trust Lens™</th>
-                        <th className="py-4 px-6 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
-                      {filteredListings.map((l) => {
-                        const coverImg = l.imageUrl || (Array.isArray(l.images) && l.images[0]?.url) || null;
-                        const isLive = l.status === 'ACTIVE';
-                        const isReserved = l.status === 'INACTIVE';
-                        const isSold = l.status === 'SOLD';
-                        const isUnderReview = l.status === 'UNDER_REVIEW' || l.status === 'DRAFT';
-                        const isDelisted = l.status === 'DELISTED' || l.status === 'REJECTED';
-
-                        return (
-                          <tr
-                            key={l.id}
-                            className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50')}
-                          >
-                            <td className="py-4 px-6">
-                              <div className="flex items-center gap-3.5">
-                                <div
-                                  className={cn(
-                                    'w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden border shrink-0',
-                                    isDarkMode ? 'bg-neutral-950 border-neutral-800 text-neutral-500' : 'bg-slate-100 border-slate-200 text-slate-400'
-                                  )}
-                                >
-                                  {coverImg ? (
-                                    <img src={coverImg} alt={l.title} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <Smartphone className="w-5 h-5" />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <Link
-                                    href={`/listings/${l.id}`}
-                                    className={cn('font-bold text-sm hover:underline line-clamp-1', isDarkMode ? 'text-white' : 'text-slate-900')}
-                                  >
-                                    {l.title}
-                                  </Link>
-                                  <p className={cn('text-xs mt-0.5', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                                    {l.brand} &bull; {l.model}
-                                  </p>
-                                  <p className="text-[10px] font-mono text-neutral-400 mt-0.5">
-                                    ID: {l.id.slice(0, 8)}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="py-4 px-6 font-bold text-emerald-600 text-sm whitespace-nowrap">
-                              {formatPrice(l.price, l.currency || 'GBP')}
-                            </td>
-
-                            <td className="py-4 px-6 whitespace-nowrap">
-                              {l.conditionGrade ? (
-                                <span
-                                  className={cn(
-                                    'px-2.5 py-1 rounded-lg text-[11px] font-semibold border',
-                                    isDarkMode ? 'bg-neutral-800 text-neutral-300 border-neutral-700' : 'bg-slate-100 text-slate-700 border-slate-200'
-                                  )}
-                                >
-                                  {l.conditionGrade}
-                                </span>
-                              ) : (
-                                <span className="text-neutral-400 text-xs">—</span>
-                              )}
-                            </td>
-
-                            <td className="py-4 px-6 whitespace-nowrap">
-                              <span
-                                className={cn(
-                                  'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border',
-                                  isLive && 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                                  isReserved && 'bg-amber-50 text-amber-700 border-amber-200',
-                                  isSold && 'bg-purple-50 text-purple-700 border-purple-200',
-                                  isUnderReview && 'bg-sky-50 text-sky-700 border-sky-200',
-                                  isDelisted && 'bg-red-50 text-red-700 border-red-200'
-                                )}
-                              >
-                                <span
-                                  className={cn(
-                                    'w-1.5 h-1.5 rounded-full',
-                                    isLive && 'bg-emerald-500',
-                                    isReserved && 'bg-amber-500',
-                                    isSold && 'bg-purple-500',
-                                    isUnderReview && 'bg-sky-500',
-                                    isDelisted && 'bg-red-500'
-                                  )}
-                                />
-                                {isReserved
-                                  ? 'In Checkout'
-                                  : isUnderReview
-                                  ? 'Under Review'
-                                  : isDelisted
-                                  ? 'Delisted'
-                                  : l.status}
-                              </span>
-                            </td>
-
-                            <td className="py-4 px-6 whitespace-nowrap">
-                              <span
-                                className={cn(
-                                  'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border',
-                                  l.trustLensStatus === 'VERIFIED'
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : l.trustLensStatus === 'FLAGGED' || l.trustLensStatus === 'REJECTED'
-                                    ? 'bg-red-50 text-red-700 border-red-200'
-                                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                                )}
-                              >
-                                <ShieldCheck className="w-3.5 h-3.5" />
-                                {l.trustLensStatus || 'PENDING'}
-                              </span>
-                            </td>
-
-                            <td className="py-4 px-6 text-right whitespace-nowrap">
-                              <div className="flex items-center justify-end gap-2">
-                                <Link
-                                  href={`/listings/${l.id}`}
-                                  target="_blank"
-                                  className={cn(
-                                    'px-2.5 py-1.5 font-semibold rounded-lg border inline-flex items-center gap-1 text-xs transition-colors shadow-xs',
-                                    isDarkMode
-                                      ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700'
-                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                  )}
-                                >
-                                  <span>View</span>
-                                  <ExternalLink className="w-3 h-3 text-slate-400" />
-                                </Link>
-
-                                <Link
-                                  href={`/admin/review/${l.id}`}
-                                  className={cn(
-                                    'px-2.5 py-1.5 font-semibold rounded-lg border inline-flex items-center gap-1 text-xs transition-colors shadow-xs',
-                                    isDarkMode
-                                      ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700'
-                                      : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                                  )}
-                                  title="Review evidence, checklist, and inspection telemetry"
-                                >
-                                  <span>Review</span>
-                                </Link>
-
-                                {(l.status === 'UNDER_REVIEW' ||
-                                  l.status === 'DRAFT' ||
-                                  l.trustLensStatus === 'REQUIRES_REVIEW' ||
-                                  l.trustLensStatus === 'PENDING' ||
-                                  l.trustLensStatus === 'FAILED') && (
-                                  <button
-                                    onClick={() => handleRerunVerification(l.id)}
-                                    disabled={actionLoading}
-                                    className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50 inline-flex items-center gap-1 shadow-xs"
-                                    title="Re-run automated Trust Lens IMEI check"
-                                  >
-                                    <RefreshCw className={cn('w-3 h-3', actionLoading && 'animate-spin')} />
-                                    <span>Re-run Check</span>
-                                  </button>
-                                )}
-
-                                {isLive ? (
-                                  <button
-                                    onClick={() => handleUpdateListingStatus(l.id, 'DELISTED')}
-                                    disabled={actionLoading}
-                                    className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg text-xs transition-colors disabled:opacity-50"
-                                    title="Delist from marketplace"
-                                  >
-                                    Delist
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={() => handleUpdateListingStatus(l.id, 'ACTIVE')}
-                                    disabled={actionLoading}
-                                    className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs shadow-xs transition-colors disabled:opacity-50"
-                                    title="Reactivate on marketplace"
-                                  >
-                                    Activate
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
+          <ListingsDesk key={deskView} isDarkMode={isDarkMode} onChanged={refreshAll} initialView={deskView ?? 'all'} />
         )}
 
-        {/* ─── TAB 4: ORDERS & ESCROW ─── */}
         {activeTab === 'orders' && (
-          <div className="space-y-6">
-            <div
-              className={cn(
-                'border rounded-3xl overflow-hidden shadow-sm',
-                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-              )}
-            >
-              <div className={cn('p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4', isDarkMode ? 'border-neutral-800' : 'border-slate-200')}>
-                <div>
-                  <h3 className={cn('text-base font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                    Escrow & Transaction Desk
-                  </h3>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Showing active order records ({orders.length} total)
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <select
-                    value={orderStatusFilter}
-                    onChange={(e) => setOrderStatusFilter(e.target.value)}
-                    className={cn(
-                      'border rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500',
-                      isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                    )}
-                  >
-                    <option value="ALL">All Orders</option>
-                    <option value="PAID">Paid / In Escrow Only</option>
-                    <option value="PENDING">Unpaid Attempts Only</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="DISPUTED">Disputed</option>
-                  </select>
-
-                  <div className="relative">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search order ID / user..."
-                      value={orderSearch}
-                      onChange={(e) => setOrderSearch(e.target.value)}
-                      className={cn(
-                        'border rounded-xl pl-9 pr-4 py-1.5 text-xs focus:outline-none focus:border-emerald-500',
-                        isDarkMode ? 'bg-neutral-950 border-neutral-800 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
-                      )}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className={cn('uppercase tracking-wider border-b', isDarkMode ? 'bg-neutral-950/80 text-neutral-400 border-neutral-800' : 'bg-slate-50 text-slate-500 border-slate-200')}>
-                    <tr>
-                      <th className="py-4 px-6">Order ID</th>
-                      <th className="py-4 px-6">Listing Target</th>
-                      <th className="py-4 px-6">Buyer & Seller</th>
-                      <th className="py-4 px-6">Amount</th>
-                      <th className="py-4 px-6">Escrow Status</th>
-                      <th className="py-4 px-6 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className={cn('divide-y', isDarkMode ? 'divide-neutral-800' : 'divide-slate-200')}>
-                    {filteredOrders.map((o) => (
-                      <tr key={o.id} className={cn('transition-colors', isDarkMode ? 'hover:bg-neutral-800/40' : 'hover:bg-slate-50')}>
-                        <td className={cn('py-4 px-6 font-mono font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
-                          #{o.id.substring(0, 8)}
-                        </td>
-                        <td className="py-4 px-6">
-                          <p className={cn('font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                            {o.listing?.title || 'Electronics Listing'}
-                          </p>
-                          <span className={cn('font-mono text-[10px]', isDarkMode ? 'text-neutral-500' : 'text-slate-400')}>
-                            Listing ID: {o.listingId ? o.listingId.substring(0, 8) : 'N/A'}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider', isDarkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-50 text-blue-700 border border-blue-200')}>
-                                Buyer
-                              </span>
-                              <span className={cn('font-semibold text-xs truncate max-w-[140px]', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                                {o.buyer?.displayName || (o.buyer?.email ? o.buyer.email.split('@')[0] : 'Buyer User')}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider', isDarkMode ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')}>
-                                Seller
-                              </span>
-                              <span className={cn('text-xs truncate max-w-[140px]', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
-                                {o.seller?.displayName || (o.seller?.email ? o.seller.email.split('@')[0] : 'Seller User')}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-4 px-6 font-bold text-emerald-600">
-                          {formatPrice(o.amount, o.currency)}
-                        </td>
-                        <td className="py-4 px-6">
-                          <span
-                            className={cn(
-                              'px-2.5 py-1 rounded-full text-[11px] font-semibold border',
-                              o.status === 'PENDING'
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : ['ESCROW_HELD', 'COMPLETED', 'DELIVERED'].includes(o.status)
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : isDarkMode
-                                ? 'bg-neutral-800 text-neutral-300 border-neutral-700'
-                                : 'bg-slate-100 text-slate-700 border-slate-200'
-                            )}
-                          >
-                            {o.status === 'PENDING' ? 'Unpaid Attempt' : o.status}
-                          </span>
-                        </td>
-                        <td className="py-4 px-6 text-right space-x-2">
-                          <Link
-                            href={`/orders/${o.id}/tracking`}
-                            className={cn(
-                              'px-3 py-1.5 font-semibold rounded-lg border inline-block shadow-sm',
-                              isDarkMode ? 'bg-neutral-800 border-neutral-700 text-neutral-200' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                            )}
-                          >
-                            Timeline
-                          </Link>
-                          {['ESCROW_HELD', 'DISPUTED'].includes(o.status) && (
-                            <button
-                              onClick={() => setRefundOrderId(o.id)}
-                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg"
-                            >
-                              Refund
-                            </button>
-                          )}
-                          {['PENDING', 'CANCELLED'].includes(o.status) && (
-                            <button
-                              onClick={() => handleDeleteOrder(o.id)}
-                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 font-semibold rounded-lg"
-                            >
-                              Delete Attempt
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <OrdersDesk key={deskView} isDarkMode={isDarkMode} onChanged={refreshAll} initialView={deskView ?? 'all'} />
         )}
+
+        {activeTab === 'activity' && <ActivityLog isDarkMode={isDarkMode} />}
 
         {/* ─── TAB 5: USER DIRECTORY ─── */}
         {activeTab === 'users' && (
@@ -1951,7 +1142,7 @@ function AdminDashboardContent() {
               >
                 <div className="flex items-center justify-between mb-3">
                   <span className={cn('text-xs font-semibold uppercase tracking-wider', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Platform GMV
+                    Total sales
                   </span>
                   <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
                     <TrendingUp className="w-4 h-4" />
@@ -1983,7 +1174,7 @@ function AdminDashboardContent() {
                   {formatPrice(totalProtectionFees, 'GBP')}
                 </div>
                 <div className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                  Net 5% platform revenue
+                  Earned on paid orders
                 </div>
               </div>
 
@@ -2068,17 +1259,17 @@ function AdminDashboardContent() {
                     Gross Platform Transaction Velocity & Protection Fees
                   </h3>
                   <p className={cn('text-xs mt-1', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    14-day continuous trailing settlement curves (GMV vs Net Buyer Protection Fee yield).
+                    Sales and buyer protection fees over the last 14 days.
                   </p>
                 </div>
                 <div className="flex items-center gap-4 text-xs font-semibold">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-emerald-500" />
-                    <span className={isDarkMode ? 'text-neutral-300' : 'text-slate-700'}>Gross GMV (£)</span>
+                    <span className={isDarkMode ? 'text-neutral-300' : 'text-slate-700'}>Sales (£)</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-full bg-indigo-500" />
-                    <span className={isDarkMode ? 'text-neutral-300' : 'text-slate-700'}>Protection Fee 5% (£)</span>
+                    <span className={isDarkMode ? 'text-neutral-300' : 'text-slate-700'}>Buyer protection fees (£)</span>
                   </div>
                 </div>
               </div>
@@ -2109,7 +1300,7 @@ function AdminDashboardContent() {
                       }}
                       formatter={(val: any, name: any) => [
                         `£${val}`,
-                        name === 'gmv' ? 'Gross GMV' : 'Net Protection Fee (5%)',
+                        name === 'gmv' ? 'Sales' : 'Buyer protection fees',
                       ]}
                     />
                     <Area
@@ -2287,8 +1478,8 @@ function AdminDashboardContent() {
                     <tr className={cn('border-b font-semibold uppercase tracking-wider', isDarkMode ? 'border-neutral-800 text-neutral-400 bg-neutral-950/40' : 'border-slate-200 text-slate-500 bg-slate-50')}>
                       <th className="py-3 px-6">Settlement Date</th>
                       <th className="py-3 px-6">Paid Orders</th>
-                      <th className="py-3 px-6">Gross GMV</th>
-                      <th className="py-3 px-6">Protection Fees (5%)</th>
+                      <th className="py-3 px-6">Sales</th>
+                      <th className="py-3 px-6">Buyer protection fees</th>
                       <th className="py-3 px-6">Unpaid Attempts</th>
                       <th className="py-3 px-6 text-right">Status</th>
                     </tr>
@@ -2336,356 +1527,7 @@ function AdminDashboardContent() {
         )}
 
         {/* ─── TAB 7: SYSTEM HEALTH & BACKEND APIS ─── */}
-        {activeTab === 'health' && (
-          <div className="space-y-8">
-            {/* Top Status & Architecture Summary */}
-            <div
-              className={cn(
-                'border rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6',
-                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-              )}
-            >
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 motion-safe:animate-pulse" />
-                  <span className={cn('text-xs font-bold uppercase tracking-wider', isDarkMode ? 'text-emerald-400' : 'text-emerald-700')}>
-                    Modular Monolith Architecture
-                  </span>
-                </div>
-                <h3 className={cn('text-xl font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                  VeriBuy Core Backend & Infrastructure
-                </h3>
-                <p className={cn('text-xs mt-1.5 max-w-xl leading-relaxed', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                  One NestJS monolith deployment powering all internal business modules with PostgreSQL 17 logical schemas, Redis session cache, and Cloudinary media vault.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => fetchAll()}
-                  className={cn(
-                    'inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-semibold transition-colors',
-                    isDarkMode
-                      ? 'bg-neutral-800 border-neutral-700 text-neutral-200 hover:bg-neutral-700'
-                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                  )}
-                >
-                  <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-                  Run Diagnostics
-                </button>
-              </div>
-            </div>
-
-            {/* Core Infrastructure Engines */}
-            <div>
-              <h4 className={cn('text-sm font-bold uppercase tracking-wider mb-4', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
-                Core Infrastructure & Data Engines
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div
-                  className={cn(
-                    'border rounded-3xl p-6 shadow-sm',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600">
-                        <Server className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Backend Monolith API
-                        </h5>
-                        <p className={cn('text-[11px] font-mono', isDarkMode ? 'text-neutral-500' : 'text-slate-400')}>
-                          NestJS 11 &bull; Port 3000
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <p className={cn('text-xs leading-relaxed', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Single process HTTP server serving REST endpoints, Swagger docs, and internal event emitters.
-                  </p>
-                  <div className="mt-4 pt-3 border-t flex items-center justify-between border-slate-100 dark:border-neutral-800">
-                    <span className="text-[11px] font-mono text-slate-400">/health check</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Operational
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  className={cn(
-                    'border rounded-3xl p-6 shadow-sm',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600">
-                        <Database className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          PostgreSQL 17 Database
-                        </h5>
-                        <p className={cn('text-[11px] font-mono', isDarkMode ? 'text-neutral-500' : 'text-slate-400')}>
-                          Logical Schemas &bull; Prisma 7
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <p className={cn('text-xs leading-relaxed', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Logical schemas for auth, users, listings, trust_lens, evidence, transactions, and notifications.
-                  </p>
-                  <div className="mt-4 pt-3 border-t flex items-center justify-between border-slate-100 dark:border-neutral-800">
-                    <span className="text-[11px] font-mono text-slate-400">Connection Pool</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Operational
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  className={cn(
-                    'border rounded-3xl p-6 shadow-sm',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-600">
-                        <Cpu className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className={cn('font-bold text-sm', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Redis Cache & State
-                        </h5>
-                        <p className={cn('text-[11px] font-mono', isDarkMode ? 'text-neutral-500' : 'text-slate-400')}>
-                          In-Memory Store &bull; Port 6379
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <p className={cn('text-xs leading-relaxed', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Token blacklisting, short-lived session states, rate limiting, and cached user profile data.
-                  </p>
-                  <div className="mt-4 pt-3 border-t flex items-center justify-between border-slate-100 dark:border-neutral-800">
-                    <span className="text-[11px] font-mono text-slate-400">Session Vault</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Connected
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Backend Business Modules */}
-            <div>
-              <h4 className={cn('text-sm font-bold uppercase tracking-wider mb-4', isDarkMode ? 'text-neutral-400' : 'text-slate-600')}>
-                Backend Business API Modules
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {/* 1. Auth API */}
-                <div
-                  className={cn(
-                    'border rounded-3xl p-5 shadow-sm space-y-3',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h6 className={cn('font-bold text-xs', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Auth & Identity API
-                        </h6>
-                        <span className="font-mono text-[10px] text-slate-400">/auth</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Live
-                    </span>
-                  </div>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    JWT authentication, password hashing (argon2/bcrypt), role-based access control, and secure cookie sessions.
-                  </p>
-                </div>
-
-                {/* 2. Users API */}
-                <div
-                  className={cn(
-                    'border rounded-3xl p-5 shadow-sm space-y-3',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs">
-                        <Users className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h6 className={cn('font-bold text-xs', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Users & Profiles API
-                        </h6>
-                        <span className="font-mono text-[10px] text-slate-400">/users</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Live
-                    </span>
-                  </div>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    User accounts, buyer/seller profiles, address verification, and seller trust ratings.
-                  </p>
-                </div>
-
-                {/* 3. Listings API */}
-                <div
-                  className={cn(
-                    'border rounded-3xl p-5 shadow-sm space-y-3',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold text-xs">
-                        <Package className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h6 className={cn('font-bold text-xs', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Listings & Catalog API
-                        </h6>
-                        <span className="font-mono text-[10px] text-slate-400">/listings</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Live
-                    </span>
-                  </div>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Electronics catalog inventory, categorization, price configuration, moderation status, and search filters.
-                  </p>
-                </div>
-
-                {/* 4. Trust Lens API */}
-                <div
-                  className={cn(
-                    'border rounded-3xl p-5 shadow-sm space-y-3',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h6 className={cn('font-bold text-xs', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Trust Lens™ Verification API
-                        </h6>
-                        <span className="font-mono text-[10px] text-slate-400">/trust-lens</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Live
-                    </span>
-                  </div>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Hardware integrity checks, IMEI blacklist validation, optical condition grading, and tamper certificates.
-                  </p>
-                </div>
-
-                {/* 5. Transactions API */}
-                <div
-                  className={cn(
-                    'border rounded-3xl p-5 shadow-sm space-y-3',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-teal-50 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400 flex items-center justify-center font-bold text-xs">
-                        <CreditCard className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h6 className={cn('font-bold text-xs', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Transactions & Escrow API
-                        </h6>
-                        <span className="font-mono text-[10px] text-slate-400">/transactions</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Live
-                    </span>
-                  </div>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Stripe PaymentIntents, Escrow vaulting, delivery inspection confirmations, automatic refunding, and seller payouts.
-                  </p>
-                </div>
-
-                {/* 6. Evidence API */}
-                <div
-                  className={cn(
-                    'border rounded-3xl p-5 shadow-sm space-y-3',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-xs">
-                        <Camera className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h6 className={cn('font-bold text-xs', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Evidence Vault API
-                        </h6>
-                        <span className="font-mono text-[10px] text-slate-400">/evidence</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Live
-                    </span>
-                  </div>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Cloudinary media assets, high-resolution device photo uploads, optical certificates, and dispute evidence logs.
-                  </p>
-                </div>
-
-                {/* 7. Notifications API */}
-                <div
-                  className={cn(
-                    'border rounded-3xl p-5 shadow-sm space-y-3 sm:col-span-2 lg:col-span-1',
-                    isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center font-bold text-xs">
-                        <Bell className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h6 className={cn('font-bold text-xs', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                          Notifications & Messaging API
-                        </h6>
-                        <span className="font-mono text-[10px] text-slate-400">/messages</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      Live
-                    </span>
-                  </div>
-                  <p className={cn('text-xs', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                    Buyer & seller messaging, transaction milestone notifications, courier status events, and transactional emails.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {activeTab === 'health' && <SystemHealth data={healthData} loading={loading} isDarkMode={isDarkMode} />}
 
         {/* ─── TAB 8: SETTINGS, THEME TOGGLE & DYNAMIC FEE CONFIGURATION ─── */}
         {activeTab === 'settings' && (
@@ -2774,8 +1616,9 @@ function AdminDashboardContent() {
 
               <p className={cn('text-xs pt-2', isDarkMode ? 'text-neutral-500' : 'text-slate-500')}>
                 This rate is configured via the <code className="font-mono">BUYER_PROTECTION_FEE_PERCENT</code>{' '}
-                environment variable and enforced server-side during order creation. It cannot be changed
-                from the browser, which prevents tampering with checkout totals.
+                environment variable on the backend. Changing it applies to new orders; existing orders keep
+                the fee they were created with. It cannot be changed from the browser, which prevents tampering
+                with checkout totals.
               </p>
             </div>
 
@@ -2797,19 +1640,6 @@ function AdminDashboardContent() {
         )}
       </main>
 
-      {/* Confirm Refund Modal */}
-      {refundOrderId && (
-        <ConfirmModal
-          isOpen={!!refundOrderId}
-          title="Confirm Escrow Refund"
-          description={`Are you sure you want to refund order #${refundOrderId.substring(0, 8)}? This will return vaulted escrow funds to the buyer and cancel the transaction.`}
-          confirmLabel={actionLoading ? 'Refunding...' : 'Confirm Refund'}
-          cancelLabel="Cancel"
-          isLoading={actionLoading}
-          onConfirm={handleExecuteRefund}
-          onClose={() => setRefundOrderId(null)}
-        />
-      )}
     </div>
   );
 }

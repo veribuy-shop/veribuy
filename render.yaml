@@ -59,9 +59,22 @@ projects:
               # Defense-in-depth: explicitly off. env.validator rejects true.
               - key: AUTO_VERIFY_EMAIL
                 value: 'false'
-              # Server-owned fee rate (default 5%). frontend counterpart below.
+              # Marketplace rules. Required: the only place they are set. Web and
+              # mobile read them from GET /transactions/config/marketplace.
               - key: BUYER_PROTECTION_FEE_PERCENT
                 value: '5'
+              - key: CHECKOUT_HOLD_MINUTES
+                value: '45'
+              - key: AUCTION_PAYMENT_WINDOW_HOURS
+                value: '48'
+              - key: OFFER_PAYMENT_WINDOW_HOURS
+                value: '48'
+              - key: POSTING_OVERDUE_DAYS
+                value: '4'
+              - key: CHARITY_DONATION_GBP
+                value: '1'
+              - key: CLEARPAY_MAX_GBP
+                value: '1200'
               - key: JWT_EXPIRATION
                 value: '15m'
               - key: JWT_REFRESH_EXPIRATION
@@ -107,11 +120,6 @@ projects:
               # Public publishable key — safe as NEXT_PUBLIC_ (not the secret).
               - key: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
                 sync: false
-              # Fallback display rate only — the admin portal and checkout
-              # fetch the authoritative rate from the backend at runtime
-              # (GET /transactions/config/fees). Baked at build time.
-              - key: NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT
-                value: '5'
               - key: BACKEND_URL
                 value: 'https://api.veribuy.shop'
               - key: EVIDENCE_SERVICE_URL

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { auctionPaymentDeadline, calculateMinimumNextBid, formatAuctionCountdown } from '@veribuy/common/auction';
+import { getMarketplaceConfig } from '@/src/lib/marketplace-config';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -310,7 +311,7 @@ export default function ListingDetailScreen() {
                 {formatPrice(Number(listing.currentBid ?? listing.startingBid ?? askingPrice), currency)}
               </Text>
               <Text className="text-xs text-text-muted mt-1">
-                {countdown.formattedText} · {wonAuction && listing.auctionEndsAt ? `You won · Pay by ${auctionPaymentDeadline(listing.auctionEndsAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} · ` : isHighestBidder ? 'You’re the highest bidder · ' : ''}{listing.bidCount ? `${listing.bidCount} bid${listing.bidCount === 1 ? '' : 's'}` : 'Starting bid'} · Buyer Protection and shipping added at checkout.
+                {countdown.formattedText} · {wonAuction && listing.auctionEndsAt ? `You won · Pay by ${auctionPaymentDeadline(listing.auctionEndsAt, getMarketplaceConfig().auctionPaymentWindowHours).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} · ` : isHighestBidder ? 'You’re the highest bidder · ' : ''}{listing.bidCount ? `${listing.bidCount} bid${listing.bidCount === 1 ? '' : 's'}` : 'Starting bid'} · Buyer Protection and shipping added at checkout.
               </Text>
             </>
           ) : (
@@ -537,7 +538,7 @@ export default function ListingDetailScreen() {
               <View className="py-6 items-center">
                 <Text className="text-lg font-black text-emerald-800">Offer sent</Text>
                 <Text className="text-xs text-text-muted text-center mt-1 mb-4">
-                  The seller can accept or decline. If they accept, you’ll have 48 hours to pay at your offer price.
+                  The seller can accept or decline. If they accept, you’ll have {getMarketplaceConfig().offerPaymentWindowHours} hours to pay at your offer price.
                 </Text>
                 <TouchableOpacity
                   onPress={() => {

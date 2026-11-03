@@ -198,7 +198,7 @@ export class UlistingsController {
       await this.listingsService.assertSellerTransition(listing, dto.status);
     }
 
-    return this.listingsService.updateStatus(id, dto.status, listing.status, isAdmin);
+    return this.listingsService.updateStatus(id, dto.status, listing.status, isAdmin, isAdmin ? dto.reason : undefined);
   }
 
   /**

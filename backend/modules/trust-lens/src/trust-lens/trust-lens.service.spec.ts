@@ -268,4 +268,44 @@ describe('TrustLensService', () => {
       expect(result).toEqual(updatedVr);
     });
   });
+
+  describe('updateVerificationStatus', () => {
+    it('waits for the listing to be updated before answering', async () => {
+      prisma.verificationRequest.findUnique.mockResolvedValue({
+        completedAt: null,
+        conditionGrade: null,
+        listing: { sellerId: 'seller-1' },
+      });
+      prisma.verificationRequest.update.mockResolvedValue({ conditionGrade: null });
+      prisma.verificationRequest.count = jest.fn().mockResolvedValue(1);
+
+      let finishSync: () => void = () => {};
+      listingSync.syncTrustLensResult.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finishSync = resolve;
+        }),
+      );
+
+      let answered = false;
+      const pending = service
+        .updateVerificationStatus('lst-1', 'FAILED', 'Photos are blurry')
+        .then(() => {
+          answered = true;
+        });
+
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(listingSync.syncTrustLensResult).toHaveBeenCalledWith(
+        'lst-1',
+        'FAILED',
+        undefined,
+        [],
+        'Photos are blurry',
+      );
+      expect(answered).toBe(false);
+
+      finishSync();
+      await pending;
+      expect(answered).toBe(true);
+    });
+  });
 });

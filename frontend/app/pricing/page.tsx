@@ -7,6 +7,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { getBuyerProtectionFeePercent, calculateProtectionFee } from '@/lib/fees';
+import { loadMarketplaceConfig } from '@/lib/marketplace-config-server';
 import { formatPrice } from '@/lib/currency';
 
 export const metadata: Metadata = {
@@ -17,7 +18,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default function PricingPage() {
+export const revalidate = 60;
+
+export default async function PricingPage() {
+  await loadMarketplaceConfig();
   const feePercent = getBuyerProtectionFeePercent();
   const examplePrice = 500;
   const exampleFee = calculateProtectionFee(examplePrice);

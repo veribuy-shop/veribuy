@@ -1,4 +1,5 @@
 import { checkoutMinutesLeft } from '@veribuy/common/checkout';
+import { getMarketplaceConfig } from '@/src/lib/marketplace-config';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -341,7 +342,7 @@ export default function OrderDetailScreen() {
   }
 
   if (order.status === 'PENDING' && !isSellerView) {
-    const minutesLeft = checkoutMinutesLeft(order.createdAt);
+    const minutesLeft = checkoutMinutesLeft(order.createdAt, getMarketplaceConfig().checkoutHoldMinutes);
     return (
       <Screen style={{ justifyContent: 'center' }}>
         <View className="items-center mb-5">
@@ -666,12 +667,12 @@ export default function OrderDetailScreen() {
               <View className="flex-1">
                 <Text className="text-xs font-black text-rose-900">Charity donation</Text>
                 <Text className="text-[11px] text-rose-700 leading-tight">
-                  £1.00 donated to Good Things Foundation (Reg. #1165209). Thank you!
+                  {formatPrice(order.shippingAddress.donation.amount, 'GBP')} donated to Good Things Foundation (Reg. #1165209). Thank you!
                 </Text>
               </View>
             </View>
             <View className="bg-rose-200/80 px-2 py-0.5 rounded-full">
-              <Text className="text-[11px] font-bold text-rose-900">+£1.00</Text>
+              <Text className="text-[11px] font-bold text-rose-900">+{formatPrice(order.shippingAddress.donation.amount, 'GBP')}</Text>
             </View>
           </View>
         )}

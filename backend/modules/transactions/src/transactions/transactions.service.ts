@@ -18,12 +18,16 @@ import { UpdateShippingDto } from './dto/update-shipping.dto';
 import { RateOrderDto } from './dto/rate-order.dto';
 import Stripe from 'stripe';
 import { PaginationDto, PaginatedResponse, getInternalApiUrl, RoyalMailServiceTier,
-  AUCTION_PAYMENT_WINDOW_HOURS,
   auctionPaymentDeadline,
-  CHECKOUT_HOLD_MINUTES,
 } from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
 import { RoyalMailService, ShippingLabelOrderData } from '../shipping/royal-mail.service';
+import {
+  auctionPaymentWindowHours,
+  charityDonationGbp,
+  checkoutHoldMinutes,
+  clearpayMaxGbp,
+} from '../../../../src/config/marketplace.config';
 
 /**
  * The party performing a status transition, resolved per-order.
@@ -136,7 +140,6 @@ const ORDER_UNIT_QUANTITY = 1;
 /** Max distinct listings a buyer may hold in checkout at once (anti-squatting). */
 const MAX_OPEN_CHECKOUTS_PER_BUYER = 3;
 /** Upper bound on the optional charity donation added at checkout (GBP). */
-const MAX_DONATION_GBP = 50;
 /** Order statuses in which money has been captured but not yet released or refunded. */
 const REFUNDABLE_STATUSES = ['PAYMENT_RECEIVED', 'ESCROW_HELD', 'SHIPPED', 'DELIVERED', 'DISPUTED'];
 /** Paid statuses where the device has not left the seller, so the listing can be relisted. */
@@ -164,20 +167,17 @@ export function sanitizeCollectionPoint(input: unknown): Record<string, string> 
   return out.id || out.name ? out : null;
 }
 
+/** The only source of the fee rate. Boot validation refuses to start without it. */
 export function getBuyerProtectionFeeRate(): number {
-  const raw = process.env.BUYER_PROTECTION_FEE_PERCENT || process.env.BUYER_PROTECTION_FEE_RATE;
-  if (!raw) return 0.05;
-  const parsed = parseFloat(raw);
-  if (isNaN(parsed) || parsed < 0) return 0.05;
+  const parsed = parseFloat(process.env.BUYER_PROTECTION_FEE_PERCENT ?? '');
+  if (isNaN(parsed) || parsed < 0) {
+    throw new Error('BUYER_PROTECTION_FEE_PERCENT must be set to a number between 0 and 100');
+  }
   return parsed >= 1 ? parsed / 100 : parsed;
 }
 
-// Stripe rejects the whole PaymentIntent when any listed method can't take the
-// amount, so Clearpay is only offered up to its limit.
-const CLEARPAY_MAX_GBP = 1200;
-
 function paymentMethodTypesFor(totalAmount: number): string[] {
-  return totalAmount <= CLEARPAY_MAX_GBP
+  return totalAmount <= clearpayMaxGbp()
     ? ['card', 'klarna', 'afterpay_clearpay']
     : ['card', 'klarna'];
 }
@@ -208,7 +208,7 @@ export class TransactionsService implements OnModuleInit {
       apiVersion: '2026-01-28.clover',
     });
 
-    // Run initial and recurring background cleanup for expired pending orders (see CHECKOUT_HOLD_MINUTES)
+    // Run initial and recurring background cleanup for expired pending orders (see checkoutHoldMinutes)
     this.cleanupExpiredPendingOrders().catch(() => {});
     setInterval(() => {
       this.cleanupExpiredPendingOrders().catch((err) => {
@@ -280,9 +280,9 @@ export class TransactionsService implements OnModuleInit {
         if (listing.reservePrice != null && Number(listing.currentBid) < Number(listing.reservePrice)) {
           throw new BadRequestException('The reserve price for this auction was not met');
         }
-        if (listing.auctionEndsAt && auctionPaymentDeadline(listing.auctionEndsAt).getTime() <= Date.now()) {
+        if (listing.auctionEndsAt && auctionPaymentDeadline(listing.auctionEndsAt, auctionPaymentWindowHours()).getTime() <= Date.now()) {
           throw new BadRequestException(
-            `The ${AUCTION_PAYMENT_WINDOW_HOURS}-hour window to pay for this auction has passed`,
+            `The ${auctionPaymentWindowHours()}-hour window to pay for this auction has passed`,
           );
         }
       } else if (!(Number(listing.buyItNowPrice) > 0)) {
@@ -343,11 +343,11 @@ export class TransactionsService implements OnModuleInit {
       isFreeShipping,
     });
 
-    // Buyer Protection Fee (configurable via env variable, default 5%)
+    // Buyer Protection Fee, from BUYER_PROTECTION_FEE_PERCENT
     const rate = getBuyerProtectionFeeRate();
     const protectionFee = Math.round(numericAmount * rate * 100) / 100;
 
-    // Optional charity donation (e.g. £1 to Good Things Foundation / Digital Inclusion)
+    // Optional charity donation to Good Things Foundation / Digital Inclusion
     const donationAmount = this.normalizeDonation(createOrderDto.donationAmount);
 
     // Compute total: item price + buyer protection fee + shipping (waived/0 if covered by seller) + optional donation
@@ -1040,6 +1040,15 @@ export class TransactionsService implements OnModuleInit {
       return (await this.refundOrder(orderId)).order;
     }
 
+    // Cancelled means cancelled: the buyer must not be able to pay this afterwards.
+    if (
+      updateOrderStatusDto.status === 'CANCELLED' &&
+      order.paymentIntentId &&
+      !(await this.ensurePaymentIntentCancelled(order.paymentIntentId))
+    ) {
+      throw new ConflictException('Payment for this order is being processed, so it cannot be cancelled. Please check again shortly.');
+    }
+
     const updateData: any = { status: updateOrderStatusDto.status };
     const now = new Date();
 
@@ -1259,7 +1268,7 @@ export class TransactionsService implements OnModuleInit {
    * and restore listings back to ACTIVE status.
    */
   async cleanupExpiredPendingOrders() {
-    const expiryThreshold = new Date(Date.now() - CHECKOUT_HOLD_MINUTES * 60 * 1000);
+    const expiryThreshold = new Date(Date.now() - checkoutHoldMinutes() * 60 * 1000);
     const staleOrders = await this.prisma.order.findMany({
       where: {
         status: 'PENDING',
@@ -1391,7 +1400,7 @@ export class TransactionsService implements OnModuleInit {
     // Proactively clean up any expired pending orders
     this.cleanupExpiredPendingOrders().catch(() => {});
 
-    const expiryThreshold = new Date(Date.now() - CHECKOUT_HOLD_MINUTES * 60 * 1000);
+    const expiryThreshold = new Date(Date.now() - checkoutHoldMinutes() * 60 * 1000);
 
     const where = {
       buyerId,
@@ -2206,13 +2215,10 @@ export class TransactionsService implements OnModuleInit {
     return { amount: Math.round(Number(offer.amount) * 100) / 100 };
   }
 
+  /** The donation amount is server-owned: a client only says whether to include it. */
   private normalizeDonation(value: unknown): number {
     const amount = Number(value);
-    if (!isFinite(amount) || amount <= 0) return 0;
-    if (amount > MAX_DONATION_GBP) {
-      throw new BadRequestException(`Donations are limited to £${MAX_DONATION_GBP}`);
-    }
-    return Math.round(amount * 100) / 100;
+    return isFinite(amount) && amount > 0 ? charityDonationGbp() : 0;
   }
 
   /**

@@ -52,6 +52,7 @@ model User {
   receivedMessages     Message[]             @relation("RecipientMessages")
   buyerInvoices        Invoice[]             @relation("BuyerInvoices")
   sellerInvoices       Invoice[]             @relation("SellerInvoices")
+  adminAuditLogs       AdminAuditLog[]
 
   @@index([role])
   @@index([isActive])
@@ -261,6 +262,22 @@ model Offer {
 // ═══════════════════════════════════════════════════════════════════════════
 //  TRUST LENS / VERIFICATION DOMAIN
 // ═══════════════════════════════════════════════════════════════════════════
+
+/// Who did what in the admin dashboard, for accountability on money and moderation.
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  adminId    String?  @map("admin_id")
+  admin      User?    @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  action     String
+  targetType String   @map("target_type")
+  targetId   String?  @map("target_id")
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([targetId])
+  @@map("admin_audit_logs")
+}
 
 model VerificationRequest {
   id                   String               @id @default(uuid())

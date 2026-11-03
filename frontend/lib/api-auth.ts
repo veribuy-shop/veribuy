@@ -58,7 +58,14 @@ export async function requireRole(
   if ('error' in tokenResult) return tokenResult;
 
   const payload = await verifyJwtPayload(tokenResult.token);
-  const role: string = payload?.role ?? '';
+  // An expired token isn't a permissions problem: 401 is what makes the browser
+  // refresh the session and retry, where a 403 would just fail until next sign-in.
+  if (!payload) {
+    return {
+      error: NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 }),
+    };
+  }
+  const role: string = payload.role ?? '';
 
   if (role !== requiredRole) {
     return {

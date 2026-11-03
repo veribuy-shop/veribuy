@@ -27,8 +27,9 @@ import {
 } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
 import { formatShippingService } from '@/lib/shipping';
-import { calculateProtectionFee, getBuyerProtectionFeePercent } from '@/lib/fees';
+import { calculateProtectionFee } from '@/lib/fees';
 import { checkoutMinutesLeft } from '@veribuy/common/checkout';
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
 
 interface Order {
   listingId?: string | null;
@@ -372,7 +373,7 @@ export default function OrderConfirmationPage() {
           let next: { title: string; body: string; href?: string; cta?: string; tone: 'action' | 'info' } | null = null;
           if (isBuyer) {
             if (order.status === 'PENDING' && order.listingId) {
-              const minutesLeft = checkoutMinutesLeft(order.createdAt);
+              const minutesLeft = checkoutMinutesLeft(order.createdAt, getMarketplaceConfig().checkoutHoldMinutes);
               next = minutesLeft > 0
                 ? {
                     title: 'Finish paying to keep this item',
@@ -807,7 +808,6 @@ export default function OrderConfirmationPage() {
 
         {/* Pricing breakdown */}
         {(() => {
-          const feePercent = getBuyerProtectionFeePercent();
           const protectionFee =
             order.protectionFee != null
               ? Number(order.protectionFee)
@@ -826,7 +826,7 @@ export default function OrderConfirmationPage() {
                 <span className="font-medium text-slate-900">{formatPrice(order.amount, order.currency)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Buyer Protection Fee ({feePercent}%)</span>
+                <span>Buyer Protection Fee</span>
                 <span className="font-medium text-slate-900">{formatPrice(protectionFee, order.currency)}</span>
               </div>
               <div className="flex justify-between">

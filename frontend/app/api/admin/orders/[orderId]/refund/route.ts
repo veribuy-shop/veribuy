@@ -1,3 +1,4 @@
+import { friendlyApiError } from '@/lib/api-errors';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { sanitizeOrder } from '@/lib/sanitize';
@@ -31,12 +32,15 @@ export async function POST(
       );
     }
 
+    const { reason } = await request.json().catch(() => ({ reason: undefined }));
+
     // Initiate refund via transaction service
     const response = await fetch(
       `${TRANSACTION_SERVICE_URL}/transactions/orders/${orderId}/refund`,
       {
         method: 'POST',
         headers: createAuthHeaders(authResult.token),
+        body: JSON.stringify({ reason: reason || undefined }),
       }
     );
 
@@ -46,7 +50,8 @@ export async function POST(
       }
 
       if (response.status === 400) {
-        return NextResponse.json({ error: 'Order cannot be refunded' }, { status: 400 });
+        const data = await response.json().catch(() => null);
+        return NextResponse.json({ error: friendlyApiError(data, 'This order cannot be refunded.') }, { status: 400 });
       }
 
       return NextResponse.json(

@@ -17,7 +17,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
-import { CHECKOUT_HOLD_MINUTES, checkoutMinutesLeft } from '@veribuy/common/checkout';
+import { checkoutMinutesLeft } from '@veribuy/common/checkout';
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
 
 interface Order {
   id: string;
@@ -149,6 +150,22 @@ export default function OrderTrackingPage() {
         description: 'This checkout attempt was cancelled. No payment was charged and the listing was returned to the active queue.',
         status: 'completed',
         timestamp: order.createdAt,
+      });
+      return steps;
+    }
+
+    // Refunded state
+    if (order.status === 'REFUNDED') {
+      steps.push({
+        title: 'Order Placed & Paid',
+        description: 'Payment was taken and held in VeriBuy Escrow',
+        status: 'completed',
+        timestamp: order.paidAt || order.createdAt,
+      });
+      steps.push({
+        title: 'Order Refunded',
+        description: 'This order was refunded to the original payment method.',
+        status: 'completed',
       });
       return steps;
     }
@@ -321,6 +338,21 @@ export default function OrderTrackingPage() {
                 <Clock className="w-4 h-4 shrink-0" />
                 Awaiting Payment
               </div>
+            ) : order.status === 'REFUNDED' ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Order Refunded
+              </div>
+            ) : order.status === 'DISPUTED' ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Dispute Open
+              </div>
+            ) : order.status === 'COMPLETED' ? (
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                Order Complete
+              </div>
             ) : (
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold">
                 <ShieldCheck className="w-4 h-4 shrink-0" />
@@ -490,7 +522,7 @@ export default function OrderTrackingPage() {
 
         {/* Pending Checkout Actions */}
         {order.status === 'PENDING' && (() => {
-          const remainingMinutes = checkoutMinutesLeft(order.createdAt);
+          const remainingMinutes = checkoutMinutesLeft(order.createdAt, getMarketplaceConfig().checkoutHoldMinutes);
           const isExpired = remainingMinutes <= 0;
 
           if (isExpired) {
@@ -503,7 +535,7 @@ export default function OrderTrackingPage() {
                   <div className="flex-1">
                     <h3 className="text-base md:text-lg font-bold text-slate-900 mb-1">Checkout Session Expired</h3>
                     <p className="text-xs md:text-sm text-slate-500 mb-4 leading-relaxed">
-                      This checkout attempt was held for {CHECKOUT_HOLD_MINUTES} minutes and has now expired. The device has been returned to the marketplace.
+                      This checkout attempt was held for {getMarketplaceConfig().checkoutHoldMinutes} minutes and has now expired. The device has been returned to the marketplace.
                     </p>
                     <Link
                       href="/browse"

@@ -1,3 +1,4 @@
+import { getMarketplaceConfig } from '@/src/lib/marketplace-config';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -136,7 +137,8 @@ export default function CheckoutScreen() {
 
   const activeQuote = shippingQuotes.find((q) => q.service === selectedService) || shippingQuotes[0] || null;
   const effectiveShippingFee = listing?.freeShipping ? 0 : activeQuote?.totalFee || 0;
-  const donationAmount = donateToCharity ? 1.0 : 0;
+  const charityDonation = getMarketplaceConfig().charityDonationGbp;
+  const donationAmount = donateToCharity ? charityDonation : 0;
   const localTotal = Math.round((itemPrice + protectionFee + effectiveShippingFee + donationAmount) * 100) / 100;
   // The server's figure wins if it ever differs (say, rates changed since this
   // app version shipped). Any change to the quote inputs clears it.
@@ -461,12 +463,12 @@ export default function CheckoutScreen() {
 
           <View className="gap-2 mb-3">
             <Row label="Item price" value={formatPrice(itemPrice, currency)} />
-            <Row label={`Buyer Protection (${getBuyerProtectionFeePercent()}%)`} value={formatPrice(protectionFee, currency)} />
+            <Row label={order?.protectionFee != null ? 'Buyer Protection' : `Buyer Protection (${getBuyerProtectionFeePercent()}%)`} value={formatPrice(protectionFee, currency)} />
             <Row
               label={formatShippingService(selectedService)}
               value={listing.freeShipping ? 'Free (seller pays)' : formatPrice(effectiveShippingFee, currency)}
             />
-            {donateToCharity ? <Row label="Donation to Good Things Foundation" value={formatPrice(1, currency)} /> : null}
+            {donateToCharity ? <Row label="Donation to Good Things Foundation" value={formatPrice(charityDonation, currency)} /> : null}
           </View>
 
           <View className="pt-3 border-t border-borderc flex-row items-baseline justify-between">
@@ -652,7 +654,7 @@ export default function CheckoutScreen() {
             {donateToCharity ? <Text className="text-white text-xs font-bold">✓</Text> : null}
           </View>
           <View className="flex-1">
-            <Text className="text-xs font-black text-text">Add £1.00 for Good Things Foundation</Text>
+            <Text className="text-xs font-black text-text">Add {formatPrice(charityDonation, currency)} for Good Things Foundation</Text>
             <Text className="text-[11px] text-text-muted">Optional donation supporting digital inclusion in the UK.</Text>
           </View>
         </TouchableOpacity>

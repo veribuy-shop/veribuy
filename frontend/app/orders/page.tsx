@@ -20,6 +20,7 @@ import {
   Store,
 } from 'lucide-react';
 import { checkoutMinutesLeft } from '@veribuy/common/checkout';
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
 
 type OrderStatus =
   | 'PENDING'
@@ -125,7 +126,7 @@ export default function OrdersPage() {
         const activeOrders = rawOrders.filter((o: Order) => {
           if (o.status === 'CANCELLED') return false;
           if (o.status === 'PENDING') {
-            return checkoutMinutesLeft(o.createdAt) > 0;
+            return checkoutMinutesLeft(o.createdAt, getMarketplaceConfig().checkoutHoldMinutes) > 0;
           }
           return true;
         });

@@ -1,12 +1,12 @@
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ListingStatus } from '.prisma/veribuy-client';
 
 // Allowed status transitions (state machine)
 export const ALLOWED_TRANSITIONS: Record<ListingStatus, ListingStatus[]> = {
   [ListingStatus.DRAFT]: [ListingStatus.SUBMITTED, ListingStatus.DELISTED],
   [ListingStatus.SUBMITTED]: [ListingStatus.UNDER_REVIEW, ListingStatus.REJECTED, ListingStatus.DELISTED],
-  [ListingStatus.UNDER_REVIEW]: [ListingStatus.APPROVED, ListingStatus.ACTIVE, ListingStatus.REJECTED],
-  [ListingStatus.APPROVED]: [ListingStatus.ACTIVE, ListingStatus.REJECTED],
+  [ListingStatus.UNDER_REVIEW]: [ListingStatus.APPROVED, ListingStatus.ACTIVE, ListingStatus.REJECTED, ListingStatus.DELISTED],
+  [ListingStatus.APPROVED]: [ListingStatus.ACTIVE, ListingStatus.REJECTED, ListingStatus.DELISTED],
   [ListingStatus.REJECTED]: [ListingStatus.SUBMITTED, ListingStatus.DELISTED],
   [ListingStatus.ACTIVE]: [ListingStatus.SOLD, ListingStatus.AUCTION_ENDED, ListingStatus.DELISTED, ListingStatus.UNDER_REVIEW, ListingStatus.INACTIVE],
   [ListingStatus.AUCTION_ENDED]: [ListingStatus.SOLD, ListingStatus.DELISTED],
@@ -36,4 +36,10 @@ export class UpdateStatusDto {
     message: `status must be one of: ${Object.values(ListingStatus).join(', ')}`,
   })
   status: ListingStatus;
+
+  /** Why an admin made this change. Sent to the seller. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
 }

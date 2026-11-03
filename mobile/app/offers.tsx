@@ -1,3 +1,4 @@
+import { getMarketplaceConfig } from '@/src/lib/marketplace-config';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
@@ -78,7 +79,7 @@ export default function OffersScreen() {
     const amount = formatPrice(Number(offer.amount), offer.listing.currency);
     Alert.alert(
       `Accept ${amount}?`,
-      `${offer.buyer.name} will have 48 hours to pay. Your listing stays live until they do.`,
+      `${offer.buyer.name} will have ${getMarketplaceConfig().offerPaymentWindowHours} hours to pay. Your listing stays live until they do.`,
       [
         { text: 'Not now', style: 'cancel' },
         { text: 'Accept offer', onPress: () => respond(offer, 'ACCEPT') },
@@ -144,7 +145,7 @@ export default function OffersScreen() {
         }
         ListHeaderComponent={
           <Text className="text-[13px] text-text-muted leading-[18px] mb-3">
-            Accepted offers can be paid at the agreed price within 48 hours. Buyer Protection and Royal Mail shipping are
+            Accepted offers can be paid at the agreed price within {getMarketplaceConfig().offerPaymentWindowHours} hours. Buyer Protection and Royal Mail shipping are
             added at checkout.
           </Text>
         }

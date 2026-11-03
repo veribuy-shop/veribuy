@@ -8,11 +8,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { CreateOfferDto, RespondToOfferDto } from './dto/offer.dto';
+import { offerPaymentWindowHours } from '../../../../src/config/marketplace.config';
 
 /** Lowest acceptable offer as a fraction of the asking price. */
 const MIN_OFFER_RATIO = 0.4;
-/** How long a buyer has to pay once the seller accepts. */
-const ACCEPTED_OFFER_TTL_MS = 48 * 60 * 60 * 1000;
 
 const OFFER_SELECT = {
   id: true,
@@ -124,7 +123,7 @@ export class OffersService {
       where: { id: offerId, status: 'PENDING' },
       data: {
         status: nextStatus,
-        ...(nextStatus === 'ACCEPTED' ? { expiresAt: new Date(Date.now() + ACCEPTED_OFFER_TTL_MS) } : {}),
+        ...(nextStatus === 'ACCEPTED' ? { expiresAt: new Date(Date.now() + offerPaymentWindowHours() * 60 * 60 * 1000) } : {}),
       },
     });
     if (count !== 1) throw new ConflictException('This offer was updated by someone else — please refresh');
@@ -133,7 +132,7 @@ export class OffersService {
     if (nextStatus === 'ACCEPTED') {
       await this.notify(offer.sellerId, offer.buyerId, offer.listingId,
         `Offer accepted: £${amount} for ${offer.listing.title}`,
-        `Good news — the seller accepted your offer of £${amount}. Complete checkout within 48 hours from your Offers page.`);
+        `Good news — the seller accepted your offer of £${amount}. Complete checkout within ${offerPaymentWindowHours()} hours from your Offers page.`);
     } else if (nextStatus === 'DECLINED') {
       await this.notify(offer.sellerId, offer.buyerId, offer.listingId,
         `Offer declined for ${offer.listing.title}`,

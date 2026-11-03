@@ -12,6 +12,8 @@
  *  - ALLOWED_ORIGINS may never contain a wildcard while credentials are enabled.
  */
 
+import { MARKETPLACE_ENV_VARS } from './marketplace.config';
+
 const MIN_SECRET_LENGTH = 32;
 
 /** Secrets that must be present and sufficiently long in production. */
@@ -26,6 +28,8 @@ const PRODUCTION_SECRETS = [
 /** Variables required in every environment. */
 const ALWAYS_REQUIRED = [
   'DATABASE_URL',
+  'BUYER_PROTECTION_FEE_PERCENT',
+  ...MARKETPLACE_ENV_VARS,
   'JWT_SECRET',
   'JWT_REFRESH_SECRET',
   'INTERNAL_SERVICE_TOKEN',
@@ -139,6 +143,13 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
     const parsed = Number(feePercent);
     if (!isFinite(parsed) || parsed < 0 || parsed > 100) {
       errors.push('BUYER_PROTECTION_FEE_PERCENT must be a number between 0 and 100.');
+    }
+  }
+
+  for (const name of MARKETPLACE_ENV_VARS) {
+    const raw = get(name);
+    if (raw !== undefined && !(Number(raw) > 0)) {
+      errors.push(`${name} must be a number above 0.`);
     }
   }
 

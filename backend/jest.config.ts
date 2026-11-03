@@ -10,6 +10,7 @@ const config: Config = {
   collectCoverageFrom: ['**/*.(t|j)s'],
   coverageDirectory: './coverage',
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/jest.env.ts'],
   moduleNameMapper: {
     '^@veribuy/common$': '<rootDir>/../packages/common/src',
     '^@veribuy/logger$': '<rootDir>/../packages/logger/src',

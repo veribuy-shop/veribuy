@@ -14,6 +14,7 @@ import {
   type ShippingService,
   type ShippingQuote,
 } from '@/lib/shipping';
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
 import { calculateProtectionFee, getBuyerProtectionFeePercent, fetchBuyerProtectionFeePercent } from '@/lib/fees';
 
 // SEC-15: Fail loudly if the Stripe publishable key is absent rather than
@@ -326,7 +327,8 @@ function CheckoutForm({
   const effectiveShippingFee = listing.freeShipping
     ? 0
     : (shippingQuote ? shippingQuote.totalFee : 0);
-  const donationAmount = donateToCharity ? 1.00 : 0;
+  const charityDonation = getMarketplaceConfig().charityDonationGbp;
+  const donationAmount = donateToCharity ? charityDonation : 0;
   const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee + donationAmount) * 100) / 100;
   const klarnaInstallment = (totalPrice / 3).toFixed(2);
   const clearpayInstallment = (totalPrice / 4).toFixed(2);
@@ -375,7 +377,7 @@ function CheckoutForm({
           shippingService: selectedService,
           deliveryMethod,
           collectionPoint: deliveryMethod === 'CLICK_AND_COLLECT' ? selectedCollectionPoint : undefined,
-          donationAmount: donateToCharity ? 1.00 : 0,
+          donationAmount,
           shippingAddress: {
             ...resolvedAddress,
             deliveryMethod,
@@ -1005,7 +1007,7 @@ function CheckoutForm({
             <div className="flex items-center gap-2">
               <Heart className="w-4 h-4 text-rose-600 fill-rose-600" />
               <span className="font-bold text-sm text-slate-900">
-                Donate £1.00 to Good Things Foundation (Digital Inclusion UK)
+                Donate {formatPrice(charityDonation, 'GBP')} to Good Things Foundation (Digital Inclusion UK)
               </span>
             </div>
             <p className="text-xs text-slate-600 mt-1 leading-relaxed">
@@ -1013,7 +1015,7 @@ function CheckoutForm({
               <span className="block text-[11px] text-slate-500 mt-0.5">Registered Charity No. 1165209.</span>
             </p>
           </div>
-          <span className="font-bold text-sm text-rose-700 shrink-0">+£1.00</span>
+          <span className="font-bold text-sm text-rose-700 shrink-0">+{formatPrice(charityDonation, 'GBP')}</span>
         </label>
       </div>
 
@@ -1253,13 +1255,14 @@ function CheckoutPageContent() {
       ? Number(pendingOrder.protectionFee)
       : calculateProtectionFee(itemPrice);
   const feePercent =
-    itemPrice > 0 && protectionFee > 0
-      ? Math.round((protectionFee / itemPrice) * 100)
+    pendingOrder?.protectionFee != null && itemPrice > 0
+      ? Math.round((protectionFee / itemPrice) * 1000) / 10
       : serverFeePercent;
   const effectiveShippingFee = listing?.freeShipping
     ? 0
     : (shippingQuote ? shippingQuote.totalFee : 0);
-  const donationAmount = donateToCharity ? 1.00 : 0;
+  const charityDonation = getMarketplaceConfig().charityDonationGbp;
+  const donationAmount = donateToCharity ? charityDonation : 0;
   const totalPrice = Math.round((itemPrice + protectionFee + effectiveShippingFee + donationAmount) * 100) / 100;
 
   if (loading) {
@@ -1432,7 +1435,7 @@ function CheckoutPageContent() {
                       <Heart className="w-3.5 h-3.5 text-rose-600 fill-rose-600" />
                       <span className="font-semibold text-rose-900">Digital Inclusion UK</span>
                     </div>
-                    <span className="font-bold text-rose-800">+£1.00</span>
+                    <span className="font-bold text-rose-800">+{formatPrice(charityDonation, 'GBP')}</span>
                   </div>
                 )}
 

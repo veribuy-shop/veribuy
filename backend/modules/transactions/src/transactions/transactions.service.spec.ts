@@ -13,8 +13,7 @@ describe('TransactionsService', () => {
   let mockPaymentIntents: any;
 
   beforeEach(async () => {
-    delete process.env.BUYER_PROTECTION_FEE_PERCENT;
-    delete process.env.BUYER_PROTECTION_FEE_RATE;
+    process.env.BUYER_PROTECTION_FEE_PERCENT = '5';
     process.env.STRIPE_SECRET_KEY = 'sk_test_mock_secret_key';
     process.env.INTERNAL_SERVICE_TOKEN = 'mock_internal_token';
 
@@ -113,10 +112,12 @@ describe('TransactionsService', () => {
   });
 
   describe('getBuyerProtectionFeeRate', () => {
-    it('should default to 5% (0.05)', () => {
+    it('refuses to guess a rate when the variable is missing or invalid', () => {
       delete process.env.BUYER_PROTECTION_FEE_PERCENT;
-      delete process.env.BUYER_PROTECTION_FEE_RATE;
-      expect(getBuyerProtectionFeeRate()).toBe(0.05);
+      expect(() => getBuyerProtectionFeeRate()).toThrow('BUYER_PROTECTION_FEE_PERCENT');
+
+      process.env.BUYER_PROTECTION_FEE_PERCENT = 'five';
+      expect(() => getBuyerProtectionFeeRate()).toThrow('BUYER_PROTECTION_FEE_PERCENT');
     });
 
     it('should correctly parse percentage values like 5 or 0.05', () => {
@@ -469,17 +470,19 @@ describe('TransactionsService', () => {
         expect(mockPaymentIntents.create).not.toHaveBeenCalled();
       });
 
-      it('rejects donations above the cap', async () => {
+      it('charges the configured donation whatever amount the client sends', async () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue(listing);
+        process.env.CHARITY_DONATION_GBP = '2.5';
 
-        await expect(
-          service.createOrder({
-            buyerId: 'buyer-1',
-            sellerId: 'seller-1',
-            listingId: 'listing-1',
-            donationAmount: 10_000,
-          }),
-        ).rejects.toThrow(BadRequestException);
+        await service.createOrder({
+          buyerId: 'buyer-1',
+          sellerId: 'seller-1',
+          listingId: 'listing-1',
+          donationAmount: 10_000,
+        });
+        process.env.CHARITY_DONATION_GBP = '1';
+
+        expect(mockPaymentIntents.create.mock.calls[0][0].metadata.donationAmount).toBe('2.5');
       });
     });
 

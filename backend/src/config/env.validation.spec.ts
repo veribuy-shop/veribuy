@@ -4,6 +4,13 @@ describe('validateEnv', () => {
   const baseDev = {
     NODE_ENV: 'development',
     DATABASE_URL: 'postgresql://user:pass@localhost:5432/veribuy',
+    BUYER_PROTECTION_FEE_PERCENT: '5',
+    CHECKOUT_HOLD_MINUTES: '45',
+    AUCTION_PAYMENT_WINDOW_HOURS: '48',
+    OFFER_PAYMENT_WINDOW_HOURS: '48',
+    POSTING_OVERDUE_DAYS: '4',
+    CHARITY_DONATION_GBP: '1',
+    CLEARPAY_MAX_GBP: '1200',
     JWT_SECRET: 'a'.repeat(40),
     JWT_REFRESH_SECRET: 'b'.repeat(40),
     INTERNAL_SERVICE_TOKEN: 'c'.repeat(40),
@@ -80,6 +87,24 @@ describe('validateEnv', () => {
   it('rejects a missing Stripe secret key in production', () => {
     const { STRIPE_SECRET_KEY, ...noSecret } = baseProd;
     expect(() => validateEnv(noSecret)).toThrow(/STRIPE_SECRET_KEY is required/);
+  });
+
+  it('refuses to start without a buyer protection fee', () => {
+    const { BUYER_PROTECTION_FEE_PERCENT: _omitted, ...config } = baseDev;
+    expect(() => validateEnv(config)).toThrow('BUYER_PROTECTION_FEE_PERCENT');
+  });
+
+  it.each([
+    'CHECKOUT_HOLD_MINUTES',
+    'AUCTION_PAYMENT_WINDOW_HOURS',
+    'OFFER_PAYMENT_WINDOW_HOURS',
+    'POSTING_OVERDUE_DAYS',
+    'CHARITY_DONATION_GBP',
+    'CLEARPAY_MAX_GBP',
+  ])('refuses to start when %s is missing or invalid', (name) => {
+    const { [name as keyof typeof baseDev]: _omitted, ...config } = baseDev;
+    expect(() => validateEnv(config)).toThrow(name);
+    expect(() => validateEnv({ ...baseDev, [name]: '0' })).toThrow(name);
   });
 
   it('rejects a malformed DATABASE_URL', () => {

@@ -1,6 +1,7 @@
 import {
   Injectable,
   NotFoundException,
+  ConflictException,
   BadRequestException,
   ForbiddenException,
   Logger,
@@ -18,12 +19,12 @@ import {
   PaginatedResponse,
   calculateMinimumNextBid,
   calculateProxyBidOutcome,
-  AUCTION_PAYMENT_WINDOW_HOURS,
   auctionPaymentDeadline,
   anonymizeBidderHandle,
 } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
 import { NotificationClient } from './notification.client';
+import { auctionPaymentWindowHours } from '../../../../src/config/marketplace.config';
 
 // Fields safe to return to public callers — strips IMEI and serial number
 const PUBLIC_SELECT = {
@@ -176,6 +177,8 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         throw new ForbiddenException('Bulk inventory listings are only available to business accounts');
       }
     }
+    await this.assertNotDuplicateListing(dto);
+
     let initialTrustStatus: TrustLensStatus = TrustLensStatus.PENDING;
 
     // Check if duplicate IMEI before creating
@@ -552,6 +555,28 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
    * pause, relist and delist — but can only (re)activate a listing that has
    * passed TrustLens verification and is not reserved by an in-flight checkout.
    */
+  /**
+   * Stops a seller listing the same device twice, usually from a retried submit.
+   * Without an identifier, only a repeat within minutes counts, because bulk
+   * sellers can honestly have several listings with the same title.
+   */
+  private async assertNotDuplicateListing(dto: CreateListingDto): Promise<void> {
+    const imei = dto.imei?.replace(/[^0-9]/g, '').trim();
+    const serial = dto.serialNumber?.trim();
+    const open = { sellerId: dto.sellerId, status: { notIn: [ListingStatus.SOLD, ListingStatus.DELISTED, ListingStatus.REJECTED] } };
+
+    const existing = await this.prisma.listing.findFirst({
+      where:
+        imei || serial
+          ? { ...open, OR: [...(imei ? [{ imei }] : []), ...(serial ? [{ serialNumber: serial }] : [])] }
+          : { ...open, title: dto.title, createdAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException('You already have a listing for this device. Open it from your listings to carry on.');
+    }
+  }
+
   async assertSellerTransition(
     listing: Pick<Listing, 'id' | 'status' | 'trustLensStatus'>,
     target: ListingStatus,
@@ -776,6 +801,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
     status: ListingStatus,
     currentStatus: ListingStatus,
     isAdmin = false,
+    reason?: string,
   ): Promise<Listing> {
     // Atomic update: only update if current status hasn't changed concurrently
     const updateData: Record<string, unknown> = {
@@ -823,6 +849,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
           listingTitle: updated.title,
           listingId: updated.id,
           status: updated.status,
+          reason: reason?.trim() || undefined,
         });
       }
     }).catch((err: Error) => this.logger.error(`listing_status notify fetch failed: ${err.message}`));
@@ -1308,11 +1335,11 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
             listing.highestBidderId,
             listing.id,
             'You won the auction',
-            `You won ${listing.title} at £${curBid.toFixed(2)}. Open the listing and pay within ${AUCTION_PAYMENT_WINDOW_HOURS} hours, or the sale lapses.`,
+            `You won ${listing.title} at £${curBid.toFixed(2)}. Open the listing and pay within ${auctionPaymentWindowHours()} hours, or the sale lapses.`,
           );
           const winnerInfo = await this.getBidderInfo(listing.highestBidderId);
           if (winnerInfo) {
-            const checkoutDeadline = auctionPaymentDeadline(listing.auctionEndsAt ?? new Date()).toISOString();
+            const checkoutDeadline = auctionPaymentDeadline(listing.auctionEndsAt ?? new Date(), auctionPaymentWindowHours()).toISOString();
             this.notifications.notifyAuctionWon({
               winnerEmail: winnerInfo.email,
               winnerName: winnerInfo.name,
@@ -1340,7 +1367,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
    * listing as INACTIVE, so it's left alone until that checkout ends.
    */
   async releaseUnpaidAuctions(): Promise<number> {
-    const cutoff = new Date(Date.now() - AUCTION_PAYMENT_WINDOW_HOURS * 60 * 60 * 1000);
+    const cutoff = new Date(Date.now() - auctionPaymentWindowHours() * 60 * 60 * 1000);
     const lapsed = await this.prisma.listing.findMany({
       where: {
         format: ListingFormat.AUCTION,
@@ -1377,14 +1404,14 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
             listing.highestBidderId,
             listing.id,
             'Your auction win has lapsed',
-            `You didn’t pay for ${listing.title} within ${AUCTION_PAYMENT_WINDOW_HOURS} hours, so the sale has been cancelled.`,
+            `You didn’t pay for ${listing.title} within ${auctionPaymentWindowHours()} hours, so the sale has been cancelled.`,
           );
           await this.recordAuctionNotice(
             listing.highestBidderId,
             listing.sellerId,
             listing.id,
             'The winning bidder didn’t pay',
-            `The winner of ${listing.title} didn’t pay within ${AUCTION_PAYMENT_WINDOW_HOURS} hours. The listing is off sale, and you can list the device again.`,
+            `The winner of ${listing.title} didn’t pay within ${auctionPaymentWindowHours()} hours. The listing is off sale, and you can list the device again.`,
           );
         }
       } catch (err) {

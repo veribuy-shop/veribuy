@@ -12,6 +12,7 @@ import {
   CountdownParts,
 } from '@/lib/auction';
 import { auctionPaymentDeadline } from '@veribuy/common/auction';
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
 import {
   Gavel,
   Timer,
@@ -388,7 +389,7 @@ export default function AuctionBiddingCard({
               {auctionEndsAt && (
                 <p className="text-xs text-emerald-900">
                   Pay by{' '}
-                  {auctionPaymentDeadline(auctionEndsAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })},
+                  {auctionPaymentDeadline(auctionEndsAt, getMarketplaceConfig().auctionPaymentWindowHours).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })},
                   or the sale is cancelled.
                 </p>
               )}

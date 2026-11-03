@@ -17,6 +17,7 @@ describe('UlistingsService', () => {
         create: jest.fn(),
         findUnique: jest.fn(),
         findMany: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn(),
         updateMany: jest.fn(),
       },
@@ -247,6 +248,27 @@ describe('UlistingsService', () => {
       const { create, update } = prisma.listingDraft.upsert.mock.calls[0][0];
       expect(create).toEqual({ userId: 'user-1', data: { title: 'iPhone 14', freeShipping: true }, step: 2 });
       expect(update.data).toEqual({ title: 'iPhone 14', freeShipping: true });
+    });
+  });
+
+  describe('duplicate listings', () => {
+    const dto: any = { sellerId: 'seller-1', title: 'iPhone 13', imei: '35-693803-564380-9', price: 100 };
+
+    it('refuses a second open listing for the same IMEI', async () => {
+      prisma.listing.findFirst.mockResolvedValue({ id: 'existing' });
+
+      await expect(service.create(dto)).rejects.toThrow('already have a listing');
+      expect(prisma.listing.findFirst.mock.calls[0][0].where.OR).toEqual([{ imei: '356938035643809' }]);
+      expect(prisma.listing.create).not.toHaveBeenCalled();
+    });
+
+    it('only treats a repeated title as a duplicate within minutes when there is no identifier', async () => {
+      prisma.listing.findFirst.mockResolvedValue({ id: 'existing' });
+
+      await expect(service.create({ sellerId: 'seller-1', title: 'iPhone 13', price: 100 } as any)).rejects.toThrow('already have');
+      const where = prisma.listing.findFirst.mock.calls[0][0].where;
+      expect(where.title).toBe('iPhone 13');
+      expect(where.createdAt.gte).toBeInstanceOf(Date);
     });
   });
 

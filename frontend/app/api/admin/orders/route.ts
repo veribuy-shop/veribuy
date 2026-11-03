@@ -8,6 +8,7 @@ import {
   sanitizeAdminProfile,
 } from '@/lib/sanitize';
 import { getBuyerProtectionFeeRate } from '@/lib/fees';
+import { loadMarketplaceConfig } from '@/lib/marketplace-config-server';
 
 const TRANSACTION_SERVICE_URL = getBackendUrl();
 const USER_SERVICE_URL = getBackendUrl();
@@ -60,6 +61,8 @@ export async function GET(request: NextRequest) {
     });
     if (status && status !== 'ALL') backendParams.set('status', status);
     if (search && search.trim()) backendParams.set('search', search.trim());
+
+    await loadMarketplaceConfig();
 
     const pageResponse = await fetch(
       `${TRANSACTION_SERVICE_URL}/transactions/orders?${backendParams.toString()}`,

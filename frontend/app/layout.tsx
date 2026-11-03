@@ -2,6 +2,11 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { AnalyticsConsent } from '@/components/analytics-consent';
 import { ClientLayout } from '@/components/client-layout';
+import { MarketplaceConfigProvider } from '@/components/marketplace-config-provider';
+import { loadMarketplaceConfig } from '@/lib/marketplace-config-server';
+
+// Keeps pre-rendered pages in step with the backend's marketplace rules.
+export const revalidate = 60;
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
 
@@ -43,15 +48,19 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const config = await loadMarketplaceConfig();
+
   return (
     <html lang="en">
       <body className="min-h-screen flex flex-col">
-        <ClientLayout>{children}</ClientLayout>
+        <MarketplaceConfigProvider config={config}>
+          <ClientLayout>{children}</ClientLayout>
+        </MarketplaceConfigProvider>
         <AnalyticsConsent />
       </body>
     </html>

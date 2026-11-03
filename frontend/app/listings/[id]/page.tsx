@@ -4,6 +4,7 @@ import { productJsonLd } from '@/lib/structured-data';
 import { getBackendUrl } from '@/lib/backend-url';
 import { serializeJsonLd } from '@/lib/json-ld';
 import { buyerFacingPrice } from '@/lib/fees';
+import { loadMarketplaceConfig } from '@/lib/marketplace-config-server';
 
 const LISTING_SERVICE_URL = getBackendUrl();
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.veribuy.shop';
@@ -59,6 +60,7 @@ export async function generateMetadata(
     ? ` — ${GRADE_LABELS[listing.conditionGrade] || listing.conditionGrade} Condition`
     : '';
   // Advertised price includes Buyer Protection (only shipping is added at checkout).
+  await loadMarketplaceConfig();
   const price = buyerFacingPrice(typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price);
   const title = `${listing.title}${gradeLabel}`;
   const description = `${listing.brand} ${listing.model} for £${price.toFixed(2)}. Trust Lens verified on VeriBuy.`;

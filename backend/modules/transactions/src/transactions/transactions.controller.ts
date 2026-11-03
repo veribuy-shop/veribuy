@@ -17,6 +17,12 @@ import {
 import type { Response } from 'express';
 import * as crypto from 'crypto';
 import { TransactionsService, getBuyerProtectionFeeRate } from './transactions.service';
+import {
+  auctionPaymentWindowHours,
+  charityDonationGbp,
+  checkoutHoldMinutes,
+  offerPaymentWindowHours,
+} from '../../../../src/config/marketplace.config';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { UpdateShippingDto } from './dto/update-shipping.dto';
@@ -51,17 +57,19 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   /**
-   * Public runtime fee configuration.
-   *
-   * The Buyer Protection Fee is server-owned (BUYER_PROTECTION_FEE_PERCENT).
-   * Frontend/admin displays fetch it here so they always reflect the
-   * authoritative rate without a frontend rebuild.
+   * Public runtime marketplace configuration, set by backend environment
+   * variables. Web and mobile read it so their displays always match the rules
+   * the server enforces, without a rebuild.
    */
-  @Get('config/fees')
+  @Get('config/marketplace')
   @Public()
-  getFeeConfig() {
+  getMarketplaceConfig() {
     return {
       buyerProtectionFeePercent: Math.round(getBuyerProtectionFeeRate() * 10000) / 100,
+      checkoutHoldMinutes: checkoutHoldMinutes(),
+      auctionPaymentWindowHours: auctionPaymentWindowHours(),
+      offerPaymentWindowHours: offerPaymentWindowHours(),
+      charityDonationGbp: charityDonationGbp(),
     };
   }
 

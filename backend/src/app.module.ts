@@ -9,6 +9,7 @@ import { HttpLoggerMiddleware } from '@veribuy/logger';
 import { AuthModule } from '../modules/auth/src/auth/auth.module';
 import { UsersModule } from '../modules/users/src/users/users.module';
 import { UlistingsModule } from '../modules/listings/src/listings/listings.module';
+import { AdminModule } from '../modules/admin/src/admin/admin.module';
 import { TrustLensModule } from '../modules/trust-lens/src/trust-lens/trust-lens.module';
 import { ImeiCheckModule } from '../modules/trust-lens/src/imei-check/imei-check.module';
 import { EvidenceModule } from '../modules/evidence/src/evidence/evidence.module';
@@ -46,6 +47,7 @@ import { ClientAwareThrottlerGuard } from './security/client-aware-throttler.gua
     UsersModule,
     UlistingsModule,
     TrustLensModule,
+    AdminModule,
     ImeiCheckModule,
     EvidenceCloudinaryModule,
     EvidenceModule,

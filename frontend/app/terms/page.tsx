@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { LegalHeader } from '@/components/legal-nav';
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
+import { loadMarketplaceConfig } from '@/lib/marketplace-config-server';
 import { ShieldCheck, Scale, CheckCircle2, AlertCircle, HelpCircle, ArrowRight } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -25,7 +27,10 @@ const TOC = [
   { id: 'contact', label: '10. Contact Information' },
 ];
 
-export default function TermsPage() {
+export const revalidate = 60;
+
+export default async function TermsPage() {
+  await loadMarketplaceConfig();
   return (
     <div className="min-h-screen bg-[var(--color-surface)]">
       <LegalHeader
@@ -179,7 +184,7 @@ export default function TermsPage() {
             <section id="auctions" className="bg-white border border-[var(--color-border)] rounded-2xl p-6 sm:p-8 shadow-sm">
               <h2 className="text-xl font-bold text-[var(--color-text)] mb-3">Auctions &amp; Binding Bids</h2>
               <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
-                Bids are binding. The highest bidder when an auction ends, with any reserve price met, must pay within 48 hours of the auction ending. If they don&apos;t, the sale is cancelled and the seller may list the device again. A seller can&apos;t change the price of an auction once bidding has started. Changing the details or photos of a verified listing returns it to Trust Lens review.
+                Bids are binding. The highest bidder when an auction ends, with any reserve price met, must pay within {getMarketplaceConfig().auctionPaymentWindowHours} hours of the auction ending. If they don&apos;t, the sale is cancelled and the seller may list the device again. A seller can&apos;t change the price of an auction once bidding has started. Changing the details or photos of a verified listing returns it to Trust Lens review.
               </p>
             </section>
 

@@ -1,6 +1,6 @@
 import * as SplashScreen from 'expo-splash-screen';
-import { LogBox } from 'react-native';
-import { useEffect } from 'react';
+import { AppState, LogBox } from 'react-native';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 import '../global.css';
 
@@ -10,6 +10,7 @@ import { StripeProvider } from '@/src/lib/stripe';
 
 import { AuthProvider } from '@/src/context/AuthContext';
 import { useAuth } from '@/src/context/AuthContext';
+import { configService } from '@/src/services';
 
 // Raised by a dependency, not this app, and its banner covers the bottom of every screen in dev.
 LogBox.ignoreLogs(['ImageBackground is deprecated']);
@@ -18,17 +19,33 @@ const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
 
 export const unstable_settings = { anchor: '(main)' };
 
+// How long the splash waits for the marketplace rules before showing the app anyway.
+const CONFIG_LOAD_TIMEOUT_MS = 5000;
+
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 function RootNavigator() {
   const { loading } = useAuth();
+  const [configReady, setConfigReady] = useState(false);
+
+  // Prices include the fee, so load the rules before the first screen draws.
+  useEffect(() => {
+    const timeout = new Promise((resolve) => setTimeout(resolve, CONFIG_LOAD_TIMEOUT_MS));
+    Promise.race([configService.refresh(), timeout]).finally(() => setConfigReady(true));
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') configService.refresh();
+    });
+    return () => subscription.remove();
+  }, []);
+
+  const ready = !loading && configReady;
 
   // Keep the splash up until the first screen can draw, so there's no blank flash.
   useEffect(() => {
-    if (!loading) SplashScreen.hideAsync().catch(() => undefined);
-  }, [loading]);
+    if (ready) SplashScreen.hideAsync().catch(() => undefined);
+  }, [ready]);
 
-  if (loading) {
+  if (!ready) {
     return null;
   }
 

@@ -562,12 +562,13 @@ export class TrustLensService {
     });
 
     // Propagate terminal decisions to listing-service and (on PASSED) user-service.
-    // Both are fire-and-forget — errors are logged inside the sync services.
+    // Errors are logged inside the sync services. The listing sync is awaited so a
+    // caller that reloads after this response sees the listing's new status.
     if (isTerminal) {
       const conditionGrade = updated.conditionGrade ?? undefined;
       const flags = integrityFlags ?? [];
 
-      this.listingSync
+      await this.listingSync
         .syncTrustLensResult(
           listingId,
           status as 'PASSED' | 'FAILED',

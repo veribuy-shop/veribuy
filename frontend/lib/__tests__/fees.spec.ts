@@ -5,38 +5,42 @@ import {
   calculateProtectionFee,
   buyerFacingPrice,
 } from '../fees';
+import { setMarketplaceConfig, parseMarketplaceConfig } from '../marketplace-config';
 
-describe('Fee calculation utilities', () => {
-  beforeEach(() => {
-    delete process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT;
-    delete process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_RATE;
-    delete process.env.BUYER_PROTECTION_FEE_PERCENT;
+const setFee = (buyerProtectionFeePercent: number) =>
+  setMarketplaceConfig({
+    buyerProtectionFeePercent,
+    checkoutHoldMinutes: 45,
+    auctionPaymentWindowHours: 48,
+    offerPaymentWindowHours: 48,
+    charityDonationGbp: 1,
   });
 
-  it('should default to 5% when no environment variable or override is provided', () => {
-    expect(getBuyerProtectionFeePercent()).toBe(5);
-    expect(getBuyerProtectionFeeRate()).toBe(0.05);
+describe('Fee calculation utilities', () => {
+  it('should show no fee until the server has reported its rate', async () => {
+    vi.resetModules();
+    const fresh = await import('../marketplace-config');
+    expect(fresh.isMarketplaceConfigKnown()).toBe(false);
+    expect(fresh.getMarketplaceConfig().buyerProtectionFeePercent).toBe(0);
   });
 
   it('should calculate accurate protection fees with 2 decimal precision', () => {
-    // 5% of £100 is £5.00
+    setFee(5);
     expect(calculateProtectionFee(100)).toBe(5);
-
-    // 5% of £500 is £25.00
     expect(calculateProtectionFee(500)).toBe(25);
-
-    // 5% of £349.99 is £17.50
     expect(calculateProtectionFee(349.99)).toBe(17.5);
-
-    // 5% of £0 is £0.00
     expect(calculateProtectionFee(0)).toBe(0);
   });
 
-  it('should parse environment variable percentage correctly', () => {
-    process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT = '8';
+  it('should follow whatever rate the server reports, including decimals', () => {
+    setFee(8);
     expect(getBuyerProtectionFeePercent()).toBe(8);
     expect(getBuyerProtectionFeeRate()).toBe(0.08);
     expect(calculateProtectionFee(100)).toBe(8);
+
+    setFee(2.5);
+    expect(getBuyerProtectionFeePercent()).toBe(2.5);
+    expect(calculateProtectionFee(100)).toBe(2.5);
   });
 
   // SECURITY REGRESSION: the fee rate must never be sourced from client-writable
@@ -55,7 +59,7 @@ describe('Fee calculation utilities', () => {
       },
     });
 
-    process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT = '5';
+    setFee(5);
 
     expect(getBuyerProtectionFeePercent()).toBe(5);
     expect(calculateProtectionFee(200)).toBe(10);
@@ -66,14 +70,18 @@ describe('Fee calculation utilities', () => {
 
 describe('buyerFacingPrice', () => {
   beforeEach(() => {
-    delete process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT;
-    delete process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_RATE;
-    delete process.env.BUYER_PROTECTION_FEE_PERCENT;
+    setFee(5);
   });
 
   it('adds the buyer protection fee to the seller price (shipping excluded)', () => {
-    // Default 5% rate: a £120 listing is shown to buyers as £126.
     expect(buyerFacingPrice(120)).toBe(126);
     expect(buyerFacingPrice(749.99)).toBe(787.49);
+  });
+});
+
+describe('parseMarketplaceConfig', () => {
+  it('rejects an incomplete answer rather than filling in values', () => {
+    expect(parseMarketplaceConfig({ buyerProtectionFeePercent: 5 })).toBeNull();
+    expect(parseMarketplaceConfig(null)).toBeNull();
   });
 });

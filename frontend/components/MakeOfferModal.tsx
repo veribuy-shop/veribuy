@@ -1,5 +1,7 @@
 'use client';
 
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
+
 import { useState, useEffect, useRef } from 'react';
 import { CheckCircle2, X, Tag, ShieldCheck, ArrowRight } from 'lucide-react';
 import { formatPrice } from '@/lib/currency';
@@ -196,7 +198,7 @@ export default function MakeOfferModal({
                 Offer Sent to Seller!
               </h3>
               <p className="text-sm text-gray-600 max-w-sm mx-auto mb-4">
-                Your offer of <strong className="text-emerald-700 font-bold">{formatPrice(numericOffer, currency)}</strong> has been sent to the seller. Track it on your <a href="/offers" className="underline font-semibold">Offers page</a> — if they accept, you can pay that price within 48 hours.
+                Your offer of <strong className="text-emerald-700 font-bold">{formatPrice(numericOffer, currency)}</strong> has been sent to the seller. Track it on your <a href="/offers" className="underline font-semibold">Offers page</a> — if they accept, you can pay that price within {getMarketplaceConfig().offerPaymentWindowHours} hours.
               </p>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 text-xs text-gray-600">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />

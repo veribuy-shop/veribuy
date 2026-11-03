@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { API_URL } from '../env';
 import { api, refreshSession } from '../lib/api';
+import { MarketplaceConfig, setMarketplaceConfig } from '../lib/marketplace-config';
 import { getAccessToken } from '../lib/tokens';
 import { ApiError, Paginated, ShippingAddressDto } from '../types/api';
 import {
@@ -109,6 +110,21 @@ export const trustService = {
     api.patch<TrustLensReport>(`/trust-lens/${listingId}/status`, data),
 };
 export const trustLensService = trustService;
+
+// ── Marketplace rules ───────────────────────────────────────────────
+export const configService = {
+  /** Loads the rules the backend enforces. On failure, keeps what's known. */
+  refresh: async (): Promise<void> => {
+    try {
+      const res = await api.public.get<MarketplaceConfig>('/transactions/config/marketplace');
+      if (Object.values(res ?? {}).length > 0 && Object.values(res).every((value) => Number(value) >= 0)) {
+        setMarketplaceConfig(res);
+      }
+    } catch {
+      // Tried again the next time the app comes to the foreground.
+    }
+  },
+};
 
 // ── Evidence ──────────────────────────────────────────────────────────────
 export const evidenceService = {
@@ -267,8 +283,47 @@ export const notificationsService = {
 };
 
 // ── Admin ─────────────────────────────────────────────────────────────────
+export interface AdminSummary {
+  reviewWaiting: number;
+  oldestReviewAt: string | null;
+  disputes: number;
+  overduePosting: number;
+  heldAmount: number;
+  duplicateGroups: number;
+}
+
+export interface AdminQueueItem {
+  id: string;
+  title: string;
+  price: number;
+  currency: string;
+  trustLensStatus: string;
+  integrityFlags: string[];
+  sellerName: string;
+  imageUrl: string | null;
+  photoCount: number;
+  possibleDuplicate: boolean;
+  reviewStatus: string | null;
+  createdAt: string;
+}
+
+export interface AdminOrderItem {
+  id: string;
+  listingTitle: string | null;
+  status: string;
+  totalAmount: number;
+  currency: string;
+  buyerName: string;
+  sellerName: string;
+  postingOverdue: boolean;
+}
+
 export const adminService = {
-  users: () => api.get<ListResponse<User>>('/auth/users?limit=100').then(rows),
+  summary: () => api.get<AdminSummary>('/admin/summary'),
+  reviewQueue: () => api.get<{ data: AdminQueueItem[]; total: number }>('/admin/review-queue?limit=50').then((res) => res.data),
+  attentionOrders: () => api.get<{ data: AdminOrderItem[] }>('/admin/orders?view=attention&limit=50').then((res) => res.data),
+  decide: (listingId: string, status: 'PASSED' | 'FAILED', reviewNotes?: string) =>
+    api.patch<unknown>(`/trust-lens/${listingId}/status`, { status, ...(reviewNotes ? { reviewNotes } : {}) }),
   bootstrapAdmin: (data: { email: string; password: string; setupToken: string }) =>
     api.public.post<unknown>('/auth/admin/bootstrap', data),
 };

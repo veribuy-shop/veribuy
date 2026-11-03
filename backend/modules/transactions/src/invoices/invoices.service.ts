@@ -256,7 +256,6 @@ export class InvoicesService {
 
       const amountFormatted = fmtCurrency(order.amount);
       const rate = getBuyerProtectionFeeRate();
-      const feePercent = Math.round(rate * 100);
       const protectionFee = order.protectionFee != null
         ? Number(order.protectionFee)
         : Math.round(Number(order.amount) * rate * 100) / 100;
@@ -376,7 +375,7 @@ export class InvoicesService {
           .fontSize(10)
           .font('Helvetica')
           .fillColor('#000000')
-          .text(`Buyer Protection Fee (${feePercent}%)`, 50, lineY)
+          .text('Buyer Protection Fee', 50, lineY)
           .font('Helvetica-Bold')
           .text(protectionFormatted, 400, lineY, { align: 'right' });
 
@@ -456,7 +455,6 @@ export class InvoicesService {
 
     const amountFormatted = fmtCurrency(order.amount);
     const rate = getBuyerProtectionFeeRate();
-    const feePercent = Math.round(rate * 100);
     const protectionFee = order.protectionFee != null
       ? Number(order.protectionFee)
       : Math.round(Number(order.amount) * rate * 100) / 100;
@@ -478,7 +476,7 @@ export class InvoicesService {
 
     const protectionRow = protectionFormatted
       ? `<tr>
-      <td style="padding: 8px; border: 1px solid #eee;"><strong>Buyer Protection Fee (${feePercent}%)</strong></td>
+      <td style="padding: 8px; border: 1px solid #eee;"><strong>Buyer Protection Fee</strong></td>
       <td style="padding: 8px; border: 1px solid #eee;">${protectionFormatted}</td>
     </tr>`
       : '';

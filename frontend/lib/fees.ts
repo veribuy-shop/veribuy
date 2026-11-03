@@ -2,72 +2,30 @@
  * Fee utilities for VeriBuy marketplace.
  *
  * SECURITY: The Buyer Protection Fee is a monetary rate and is therefore
- * server-owned. The backend computes the authoritative fee from the
- * `BUYER_PROTECTION_FEE_PERCENT` environment variable during order creation.
+ * server-owned. The backend's `BUYER_PROTECTION_FEE_PERCENT` environment
+ * variable is the only place it is set, and the backend computes the
+ * authoritative fee during order creation.
  *
- * These helpers exist purely for DISPLAY. They read the public build-time env
- * var so the UI can show the same figure the server will charge. They must
- * never be treated as authoritative, and the value must never be sourced from
- * client-writable storage (e.g. localStorage), which any user could tamper
- * with to misrepresent the fee.
+ * These helpers exist purely for DISPLAY, using the rate the server last
+ * reported (see marketplace-config.ts). The value
+ * must never be sourced from client-writable storage (e.g. localStorage), which
+ * any user could tamper with to misrepresent the fee.
  */
 
-const DEFAULT_FEE_PERCENT = 5;
+import { fetchMarketplaceConfig, getMarketplaceConfig } from '@/lib/marketplace-config';
 
-/**
- * In-memory cache of the server-fetched rate (display-only). The backend
- * remains the sole authority — it recomputes the fee during order creation.
- */
-let serverFeePercentCache: number | null = null;
-let serverFeeFetchPromise: Promise<number> | null = null;
-
-/**
- * Fetches the authoritative Buyer Protection Fee percentage from the server
- * (via the BFF). Cached in memory for the session; falls back to the
- * build-time env value on any failure. Display-only.
- */
+/** Fetches the Buyer Protection Fee percentage from the server. Display-only. */
 export async function fetchBuyerProtectionFeePercent(): Promise<number> {
-  if (serverFeePercentCache !== null) return serverFeePercentCache;
-  if (serverFeeFetchPromise) return serverFeeFetchPromise;
-
-  serverFeeFetchPromise = (async () => {
-    try {
-      const res = await fetch('/api/config/fees', { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        const value = Number(data?.buyerProtectionFeePercent);
-        if (isFinite(value) && value >= 0) {
-          serverFeePercentCache = value;
-          return value;
-        }
-      }
-    } catch {
-      // Fall through to the build-time default.
-    }
-    return getBuyerProtectionFeePercent();
-  })();
-
-  try {
-    return await serverFeeFetchPromise;
-  } finally {
-    serverFeeFetchPromise = null;
-  }
+  return (await fetchMarketplaceConfig()).buyerProtectionFeePercent;
 }
 
 /**
- * Returns the Buyer Protection Fee percentage as an integer (e.g. 5 for 5%).
- * Display-only — the server recomputes this during checkout.
+ * Returns the Buyer Protection Fee percentage (e.g. 5 for 5%). Display-only —
+ * the server recomputes this during checkout. No fee is shown until the server
+ * has reported its rate, rather than guessing one.
  */
 export function getBuyerProtectionFeePercent(): number {
-  const raw =
-    process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_PERCENT ||
-    process.env.NEXT_PUBLIC_BUYER_PROTECTION_FEE_RATE ||
-    process.env.BUYER_PROTECTION_FEE_PERCENT;
-  if (!raw) return DEFAULT_FEE_PERCENT;
-  const parsed = parseFloat(raw);
-  if (isNaN(parsed) || parsed < 0) return DEFAULT_FEE_PERCENT;
-  // If provided as a decimal like 0.05, convert to percentage 5
-  return parsed < 1 && parsed > 0 ? Math.round(parsed * 100) : Math.round(parsed);
+  return getMarketplaceConfig().buyerProtectionFeePercent;
 }
 
 /**

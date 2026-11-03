@@ -1,5 +1,7 @@
 'use client';
 
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
+
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -92,7 +94,7 @@ export default function OffersPage() {
           <h1 className="text-2xl font-bold text-[var(--color-text)]">Offers</h1>
         </div>
         <p className="text-sm text-[var(--color-text-muted)] mb-6">
-          Accepted offers can be paid at the agreed price within 48 hours. Buyer Protection and Royal Mail shipping are added at checkout.
+          Accepted offers can be paid at the agreed price within {getMarketplaceConfig().offerPaymentWindowHours} hours. Buyer Protection and Royal Mail shipping are added at checkout.
         </p>
 
         <div className="flex gap-2 mb-6" role="tablist">
