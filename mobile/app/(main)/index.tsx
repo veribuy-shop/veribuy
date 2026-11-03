@@ -43,11 +43,14 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
+  const latestRequest = useRef(0);
   const [selectedCategory, setSelectedCategory] = useState('');
   const listRef = useRef<FlatList<Listing | ExampleListing>>(null);
 
   const load = useCallback(
     async (targetPage = 1, append = false, term?: string, cat?: string) => {
+      const request = ++latestRequest.current;
       if (append) setLoadingMore(true);
       else setLoading(true);
       try {
@@ -58,19 +61,24 @@ export default function HomeScreen() {
           search: term || undefined,
           deviceType: cat || undefined,
         });
+        // A slow response must not replace the results of a newer search.
+        if (request !== latestRequest.current) return;
         const rows = res?.data ?? [];
         setListings((prev) => (append ? [...prev, ...rows] : rows));
         setTotalPages(res?.pagination?.totalPages ?? 1);
         setPage(targetPage);
         setLoadError('');
       } catch {
+        if (request !== latestRequest.current) return;
         // Never substitute sample listings: show the real state and a retry.
         if (!append) setListings([]);
         setLoadError('We could not load listings. Check your connection and pull down to try again.');
       } finally {
-        setLoading(false);
-        setRefreshing(false);
-        setLoadingMore(false);
+        if (request === latestRequest.current) {
+          setLoading(false);
+          setRefreshing(false);
+          setLoadingMore(false);
+        }
       }
     },
     [],
@@ -88,20 +96,26 @@ export default function HomeScreen() {
       .catch(() => setUnreadCount(0));
   }, [isAuthenticated, user?.id]);
 
+  // Wait for a pause in typing, rather than searching on every letter.
   useEffect(() => {
-    load(1, false, search, selectedCategory);
-  }, [load, search, selectedCategory]);
+    const timer = setTimeout(() => setSubmittedSearch(search.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    load(1, false, submittedSearch, selectedCategory);
+  }, [load, submittedSearch, selectedCategory]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    load(1, false, search, selectedCategory);
-  }, [load, search, selectedCategory]);
+    load(1, false, submittedSearch, selectedCategory);
+  }, [load, submittedSearch, selectedCategory]);
 
   const onEndReached = useCallback(() => {
     if (page < totalPages && !loadingMore) {
-      load(page + 1, true, search, selectedCategory);
+      load(page + 1, true, submittedSearch, selectedCategory);
     }
-  }, [page, totalPages, loadingMore, load, search, selectedCategory]);
+  }, [page, totalPages, loadingMore, load, submittedSearch, selectedCategory]);
 
   const renderHeader = () => (
     <View className="mb-2">
@@ -145,7 +159,7 @@ export default function HomeScreen() {
           onChangeText={setSearch}
           className="flex-1 ml-2.5 text-[15px] text-text"
           returnKeyType="search"
-          onSubmitEditing={() => load(1, false, search, selectedCategory)}
+          onSubmitEditing={() => setSubmittedSearch(search.trim())}
           accessibilityLabel="Search listings"
         />
         {search ? (
@@ -155,6 +169,9 @@ export default function HomeScreen() {
         ) : null}
       </View>
 
+      {/* Results go straight under the search box while typing, above the keyboard. */}
+      {search ? null : (
+        <>
       <View className="bg-primary rounded-2xl p-5 mb-5">
         <View className="flex-row items-center gap-1.5 mb-2.5">
           <Ionicons name="shield-checkmark" size={15} color="#8FC4A5" />
@@ -178,8 +195,10 @@ export default function HomeScreen() {
           ))}
         </View>
       </View>
+        </>
+      )}
 
-      <Text className="text-lg font-bold text-text mb-2.5">Shop by category</Text>
+      {search ? null : <Text className="text-lg font-bold text-text mb-2.5">Shop by category</Text>}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -223,7 +242,7 @@ export default function HomeScreen() {
 
   // Default feed mirrors the web homepage: live listings with a photo, topped
   // up with labelled examples. Searching or filtering shows every real result.
-  const browsingAll = !search && !selectedCategory;
+  const browsingAll = !submittedSearch && !selectedCategory;
   const feed: (Listing | ExampleListing)[] = useMemo(() => {
     if (!browsingAll) return listings;
     const withPhotos = listings.filter((listing) => listing.imageUrl || listing.images?.[0]);
@@ -402,8 +421,10 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        ListHeaderComponent={renderHeader}
-        ListFooterComponent={renderFooter}
+        // Elements, not functions: a function is a new component on every render,
+        // which would rebuild the search box and close the keyboard on each letter.
+        ListHeaderComponent={renderHeader()}
+        ListFooterComponent={renderFooter()}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -416,7 +437,7 @@ export default function HomeScreen() {
             <View className="items-center mt-6">
               <EmptyState title="Listings unavailable" subtitle={loadError} />
               <TouchableOpacity
-                onPress={() => load(1, false, search, selectedCategory)}
+                onPress={() => load(1, false, submittedSearch, selectedCategory)}
                 accessibilityRole="button"
                 className="bg-[#2D7A4F] px-5 py-3 rounded-xl"
               >
