@@ -1138,5 +1138,57 @@ describe('TransactionsService', () => {
     });
   });
   });
-});
 
+  describe('purgeOldCancelledOrders', () => {
+    const old = { id: 'o-1', paymentIntentId: 'pi_1', listingTitle: 'Headset', totalAmount: 50, createdAt: new Date('2026-01-01') };
+
+    beforeEach(() => {
+      (prisma as any).adminAuditLog = { create: jest.fn().mockResolvedValue({}) };
+      mockPaymentIntents.cancel = jest.fn().mockResolvedValue({ status: 'canceled' });
+    });
+
+    it('only looks at never-paid orders past the retention period with no financial records', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+      const before = Date.now();
+
+      await service.purgeOldCancelledOrders();
+
+      const { where } = prisma.order.findMany.mock.calls.at(-1)[0];
+      expect(where).toMatchObject({
+        status: 'CANCELLED',
+        paidAt: null,
+        refundedAt: null,
+        escrow: { is: null },
+        invoice: { none: {} },
+        refunds: { none: {} },
+        rating: { is: null },
+        referralReward: { is: null },
+      });
+      const ageDays = (before - where.updatedAt.lt.getTime()) / (24 * 60 * 60 * 1000);
+      expect(Math.round(ageDays)).toBe(30);
+    });
+
+    it('deletes the order and records it in the audit log', async () => {
+      prisma.order.findMany.mockResolvedValue([old]);
+
+      await service.purgeOldCancelledOrders();
+
+      expect(prisma.order.deleteMany.mock.calls.at(-1)[0].where).toMatchObject({ id: 'o-1', status: 'CANCELLED', paidAt: null });
+      expect((prisma as any).adminAuditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ action: 'Purged cancelled order', targetId: 'o-1' }),
+      });
+    });
+
+    it('keeps an order whose payment can still move money', async () => {
+      prisma.order.findMany.mockResolvedValue([old]);
+      prisma.order.deleteMany.mockClear();
+      mockPaymentIntents.cancel = jest.fn().mockRejectedValue(new Error('already succeeded'));
+      mockPaymentIntents.retrieve = jest.fn().mockResolvedValue({ status: 'succeeded' });
+
+      await service.purgeOldCancelledOrders();
+
+      expect(prisma.order.deleteMany).not.toHaveBeenCalled();
+      expect((prisma as any).adminAuditLog.create).not.toHaveBeenCalled();
+    });
+  });
+});

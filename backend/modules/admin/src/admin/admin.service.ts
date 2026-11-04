@@ -4,7 +4,6 @@ import { checkoutHoldMinutes, postingOverdueDays } from '../../../../src/config/
 import { PrismaService } from '../../../../src/database/prisma.service';
 
 const MAX_PAGE_SIZE = 100;
-/** Sellers are asked to post within 3 working days, so 4 calendar days is overdue. */
 
 /** Listings that are finished with, so they no longer need a reviewer. */
 const CLOSED_LISTING_STATUSES: ListingStatus[] = [

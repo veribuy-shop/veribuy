@@ -119,7 +119,7 @@ export function OrdersDesk({ isDarkMode, onChanged, initialView = 'all' }: DeskP
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h3 className={cn('text-sm font-bold', theme.text)}>Orders and escrow</h3>
-            <p className={cn('text-xs mt-0.5', theme.muted)}>Records are kept, not deleted. Needs attention means disputed, or paid but not posted in time.</p>
+            <p className={cn('text-xs mt-0.5', theme.muted)}>Cancelled orders that were never paid are removed after a retention period; everything else is kept. Needs attention means disputed, or paid but not posted in time.</p>
           </div>
           <SearchBox placeholder="Item, buyer, seller, tracking or ID" onSearch={onSearch} isDarkMode={isDarkMode} />
         </div>

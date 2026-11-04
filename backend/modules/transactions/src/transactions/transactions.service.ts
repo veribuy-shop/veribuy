@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { RedisService } from '@veribuy/redis-cache';
+import type { Prisma } from '.prisma/veribuy-client';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -24,6 +25,7 @@ import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service'
 import { RoyalMailService, ShippingLabelOrderData } from '../shipping/royal-mail.service';
 import {
   auctionPaymentWindowHours,
+  cancelledOrderRetentionDays,
   charityDonationGbp,
   checkoutHoldMinutes,
   clearpayMaxGbp,
@@ -215,6 +217,13 @@ export class TransactionsService implements OnModuleInit {
         this.logger.warn(`Cleanup expired pending orders error: ${err.message}`);
       });
     }, 60 * 1000);
+
+    this.purgeOldCancelledOrders().catch(() => {});
+    setInterval(() => {
+      this.purgeOldCancelledOrders().catch((err) => {
+        this.logger.warn(`Purge cancelled orders error: ${err.message}`);
+      });
+    }, 60 * 60 * 1000);
   }
 
   async createOrder(createOrderDto: CreateOrderDto) {
@@ -1294,6 +1303,52 @@ export class TransactionsService implements OnModuleInit {
         }
       } catch (err) {
         this.logger.warn(`Failed to expire pending order ${order.id}: ${(err as Error).message}`);
+      }
+    }
+  }
+
+  /**
+   * Deletes cancelled orders that never took money once their retention period
+   * ends. Anything with a payment, invoice, escrow, refund, rating or referral is
+   * a financial record and stays. The audit log keeps a note of each deletion.
+   */
+  async purgeOldCancelledOrders() {
+    const purgeable: Prisma.OrderWhereInput = {
+      status: 'CANCELLED',
+      paidAt: null,
+      refundedAt: null,
+      updatedAt: { lt: new Date(Date.now() - cancelledOrderRetentionDays() * 24 * 60 * 60 * 1000) },
+      escrow: { is: null },
+      invoice: { none: {} },
+      refunds: { none: {} },
+      rating: { is: null },
+      referralReward: { is: null },
+    };
+    const orders = await this.prisma.order.findMany({
+      where: purgeable,
+      select: { id: true, paymentIntentId: true, listingTitle: true, totalAmount: true, createdAt: true },
+      take: 200,
+    });
+
+    for (const order of orders) {
+      try {
+        // A payment that can still move money must keep its order.
+        if (order.paymentIntentId && !(await this.ensurePaymentIntentCancelled(order.paymentIntentId))) {
+          continue;
+        }
+        const { count } = await this.prisma.order.deleteMany({ where: { ...purgeable, id: order.id } });
+        if (count === 1) {
+          await this.prisma.adminAuditLog.create({
+            data: {
+              action: 'Purged cancelled order',
+              targetType: 'purged order',
+              targetId: order.id,
+              note: `Never paid. ${order.listingTitle ?? 'Unknown item'}, £${Number(order.totalAmount ?? 0).toFixed(2)}, created ${order.createdAt.toISOString().slice(0, 10)}`,
+            },
+          });
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to purge cancelled order ${order.id}: ${(err as Error).message}`);
       }
     }
   }

@@ -75,6 +75,8 @@ projects:
                 value: '1'
               - key: CLEARPAY_MAX_GBP
                 value: '1200'
+              - key: CANCELLED_ORDER_RETENTION_DAYS
+                value: '30'
               - key: JWT_EXPIRATION
                 value: '15m'
               - key: JWT_REFRESH_EXPIRATION

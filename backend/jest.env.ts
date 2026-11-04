@@ -6,3 +6,4 @@ process.env.OFFER_PAYMENT_WINDOW_HOURS = '48';
 process.env.POSTING_OVERDUE_DAYS = '4';
 process.env.CHARITY_DONATION_GBP = '1';
 process.env.CLEARPAY_MAX_GBP = '1200';
+process.env.CANCELLED_ORDER_RETENTION_DAYS = '30';

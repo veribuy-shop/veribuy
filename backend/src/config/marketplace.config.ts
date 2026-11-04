@@ -10,6 +10,7 @@ export const MARKETPLACE_ENV_VARS = [
   'POSTING_OVERDUE_DAYS',
   'CHARITY_DONATION_GBP',
   'CLEARPAY_MAX_GBP',
+  'CANCELLED_ORDER_RETENTION_DAYS',
 ] as const;
 
 type MarketplaceEnvVar = (typeof MARKETPLACE_ENV_VARS)[number];
@@ -34,3 +35,5 @@ export const postingOverdueDays = () => positiveNumber('POSTING_OVERDUE_DAYS');
 export const charityDonationGbp = () => positiveNumber('CHARITY_DONATION_GBP');
 /** Stripe rejects a PaymentIntent when a listed method can't take the amount, so Clearpay stops here. */
 export const clearpayMaxGbp = () => positiveNumber('CLEARPAY_MAX_GBP');
+/** How long a cancelled order that was never paid is kept before it's deleted. */
+export const cancelledOrderRetentionDays = () => positiveNumber('CANCELLED_ORDER_RETENTION_DAYS');

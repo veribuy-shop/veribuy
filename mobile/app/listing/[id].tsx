@@ -348,7 +348,7 @@ export default function ListingDetailScreen() {
             <Text className="text-xs text-text-muted leading-relaxed">
               {verified
                 ? 'Our Trust & Safety team reviewed this listing’s photos and details before it went live.'
-                : 'This listing is waiting for Trust Lens verification.'}
+                : 'Our team is reviewing this listing’s photos and details. You can buy it once it’s approved.'}
             </Text>
           )}
         </View>

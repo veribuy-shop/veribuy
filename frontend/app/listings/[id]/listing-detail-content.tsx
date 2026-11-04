@@ -364,7 +364,8 @@ export default function ListingDetailContent({ id }: { id: string }) {
         const verificationData = await verificationRes.json();
         setVerificationSummary(verificationData);
         const live = (verificationData as any)?.liveStatus;
-        setImeiChecking(live === 'IN_PROGRESS' || (live == null && !isTerminal(String(listingData.trustLensStatus ?? 'PENDING'))));
+        // Only an IMEI gets an automated check. Anything else waits for the team's review.
+        setImeiChecking(live === 'IN_PROGRESS' || (live == null && listingData.trustLensStatus === 'IN_PROGRESS'));
         return { data: listingData, done: isTerminal(live ?? String(listingData.trustLensStatus ?? 'PENDING')) };
       }
       return { data: listingData, done: false };
@@ -618,41 +619,14 @@ export default function ListingDetailContent({ id }: { id: string }) {
       icon: LockKeyhole,
     });
   } else if (listing.trustLensStatus === 'PASSED') {
-    // When listing has passed Trust Lens verification (via automated inspection or admin verification approval)
+    // No automated check ran, so claim only what happened: the team reviewed it.
     securityChecks.push({
-      id: 'unlocked',
-      title: 'Unlocked Device',
-      statusLabel: 'Network Unlocked',
-      description: 'Device accepts all SIM cards and is unlocked for UK & international networks.',
-      passed: true,
-      icon: Radio,
-    });
-
-    securityChecks.push({
-      id: 'blacklist',
-      title: 'Blacklist Status',
-      statusLabel: 'Clean & Verified',
-      description: 'Audited against GSMA international mobile registers and national police databases.',
+      id: 'reviewed',
+      title: 'Listing Reviewed',
+      statusLabel: 'Approved',
+      description: 'Our Trust & Safety team reviewed this listing’s photos and details before it went live.',
       passed: true,
       icon: ShieldCheck,
-    });
-
-    securityChecks.push({
-      id: 'warranty',
-      title: 'Warranty Status',
-      statusLabel: 'Verified Authentic',
-      description: 'Device authenticity confirmed. Covered by VeriBuy Buyer Protection.',
-      passed: true,
-      icon: Award,
-    });
-
-    securityChecks.push({
-      id: 'fmi',
-      title: 'Find My Phone',
-      statusLabel: 'Off / Setup Ready',
-      description: 'Find My iPhone, iCloud, and FRP activation locks are completely disabled.',
-      passed: true,
-      icon: LockKeyhole,
     });
   }
 
@@ -1070,12 +1044,18 @@ export default function ListingDetailContent({ id }: { id: string }) {
                     <TrustIcon className={cn('w-5 h-5 shrink-0 mt-0.5', trustStatus.textClassName)} aria-hidden="true" />
                     <div>
                       <p className={cn('text-sm font-bold', trustStatus.textClassName)}>
-                        {listing.trustLensStatus === 'FAILED' ? 'Verification Failed' : 'Verification In Progress'}
+                        {listing.trustLensStatus === 'FAILED'
+                          ? 'Verification Failed'
+                          : imeiChecking
+                            ? 'Verification In Progress'
+                            : 'Waiting for Review'}
                       </p>
                       <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">
                         {listing.trustLensStatus === 'FAILED'
-                          ? 'This device failed hardware/IMEI verification checks and cannot be purchased.'
-                          : 'Trust Lens™ automated checks are currently running. Purchase will become available once passed.'}
+                          ? 'This device failed verification checks and cannot be purchased.'
+                          : imeiChecking
+                            ? 'Trust Lens™ automated checks are currently running. Purchase will become available once passed.'
+                            : 'Our team is reviewing this listing’s photos and details. You can buy it once it’s approved.'}
                       </p>
                       {imeiChecking && (
                         <div className="flex items-center gap-2 mt-2.5 text-xs text-[var(--color-accent)] font-semibold">
