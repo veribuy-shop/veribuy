@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { BrandLogo } from '@/components/brand-logo';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import { getBuyerProtectionFeePercent, fetchBuyerProtectionFeePercent } from '@/lib/fees';
@@ -152,15 +152,35 @@ const TAB_HEADINGS: Record<TabId, { title: string; subtitle: string }> = {
 // MAIN COMPONENT
 // ============================================================================
 
+// Last theme used on this device. The per-user preference can't be read until
+// the session loads, and the page would be painted light until then.
+const LAST_THEME_KEY = 'veribuy_admin_theme';
+
+function readLastThemeIsDark() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(LAST_THEME_KEY) === 'dark';
+  } catch {
+    return false;
+  }
+}
+
+function saveLastTheme(mode: string) {
+  try {
+    localStorage.setItem(LAST_THEME_KEY, mode);
+  } catch {
+    // Theme preference is non-critical — ignore storage access errors.
+  }
+}
+
 function AdminDashboardContent() {
-  const router = useRouter();
   const { user, authFetch, logout } = useAuth();
   const searchParams = useSearchParams();
-  const validTabs: TabId[] = ['dashboard', 'verification', 'listings', 'orders', 'users', 'analytics', 'health', 'settings'];
+  const validTabs: TabId[] = ['dashboard', 'verification', 'listings', 'orders', 'users', 'activity', 'analytics', 'health', 'settings'];
   const initialTab = validTabs.includes(searchParams.get('tab') as TabId) ? (searchParams.get('tab') as TabId) : 'dashboard';
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(readLastThemeIsDark);
 
   // Data state
   const [users, setUsers] = useState<User[]>([]);
@@ -201,11 +221,8 @@ function AdminDashboardContent() {
     if (!user?.id) return;
     try {
       const savedTheme = localStorage.getItem(`veribuy_admin_theme_${user.id}`);
-      if (savedTheme) {
-        setIsDarkMode(savedTheme === 'dark');
-      } else {
-        setIsDarkMode(false);
-      }
+      setIsDarkMode(savedTheme === 'dark');
+      saveLastTheme(savedTheme === 'dark' ? 'dark' : 'light');
     } catch {
       // Theme preference is non-critical — ignore storage access errors.
     }
@@ -214,6 +231,7 @@ function AdminDashboardContent() {
   const setThemeMode = (mode: 'light' | 'dark') => {
     const next = mode === 'dark';
     setIsDarkMode(next);
+    saveLastTheme(mode);
     if (!user?.id) return;
     try {
       localStorage.setItem(`veribuy_admin_theme_${user.id}`, mode);
@@ -293,7 +311,8 @@ function AdminDashboardContent() {
     setSidebarOpen(false);
     const params = new URLSearchParams(window.location.search);
     params.set('tab', tab);
-    router.replace(`/admin?${params.toString()}`, { scroll: false });
+    // Only the URL changes: every tab is already on this page, so there is nothing to fetch.
+    window.history.replaceState(null, '', `/admin?${params.toString()}`);
   };
 
   const openDesk = (tab: 'verification' | 'listings' | 'orders', view?: string) => {
@@ -1648,9 +1667,17 @@ export default function AdminDashboardPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-          <div className="motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-emerald-600 border-t-transparent"></div>
-        </div>
+        <>
+          <div id="admin-loading" className="min-h-screen bg-slate-50 flex items-center justify-center">
+            <div className="motion-safe:animate-spin rounded-full h-10 w-10 border-2 border-emerald-600 border-t-transparent"></div>
+          </div>
+          {/* Runs before the first paint, so dark mode doesn't start with a white screen. */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `try{if(localStorage.getItem('${LAST_THEME_KEY}')==='dark')document.getElementById('admin-loading').style.background='#0a0a0a'}catch(e){}`,
+            }}
+          />
+        </>
       }
     >
       <AdminDashboardContent />
