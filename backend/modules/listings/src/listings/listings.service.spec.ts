@@ -255,20 +255,39 @@ describe('UlistingsService', () => {
     const dto: any = { sellerId: 'seller-1', title: 'iPhone 13', imei: '35-693803-564380-9', price: 100 };
 
     it('refuses a second open listing for the same IMEI', async () => {
-      prisma.listing.findFirst.mockResolvedValue({ id: 'existing' });
+      prisma.listing.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'existing' });
 
       await expect(service.create(dto)).rejects.toThrow('already have a listing');
-      expect(prisma.listing.findFirst.mock.calls[0][0].where.OR).toEqual([{ imei: '356938035643809' }]);
+      expect(prisma.listing.findFirst.mock.calls[1][0].where.OR).toEqual([{ imei: '356938035643809' }]);
       expect(prisma.listing.create).not.toHaveBeenCalled();
     });
 
     it('only treats a repeated title as a duplicate within minutes when there is no identifier', async () => {
-      prisma.listing.findFirst.mockResolvedValue({ id: 'existing' });
+      prisma.listing.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'existing' });
 
       await expect(service.create({ sellerId: 'seller-1', title: 'iPhone 13', price: 100 } as any)).rejects.toThrow('already have');
-      const where = prisma.listing.findFirst.mock.calls[0][0].where;
+      const where = prisma.listing.findFirst.mock.calls[1][0].where;
       expect(where.title).toBe('iPhone 13');
       expect(where.createdAt.gte).toBeInstanceOf(Date);
+    });
+
+    it('carries on with an unfinished listing when the seller retries', async () => {
+      prisma.listing.findFirst.mockResolvedValueOnce({ id: 'unfinished' });
+      prisma.listing.update.mockResolvedValue({ id: 'unfinished' });
+      prisma.evidenceItem = { deleteMany: jest.fn().mockResolvedValue({ count: 2 }) };
+
+      const result = await service.create({ sellerId: 'seller-1', title: 'Headset', price: 120 } as any);
+
+      expect(result.id).toBe('unfinished');
+      expect(prisma.listing.findFirst.mock.calls[0][0].where).toMatchObject({
+        sellerId: 'seller-1',
+        status: 'DRAFT',
+        trustLensStatus: 'PENDING',
+        title: 'Headset',
+      });
+      expect(prisma.evidenceItem.deleteMany).toHaveBeenCalledWith({ where: { pack: { listingId: 'unfinished' } } });
+      expect(prisma.listing.update.mock.calls.at(-1)[0].data.price).toBe(120);
+      expect(prisma.listing.create).not.toHaveBeenCalled();
     });
   });
 
@@ -694,6 +713,51 @@ describe('UlistingsService', () => {
       await expect(
         service.updateStatus('lst-100', 'ACTIVE' as any, 'UNDER_REVIEW' as any),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('purgeAbandonedListings', () => {
+    const old = { id: 'l-1', title: 'Headset', status: 'DELISTED', createdAt: new Date('2026-01-01') };
+
+    beforeEach(() => {
+      prisma.adminAuditLog = { create: jest.fn().mockResolvedValue({}) };
+      prisma.listing.findMany = jest.fn().mockResolvedValue([old]);
+      prisma.listing.deleteMany = jest.fn().mockResolvedValue({ count: 1 });
+    });
+
+    it('only looks at photo-less listings never reviewed, with no activity, past the retention period', async () => {
+      prisma.listing.findMany.mockResolvedValue([]);
+      const before = Date.now();
+
+      await service.purgeAbandonedListings();
+
+      const { where } = prisma.listing.findMany.mock.calls[0][0];
+      expect(where).toMatchObject({
+        status: { in: ['DRAFT', 'DELISTED'] },
+        trustLensStatus: 'PENDING',
+        verificationRequest: { is: null },
+        orders: { none: {} },
+        bids: { none: {} },
+        offers: { none: {} },
+        messages: { none: {} },
+      });
+      expect(Math.round((before - where.updatedAt.lt.getTime()) / (24 * 60 * 60 * 1000))).toBe(30);
+    });
+
+    it('deletes the listing and records it in the audit log', async () => {
+      await expect(service.purgeAbandonedListings()).resolves.toBe(1);
+
+      expect(prisma.adminAuditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ action: 'Purged abandoned listing', targetId: 'l-1' }),
+      });
+    });
+
+    it('records nothing if the listing changed in the meantime', async () => {
+      prisma.listing.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.purgeAbandonedListings()).resolves.toBe(0);
+
+      expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
     });
   });
 });

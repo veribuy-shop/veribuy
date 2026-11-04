@@ -13,7 +13,7 @@ import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { ALLOWED_TRANSITIONS, SELLER_TRANSITIONS } from './dto/update-status.dto';
-import { Listing, ListingStatus, TrustLensStatus, ReviewStatus, IntegrityFlag, ListingFormat } from '.prisma/veribuy-client';
+import { Prisma, Listing, ListingStatus, TrustLensStatus, ReviewStatus, IntegrityFlag, ListingFormat } from '.prisma/veribuy-client';
 import {
   PaginationDto,
   PaginatedResponse,
@@ -24,7 +24,7 @@ import {
 } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
 import { NotificationClient } from './notification.client';
-import { auctionPaymentWindowHours } from '../../../../src/config/marketplace.config';
+import { abandonedListingRetentionDays, auctionPaymentWindowHours } from '../../../../src/config/marketplace.config';
 
 // Fields safe to return to public callers — strips IMEI and serial number
 const PUBLIC_SELECT = {
@@ -134,6 +134,7 @@ function pickDraftFields(data: Record<string, unknown>): Record<string, DraftVal
 export class UlistingsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(UlistingsService.name);
   private settleTimer?: NodeJS.Timeout;
+  private purgeTimer?: NodeJS.Timeout;
 
   constructor(
     private prisma: PrismaService,
@@ -157,10 +158,19 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
       );
     }, 60 * 1000);
     this.settleTimer.unref?.();
+
+    const purge = () =>
+      this.purgeAbandonedListings().catch((err) =>
+        this.logger.warn(`Abandoned listing purge failed: ${(err as Error).message}`),
+      );
+    purge();
+    this.purgeTimer = setInterval(purge, 60 * 60 * 1000);
+    this.purgeTimer.unref?.();
   }
 
   onModuleDestroy() {
     if (this.settleTimer) clearInterval(this.settleTimer);
+    if (this.purgeTimer) clearInterval(this.purgeTimer);
   }
 
   async create(dto: CreateListingDto): Promise<Listing> {
@@ -177,7 +187,9 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         throw new ForbiddenException('Bulk inventory listings are only available to business accounts');
       }
     }
-    await this.assertNotDuplicateListing(dto);
+    // A seller retrying after a failed photo upload carries on with the same listing.
+    const unfinished = await this.findUnfinishedListing(dto);
+    if (!unfinished) await this.assertNotDuplicateListing(dto);
 
     let initialTrustStatus: TrustLensStatus = TrustLensStatus.PENDING;
 
@@ -208,36 +220,42 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
     const buyItNowPrice = isAuction ? (dto.buyItNowPrice ?? null) : null;
     const listingFormat = isAuction ? ListingFormat.AUCTION : ListingFormat.FIXED_PRICE;
 
-    const listing = await this.prisma.listing.create({
-      data: {
-        sellerId: dto.sellerId!,
-        title: dto.title,
-        description: dto.description,
-        deviceType: dto.deviceType,
-        brand: dto.brand,
-        model: dto.model,
-        price: isAuction ? (buyItNowPrice ?? startingBid ?? dto.price) : dto.price,
-        currency: 'GBP', // Orders settle in GBP only — never trust a client currency
-        conditionGrade: dto.conditionGrade,
-        color: dto.color || null,
-        storageCapacity: dto.storageCapacity || null,
-        quantity: isAuction ? 1 : (dto.quantity || 1),
-        isBulkListing: isAuction ? false : !!dto.isBulkListing,
-        freeShipping: !!dto.freeShipping,
-        format: listingFormat,
-        startingBid,
-        reservePrice,
-        currentBid,
-        auctionEndsAt,
-        buyItNowPrice,
-        bidCount: 0,
-        imei: dto.imei,
-        serialNumber: dto.serialNumber,
-        status: ListingStatus.DRAFT,
-        trustLensStatus: initialTrustStatus,
-        integrityFlags: initialFlags,
-      },
-    });
+    const data = {
+      sellerId: dto.sellerId!,
+      title: dto.title,
+      description: dto.description,
+      deviceType: dto.deviceType,
+      brand: dto.brand,
+      model: dto.model,
+      price: isAuction ? (buyItNowPrice ?? startingBid ?? dto.price) : dto.price,
+      currency: 'GBP', // Orders settle in GBP only — never trust a client currency
+      conditionGrade: dto.conditionGrade,
+      color: dto.color || null,
+      storageCapacity: dto.storageCapacity || null,
+      quantity: isAuction ? 1 : (dto.quantity || 1),
+      isBulkListing: isAuction ? false : !!dto.isBulkListing,
+      freeShipping: !!dto.freeShipping,
+      format: listingFormat,
+      startingBid,
+      reservePrice,
+      currentBid,
+      auctionEndsAt,
+      buyItNowPrice,
+      bidCount: 0,
+      imei: dto.imei,
+      serialNumber: dto.serialNumber,
+      status: ListingStatus.DRAFT,
+      trustLensStatus: initialTrustStatus,
+      integrityFlags: initialFlags,
+    };
+
+    if (unfinished) {
+      // The seller sends all their photos again, so drop the partial set from last time.
+      await this.prisma.evidenceItem.deleteMany({ where: { pack: { listingId: unfinished.id } } });
+      return this.prisma.listing.update({ where: { id: unfinished.id }, data });
+    }
+
+    const listing = await this.prisma.listing.create({ data });
 
     if (cleanImei && cleanImei.length >= 8) {
       await this.checkAndRecordImei(
@@ -560,6 +578,69 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
    * Without an identifier, only a repeat within minutes counts, because bulk
    * sellers can honestly have several listings with the same title.
    */
+  /** This seller's copy of the device that was created but never reached review. */
+  private async findUnfinishedListing(dto: CreateListingDto): Promise<{ id: string } | null> {
+    const imei = dto.imei?.replace(/[^0-9]/g, '').trim();
+    const serial = dto.serialNumber?.trim();
+    return this.prisma.listing.findFirst({
+      where: {
+        sellerId: dto.sellerId,
+        status: ListingStatus.DRAFT,
+        trustLensStatus: TrustLensStatus.PENDING,
+        verificationRequest: { is: null },
+        ...(imei || serial
+          ? { OR: [...(imei ? [{ imei }] : []), ...(serial ? [{ serialNumber: serial }] : [])] }
+          : { title: dto.title }),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * Deletes listings abandoned before review: drafts and taken-down copies that
+   * have no photos and were never sent for review, once their retention period
+   * ends. Anything with an order, bid, offer or message stays. The audit log
+   * keeps a note of each deletion.
+   */
+  async purgeAbandonedListings(): Promise<number> {
+    const abandoned: Prisma.ListingWhereInput = {
+      status: { in: [ListingStatus.DRAFT, ListingStatus.DELISTED] },
+      trustLensStatus: TrustLensStatus.PENDING,
+      updatedAt: { lt: new Date(Date.now() - abandonedListingRetentionDays() * 24 * 60 * 60 * 1000) },
+      verificationRequest: { is: null },
+      OR: [{ evidencePack: { is: null } }, { evidencePack: { is: { items: { none: {} } } } }],
+      orders: { none: {} },
+      bids: { none: {} },
+      offers: { none: {} },
+      messages: { none: {} },
+    };
+    const listings = await this.prisma.listing.findMany({
+      where: abandoned,
+      select: { id: true, title: true, status: true, createdAt: true },
+      take: 200,
+    });
+
+    let purged = 0;
+    for (const listing of listings) {
+      const { count } = await this.prisma.listing.deleteMany({ where: { ...abandoned, id: listing.id } });
+      if (count !== 1) continue;
+      purged += 1;
+      await this.redis.del(`listing:${listing.id}`).catch(() => {});
+      await this.prisma.adminAuditLog
+        .create({
+          data: {
+            action: 'Purged abandoned listing',
+            targetType: 'purged listing',
+            targetId: listing.id,
+            note: `${listing.title}, was ${listing.status}, created ${listing.createdAt.toISOString().slice(0, 10)}`,
+          },
+        })
+        .catch((err: Error) => this.logger.error(`Failed to record listing purge: ${err.message}`));
+    }
+    return purged;
+  }
+
   private async assertNotDuplicateListing(dto: CreateListingDto): Promise<void> {
     const imei = dto.imei?.replace(/[^0-9]/g, '').trim();
     const serial = dto.serialNumber?.trim();

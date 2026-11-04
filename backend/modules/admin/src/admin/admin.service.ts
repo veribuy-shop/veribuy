@@ -25,7 +25,8 @@ const REVIEW_QUEUE_WHERE: Prisma.ListingWhereInput = {
 };
 
 const LISTING_VIEWS: Record<string, Prisma.ListingWhereInput> = {
-  all: {},
+  // Finished-with listings have their own view, so they don't clutter this one.
+  all: { status: { notIn: [ListingStatus.DELISTED, ListingStatus.REJECTED] } },
   live: { status: ListingStatus.ACTIVE },
   review: REVIEW_QUEUE_WHERE,
   drafts: { status: ListingStatus.DRAFT },
@@ -199,10 +200,12 @@ export class AdminService {
     const groups = await this.duplicateGroups();
     const duplicateIds = new Set(groups.flat());
 
-    const filters: Prisma.ListingWhereInput[] = [
-      query.view === 'duplicates' ? { id: { in: [...duplicateIds] } } : LISTING_VIEWS[query.view ?? 'all'] ?? {},
-    ];
     const term = query.search?.trim();
+    // Searching from All looks everywhere, so a taken-down listing can still be found by ID.
+    const searchingAll = !!term && (query.view ?? 'all') === 'all';
+    const filters: Prisma.ListingWhereInput[] = [
+      query.view === 'duplicates' ? { id: { in: [...duplicateIds] } } : searchingAll ? {} : LISTING_VIEWS[query.view ?? 'all'] ?? {},
+    ];
     if (term) {
       filters.push({
         OR: [

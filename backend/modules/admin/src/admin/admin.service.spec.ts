@@ -1,5 +1,5 @@
 import { auditNote } from './audit.interceptor';
-import { findDuplicateGroups } from './admin.service';
+import { AdminService, findDuplicateGroups } from './admin.service';
 
 const listing = (id: string, overrides: Record<string, unknown> = {}) => ({
   id,
@@ -51,5 +51,28 @@ describe('auditNote', () => {
 
   it('copes with no body', () => {
     expect(auditNote(undefined)).toBeNull();
+  });
+});
+
+describe('getListings', () => {
+  const run = async (query: { view?: string; search?: string }) => {
+    const prisma: any = {
+      listing: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    await new AdminService(prisma).getListings(query);
+    return prisma.listing.findMany.mock.calls.at(-1)[0].where.AND;
+  };
+
+  it('leaves taken-down listings out of the All view', async () => {
+    const [filter] = await run({});
+    expect(filter).toEqual({ status: { notIn: ['DELISTED', 'REJECTED'] } });
+  });
+
+  it('still finds a taken-down listing when searching from All', async () => {
+    const [filter] = await run({ search: '976e9b8a' });
+    expect(filter).toEqual({});
   });
 });

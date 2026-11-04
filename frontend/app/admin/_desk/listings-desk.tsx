@@ -18,7 +18,7 @@ import {
   PendingAction,
   SearchBox,
   sendAction,
-  shortDate,
+  shortDateTime,
   StatusBadge,
   TableState,
   trustLabel,
@@ -40,11 +40,12 @@ type ListingRow = {
   imeiEnding: string | null;
   serialEnding: string | null;
   possibleDuplicate: boolean;
+  photoCount: number;
   createdAt: string;
 };
 
 const VIEWS = [
-  { id: 'all', label: 'All' },
+  { id: 'all', label: 'All current' },
   { id: 'live', label: 'Live' },
   { id: 'review', label: 'In review' },
   { id: 'duplicates', label: 'Possible duplicates' },
@@ -148,9 +149,10 @@ export function ListingsDesk({ isDarkMode, onChanged, initialView = 'all' }: Des
                       <div className="min-w-0">
                         <p className={cn('font-semibold truncate max-w-[280px]', theme.text)}>{row.title}</p>
                         <p className={theme.muted}>
-                          {row.id.slice(0, 8)} · {shortDate(row.createdAt)}
+                          {row.id.slice(0, 8)} · {shortDateTime(row.createdAt)}
                           {row.imeiEnding ? ` · IMEI ${row.imeiEnding}` : row.serialEnding ? ` · Serial ${row.serialEnding}` : ''}
                         </p>
+                        {row.photoCount === 0 ? <p className="text-amber-700 font-semibold">No photos</p> : null}
                         {row.possibleDuplicate ? (
                           <p className="inline-flex items-center gap-1 text-amber-700 font-semibold">
                             <Copy className="w-3 h-3" aria-hidden="true" /> Possible duplicate
@@ -165,7 +167,10 @@ export function ListingsDesk({ isDarkMode, onChanged, initialView = 'all' }: Des
                   <td className={cn('p-3 font-semibold whitespace-nowrap', theme.text)}>{formatPrice(row.price, row.currency)}</td>
                   <td className="p-3 whitespace-nowrap">
                     <StatusBadge status={row.status} />
-                    <p className={cn('mt-1', theme.muted)}>{trustLabel(row.trustLensStatus)}</p>
+                    {/* A check that never ran doesn't matter once the listing is gone. */}
+                    {row.trustLensStatus === 'PENDING' && NOT_REMOVABLE.includes(row.status) ? null : (
+                      <p className={cn('mt-1', theme.muted)}>{trustLabel(row.trustLensStatus)}</p>
+                    )}
                   </td>
                   <td className={cn('p-3 sticky right-0', isDarkMode ? 'bg-neutral-900' : 'bg-white')}>
                     <div className="flex items-center justify-end gap-1.5">

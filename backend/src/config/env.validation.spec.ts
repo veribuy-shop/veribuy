@@ -12,6 +12,7 @@ describe('validateEnv', () => {
     CHARITY_DONATION_GBP: '1',
     CLEARPAY_MAX_GBP: '1200',
     CANCELLED_ORDER_RETENTION_DAYS: '30',
+    ABANDONED_LISTING_RETENTION_DAYS: '30',
     JWT_SECRET: 'a'.repeat(40),
     JWT_REFRESH_SECRET: 'b'.repeat(40),
     INTERNAL_SERVICE_TOKEN: 'c'.repeat(40),
@@ -97,6 +98,7 @@ describe('validateEnv', () => {
     'CHARITY_DONATION_GBP',
     'CLEARPAY_MAX_GBP',
     'CANCELLED_ORDER_RETENTION_DAYS',
+    'ABANDONED_LISTING_RETENTION_DAYS',
   ])('refuses to start when %s is missing or invalid', (name) => {
     const { [name as keyof typeof baseDev]: _omitted, ...config } = baseDev;
     expect(() => validateEnv(config)).toThrow(name);

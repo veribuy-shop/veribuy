@@ -77,6 +77,8 @@ projects:
                 value: '1200'
               - key: CANCELLED_ORDER_RETENTION_DAYS
                 value: '30'
+              - key: ABANDONED_LISTING_RETENTION_DAYS
+                value: '30'
               - key: JWT_EXPIRATION
                 value: '15m'
               - key: JWT_REFRESH_EXPIRATION

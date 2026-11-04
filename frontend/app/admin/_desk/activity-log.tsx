@@ -57,7 +57,7 @@ export function ActivityLog({ isDarkMode }: DeskProps) {
                     <td className={cn('p-3 whitespace-nowrap', theme.muted)}>
                       {new Date(row.createdAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
                     </td>
-                    <td className={cn('p-3 font-medium whitespace-nowrap', theme.text)}>{row.admin?.name ?? (row.action === 'Purged cancelled order' ? 'Automatic' : 'Removed admin')}</td>
+                    <td className={cn('p-3 font-medium whitespace-nowrap', theme.text)}>{row.admin?.name ?? (row.action.startsWith('Purged') ? 'Automatic' : 'Removed admin')}</td>
                     <td className={cn('p-3 font-semibold whitespace-nowrap', theme.text)}>{row.action}</td>
                     <td className="p-3 whitespace-nowrap">
                       {href ? <Link href={href} className="text-emerald-700 font-semibold hover:underline">{label}</Link> : <span className={theme.muted}>{label}</span>}

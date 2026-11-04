@@ -7,3 +7,4 @@ process.env.POSTING_OVERDUE_DAYS = '4';
 process.env.CHARITY_DONATION_GBP = '1';
 process.env.CLEARPAY_MAX_GBP = '1200';
 process.env.CANCELLED_ORDER_RETENTION_DAYS = '30';
+process.env.ABANDONED_LISTING_RETENTION_DAYS = '30';

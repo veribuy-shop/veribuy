@@ -120,6 +120,9 @@ export function ageOf(date: string | Date, now = Date.now()): string {
 export const shortDate = (date: string | Date) =>
   new Date(date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
+export const shortDateTime = (date: string | Date) =>
+  new Date(date).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
 type Paged<T> = { data: T[]; total: number; page: number; limit: number; counts?: Record<string, number> };
 
 /** Loads a page from the admin API. A newer request always beats a slower older one. */

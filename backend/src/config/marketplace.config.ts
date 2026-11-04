@@ -11,6 +11,7 @@ export const MARKETPLACE_ENV_VARS = [
   'CHARITY_DONATION_GBP',
   'CLEARPAY_MAX_GBP',
   'CANCELLED_ORDER_RETENTION_DAYS',
+  'ABANDONED_LISTING_RETENTION_DAYS',
 ] as const;
 
 type MarketplaceEnvVar = (typeof MARKETPLACE_ENV_VARS)[number];
@@ -37,3 +38,5 @@ export const charityDonationGbp = () => positiveNumber('CHARITY_DONATION_GBP');
 export const clearpayMaxGbp = () => positiveNumber('CLEARPAY_MAX_GBP');
 /** How long a cancelled order that was never paid is kept before it's deleted. */
 export const cancelledOrderRetentionDays = () => positiveNumber('CANCELLED_ORDER_RETENTION_DAYS');
+/** How long a listing abandoned before review, with no photos, is kept before it's deleted. */
+export const abandonedListingRetentionDays = () => positiveNumber('ABANDONED_LISTING_RETENTION_DAYS');
