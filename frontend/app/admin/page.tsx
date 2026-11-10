@@ -14,6 +14,7 @@ import {
   Users,
   Store,
   Wallet,
+  Banknote,
   BarChart3,
   Activity,
   Settings,
@@ -52,6 +53,7 @@ import { ActivityLog } from './_desk/activity-log';
 import { ListingsDesk } from './_desk/listings-desk';
 import { NeedsAttention, useDeskSummary } from './_desk/needs-attention';
 import { OrdersDesk } from './_desk/orders-desk';
+import { PayoutsDesk } from './_desk/payouts-desk';
 import { ReviewQueue } from './_desk/review-queue';
 import { SystemHealth } from './_desk/system-health';
 
@@ -134,13 +136,14 @@ interface ImeiRegistryItem {
   createdAt: string;
 }
 
-type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'activity' | 'users' | 'analytics' | 'health' | 'settings';
+type TabId = 'dashboard' | 'verification' | 'listings' | 'orders' | 'payouts' | 'activity' | 'users' | 'analytics' | 'health' | 'settings';
 
 const TAB_HEADINGS: Record<TabId, { title: string; subtitle: string }> = {
   dashboard: { title: 'Overview', subtitle: 'What needs doing, and how the marketplace is performing.' },
   verification: { title: 'Review queue', subtitle: 'Listings waiting for a decision, and the device identifier register.' },
   listings: { title: 'Listings', subtitle: 'Find, check and take down listings.' },
   orders: { title: 'Orders and escrow', subtitle: 'Payments held, disputes, refunds and unpaid checkouts.' },
+  payouts: { title: 'Seller payouts', subtitle: 'What sellers are owed, what has been paid, and what needs a decision.' },
   activity: { title: 'Activity log', subtitle: 'Who did what, and when.' },
   users: { title: 'Users', subtitle: 'Search accounts and manage access.' },
   analytics: { title: 'Analytics', subtitle: 'Sales, fees and listing trends.' },
@@ -176,7 +179,7 @@ function saveLastTheme(mode: string) {
 function AdminDashboardContent() {
   const { user, authFetch, logout } = useAuth();
   const searchParams = useSearchParams();
-  const validTabs: TabId[] = ['dashboard', 'verification', 'listings', 'orders', 'users', 'activity', 'analytics', 'health', 'settings'];
+  const validTabs: TabId[] = ['dashboard', 'verification', 'listings', 'orders', 'payouts', 'users', 'activity', 'analytics', 'health', 'settings'];
   const initialTab = validTabs.includes(searchParams.get('tab') as TabId) ? (searchParams.get('tab') as TabId) : 'dashboard';
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -489,6 +492,7 @@ function AdminDashboardContent() {
     { id: 'verification', label: 'Review queue', icon: ClipboardCheck, count: reviewQueueCount, alert: reviewQueueCount > 0 },
     { id: 'listings', label: 'Listings', icon: Store },
     { id: 'orders', label: 'Orders and escrow', icon: Wallet, alert: !!deskSummary?.disputes, count: deskSummary?.disputes || undefined },
+    { id: 'payouts', label: 'Seller payouts', icon: Banknote, alert: !!deskSummary?.payoutIssues, count: deskSummary?.payoutIssues || undefined },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'activity', label: 'Activity log', icon: History },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
@@ -1040,6 +1044,8 @@ function AdminDashboardContent() {
         {activeTab === 'orders' && (
           <OrdersDesk key={deskView} isDarkMode={isDarkMode} onChanged={refreshAll} initialView={deskView ?? 'all'} />
         )}
+
+        {activeTab === 'payouts' && <PayoutsDesk isDarkMode={isDarkMode} onChanged={refreshAll} />}
 
         {activeTab === 'activity' && <ActivityLog isDarkMode={isDarkMode} />}
 

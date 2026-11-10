@@ -15,6 +15,7 @@ export type DeskSummary = {
   heldAmount: number;
   unpaidCheckouts: number;
   duplicateGroups: number;
+  payoutIssues?: number;
 };
 
 /** Reloads whenever `version` changes, so counts stay right after an action elsewhere. */

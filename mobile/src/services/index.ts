@@ -327,3 +327,16 @@ export const adminService = {
   bootstrapAdmin: (data: { email: string; password: string; setupToken: string }) =>
     api.public.post<unknown>('/auth/admin/bootstrap', data),
 };
+
+export interface PayoutAccountStatus {
+  connected: boolean;
+  detailsSubmitted: boolean;
+  payoutsEnabled: boolean;
+}
+
+/** Seller payouts through Stripe. Setup happens on Stripe's own pages. */
+export const payoutsService = {
+  getAccount: () => api.get<PayoutAccountStatus>('/transactions/payouts/account'),
+  createOnboardingLink: () => api.post<{ url: string }>('/transactions/payouts/account/onboarding-link'),
+  createDashboardLink: () => api.post<{ url: string }>('/transactions/payouts/account/dashboard-link'),
+};

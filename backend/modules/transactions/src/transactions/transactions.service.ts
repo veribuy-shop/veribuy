@@ -23,6 +23,7 @@ import { PaginationDto, PaginatedResponse, getInternalApiUrl, RoyalMailServiceTi
 } from '@veribuy/common';
 import { InvoicesService, InvoiceOrderData } from '../invoices/invoices.service';
 import { RoyalMailService, ShippingLabelOrderData } from '../shipping/royal-mail.service';
+import { PayoutsService, sellerPayoutFor } from '../payouts/payouts.service';
 import {
   auctionPaymentWindowHours,
   cancelledOrderRetentionDays,
@@ -184,14 +185,7 @@ function paymentMethodTypesFor(totalAmount: number): string[] {
     : ['card', 'klarna'];
 }
 
-/**
- * What the seller is owed for an order. VeriBuy buys the Royal Mail label, so
- * the buyer's shipping charge is not the seller's; on a free-delivery order
- * the postage comes out of the seller's money instead.
- */
-export function sellerPayoutFor(order: { amount: unknown; sellerShippingFee?: unknown }): number {
-  return Math.round((Number(order.amount) - Number(order.sellerShippingFee || 0)) * 100) / 100;
-}
+export { sellerPayoutFor };
 
 @Injectable()
 export class TransactionsService implements OnModuleInit {
@@ -202,6 +196,7 @@ export class TransactionsService implements OnModuleInit {
     private prisma: PrismaService,
     private invoicesService: InvoicesService,
     private royalMailService: RoyalMailService,
+    private payoutsService: PayoutsService,
     @Optional() private redis?: RedisService,
   ) {}
 
@@ -1101,6 +1096,8 @@ export class TransactionsService implements OnModuleInit {
             data: { status: 'RELEASED', releasedAt: now },
           });
         }
+        // The seller's money becomes owed in the same transaction that completes the order.
+        await this.payoutsService.recordOwed(tx, order);
         // Referral system: check if this is the first completed sale for a referred seller
         await this.processReferralBonusOnFirstSale(tx, order.sellerId, order.id, now);
       } else if (updateOrderStatusDto.status === 'DISPUTED' && order.escrowId) {
@@ -1144,8 +1141,13 @@ export class TransactionsService implements OnModuleInit {
         .catch((err) => this.logger.error('Failed to record dispute reason', err?.stack ?? err));
     }
 
+    // Pay the seller before telling them, so the message says what actually happened.
+    // payOrder records every outcome on the payout and never throws.
+    const payoutStatus =
+      updateOrderStatusDto.status === 'COMPLETED' ? await this.payoutsService.payOrder(orderId) : null;
+
     // Send notifications — fire-and-forget
-    this.sendStatusChangeNotification(updatedOrder, order.status).catch((err) => {
+    this.sendStatusChangeNotification(updatedOrder, order.status, payoutStatus).catch((err) => {
       this.logger.error('Failed to send status change notification', err?.stack ?? err);
     });
 
@@ -1775,6 +1777,7 @@ export class TransactionsService implements OnModuleInit {
   private async sendStatusChangeNotification(
     order: any,
     previousStatus: string,
+    payoutStatus: string | null = null,
   ): Promise<void> {
     const shortId = order.id.substring(0, 8);
 
@@ -1884,13 +1887,20 @@ export class TransactionsService implements OnModuleInit {
 
       case 'COMPLETED': {
         const sellerPayout = sellerPayoutFor(order).toFixed(2);
+        // Only say the money has been sent when the transfer actually went through.
+        const payoutMessage =
+          payoutStatus === 'PAID'
+            ? `Your payout of ${order.currency} ${sellerPayout} has been paid out and will reach your bank in a few working days.`
+            : payoutStatus === 'AWAITING_SELLER'
+              ? `Your payout of ${order.currency} ${sellerPayout} is ready. Add your bank details in your seller dashboard (Earnings) and it will be sent to your bank automatically.`
+              : `Your payout of ${order.currency} ${sellerPayout} is being processed. We will be in touch if we need anything from you.`;
         await this.sendOrderNotification({
           orderId: order.id,
           buyerId: order.buyerId,
           sellerId: order.sellerId,
           recipientId: order.sellerId,
-          subject: 'Order completed — escrow released',
-          content: `Order #${shortId} has been completed. Your payout of ${order.currency} ${sellerPayout} has been released. Thank you for selling on VeriBuy!`,
+          subject: payoutStatus === 'AWAITING_SELLER' ? 'Order completed — add your bank details to get paid' : 'Order completed',
+          content: `Order #${shortId} has been completed. ${payoutMessage} Thank you for selling on VeriBuy!`,
         });
         await this.sendOrderNotification({
           orderId: order.id,
@@ -1913,7 +1923,7 @@ export class TransactionsService implements OnModuleInit {
                   listingTitle: order.listingTitle || 'Your sold item',
                   orderId: order.id,
                   status: 'COMPLETED',
-                  message: `Transaction completed! Your escrow payout of ${order.currency} ${sellerPayout} has been released.`,
+                  message: `Transaction completed! ${payoutMessage}`,
                 },
               });
             }

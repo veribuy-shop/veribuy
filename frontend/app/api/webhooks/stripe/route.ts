@@ -75,6 +75,18 @@ export async function POST(request: NextRequest) {
         await handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent);
         break;
 
+      case 'charge.dispute.created':
+        await reportBuyerMoneyEvent((event.data.object as Stripe.Dispute).payment_intent, 'CHARGEBACK_OPENED');
+        break;
+
+      case 'charge.dispute.closed': {
+        const dispute = event.data.object as Stripe.Dispute;
+        // Only a clear win or loss changes anything; other closures (e.g. a withdrawn enquiry) leave the flag for an admin.
+        if (dispute.status === 'won') await reportBuyerMoneyEvent(dispute.payment_intent, 'CHARGEBACK_WON');
+        else if (dispute.status === 'lost') await reportBuyerMoneyEvent(dispute.payment_intent, 'CHARGEBACK_LOST');
+        break;
+      }
+
       default:
         console.log('[Stripe Webhook] Unhandled event type:', event.type);
     }
@@ -194,8 +206,29 @@ async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
   );
 }
 
+/**
+ * Tells the backend the buyer's money was charged back or refunded, so the
+ * seller's payout is held, or flagged for an admin if it was already sent.
+ */
+async function reportBuyerMoneyEvent(
+  paymentIntent: string | Stripe.PaymentIntent | null,
+  event: 'CHARGEBACK_OPENED' | 'CHARGEBACK_WON' | 'CHARGEBACK_LOST' | 'REFUNDED',
+) {
+  if (!paymentIntent) return;
+  const paymentIntentId = typeof paymentIntent === 'string' ? paymentIntent : paymentIntent.id;
+  await callInternal(
+    '/transactions/payouts/internal/buyer-money-event',
+    'POST',
+    { paymentIntentId, event },
+    `record ${event} for ${paymentIntentId}`,
+  );
+}
+
 async function handleChargeRefunded(charge: Stripe.Charge) {
   console.log('[Stripe Webhook] Charge refunded:', charge.id);
+
+  // Any refund, full or partial, stops or flags the seller's payout.
+  await reportBuyerMoneyEvent(charge.payment_intent, 'REFUNDED');
 
   // Partial refunds (e.g. goodwill adjustments) don't end the order.
   if (!charge.refunded) {
@@ -214,6 +247,12 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
   const order = await fetchOrderByPaymentIntentId(paymentIntentId);
   if (!order) {
     console.warn('[Stripe Webhook] No order found for refunded paymentIntentId:', paymentIntentId);
+    return;
+  }
+
+  // A completed order stays completed: the payout is flagged for an admin instead.
+  if (order.status === 'COMPLETED') {
+    console.log(`[Stripe Webhook] Order ${order.id} is COMPLETED — refund flagged on its payout`);
     return;
   }
 

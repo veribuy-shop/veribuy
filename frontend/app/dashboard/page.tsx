@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { BrandLogo } from '@/components/brand-logo';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { SellerPayoutsPanel } from '@/components/SellerPayoutsPanel';
 import { useAuth } from '@/lib/auth-context';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
@@ -33,8 +34,6 @@ import {
   Save,
   Sparkles,
   CheckCircle2,
-  CreditCard,
-  Building2,
   ArrowLeft,
   Sun,
   Moon,
@@ -1496,13 +1495,13 @@ function DashboardContent() {
                 )}
               >
                 <span className={cn('text-xs uppercase tracking-wider block mb-1 font-semibold', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                  Total Lifetime Payouts
+                  Total Sales
                 </span>
                 <p className={cn('text-3xl font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>
                   {formatPrice(totalEarned, 'GBP')}
                 </p>
                 <p className="text-xs text-emerald-600 mt-2 font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> 100% Disbursed to Bank
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Paid out as each order completes
                 </p>
               </div>
 
@@ -1563,38 +1562,7 @@ function DashboardContent() {
               </div>
             </div>
 
-            <div
-              className={cn(
-                'border rounded-3xl p-6 shadow-sm',
-                isDarkMode ? 'bg-neutral-900/70 border-neutral-800' : 'bg-white border-slate-200'
-              )}
-            >
-              <h3 className={cn('text-base font-bold mb-4 flex items-center gap-2', isDarkMode ? 'text-white' : 'text-slate-900')}>
-                <Building2 className="w-5 h-5 text-emerald-600" /> Bank Payout Account
-              </h3>
-              <p className={cn('text-xs leading-relaxed mb-6 max-w-xl', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}>
-                Escrow funds disburse directly into your verified bank account via Stripe Connect as soon as delivery and condition are confirmed.
-              </p>
-              <div
-                className={cn(
-                  'p-4 rounded-2xl border flex items-center justify-between',
-                  isDarkMode ? 'bg-neutral-950/60 border-neutral-800' : 'bg-slate-50 border-slate-200'
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', isDarkMode ? 'bg-neutral-800 text-neutral-400' : 'bg-white text-slate-700 shadow-sm')}>
-                    <CreditCard className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className={cn('text-sm font-bold', isDarkMode ? 'text-white' : 'text-slate-900')}>Stripe Express Direct Payouts</p>
-                    <p className="text-xs text-emerald-600 font-semibold">Active & Connected</p>
-                  </div>
-                </div>
-                <span className={cn('text-xs px-3 py-1 rounded-lg border font-semibold', isDarkMode ? 'bg-neutral-800 text-neutral-400 border-neutral-700' : 'bg-white text-slate-600 border-slate-200')}>
-                  Instant Settlement
-                </span>
-              </div>
-            </div>
+            <SellerPayoutsPanel isDarkMode={isDarkMode} />
           </div>
         )}
 

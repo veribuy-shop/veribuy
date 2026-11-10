@@ -1,5 +1,6 @@
 'use client';
 
+import { PayoutSetupReminder } from '@/components/PayoutSetupReminder';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
@@ -705,6 +706,7 @@ export default function CreateListingPage() {
   return (
     <div className="min-h-screen bg-[var(--color-surface)] py-8">
       <div className="max-w-4xl mx-auto px-4">
+        <PayoutSetupReminder />
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[var(--color-text)] mb-2">Create New Listing</h1>

@@ -101,7 +101,7 @@ export default async function PricingPage() {
                   <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
                     <Check className="w-3.5 h-3.5" />
                   </div>
-                  <span><strong>Fast payout release:</strong> Direct bank transfer within 24 hours of buyer inspection approval.</span>
+                  <span><strong>Fast payout release:</strong> Paid out as soon as the buyer confirms their order; it reaches your bank in a few working days.</span>
                 </li>
               </ul>
             </div>

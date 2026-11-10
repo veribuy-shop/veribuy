@@ -59,7 +59,7 @@ const rawFaqs = [
   {
     category: 'Selling on VeriBuy',
     question: 'Are there really 0% seller commission fees?',
-    answer: 'Yes! VeriBuy charges £0 seller commission, £0 listing fees, and £0 monthly subscriptions on both Buy It Now listings and Online Auctions. When your device sells for £500, you receive £500 directly to your UK bank account.',
+    answer: 'Yes! VeriBuy charges £0 seller commission, £0 listing fees, and £0 monthly subscriptions on both Buy It Now listings and Online Auctions. When your device sells for £500, you receive £500, paid out as soon as the buyer confirms their order and in your UK bank account a few working days later.',
   },
   {
     category: 'Selling on VeriBuy',

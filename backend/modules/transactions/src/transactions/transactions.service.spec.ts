@@ -4,6 +4,7 @@ import { TransactionsService, getBuyerProtectionFeeRate, sellerPayoutFor } from 
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { RoyalMailService } from '../shipping/royal-mail.service';
+import { PayoutsService } from '../payouts/payouts.service';
 
 describe('TransactionsService', () => {
   let service: TransactionsService;
@@ -11,6 +12,7 @@ describe('TransactionsService', () => {
   let invoicesService: any;
   let royalMailService: RoyalMailService;
   let mockPaymentIntents: any;
+  let payoutsService: any;
 
   beforeEach(async () => {
     process.env.BUYER_PROTECTION_FEE_PERCENT = '5';
@@ -93,10 +95,16 @@ describe('TransactionsService', () => {
       }),
     };
 
+    payoutsService = {
+      recordOwed: jest.fn().mockResolvedValue(undefined),
+      payOrder: jest.fn().mockResolvedValue('PAID'),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TransactionsService,
         RoyalMailService,
+        { provide: PayoutsService, useValue: payoutsService },
         { provide: PrismaService, useValue: prisma },
         { provide: InvoicesService, useValue: invoicesService },
       ],
@@ -109,6 +117,12 @@ describe('TransactionsService', () => {
       paymentIntents: mockPaymentIntents,
     };
     (service as any).fetchListing = jest.fn().mockResolvedValue(null);
+    // Notifications go out over HTTP: never reach a real server from a test.
+    jest.spyOn(global, 'fetch').mockImplementation(async () => new Response('{}', { status: 200 }));
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   describe('getBuyerProtectionFeeRate', () => {
@@ -698,6 +712,61 @@ describe('TransactionsService', () => {
         await expect(
           service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'BUYER', BUYER),
         ).resolves.toBeDefined();
+      });
+
+      it('records the seller payout inside the completing transaction, then pays it', async () => {
+        mockOrderAt('DELIVERED');
+
+        await service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'BUYER', BUYER);
+
+        expect(payoutsService.recordOwed).toHaveBeenCalledWith(prisma, expect.objectContaining({ id: 'ord-1', sellerId: SELLER }));
+        expect(payoutsService.payOrder).toHaveBeenCalledWith('ord-1');
+        expect(payoutsService.recordOwed.mock.invocationCallOrder[0]).toBeLessThan(
+          payoutsService.payOrder.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('does not complete the order if the payout cannot be recorded', async () => {
+        mockOrderAt('DELIVERED');
+        payoutsService.recordOwed.mockRejectedValue(new Error('db down'));
+
+        await expect(
+          service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'BUYER', BUYER),
+        ).rejects.toThrow('db down');
+        expect(prisma.order.updateMany).not.toHaveBeenCalled();
+        expect(payoutsService.payOrder).not.toHaveBeenCalled();
+      });
+
+      it('pays nothing when a completion loses the race to a dispute', async () => {
+        mockOrderAt('DELIVERED');
+        prisma.order.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(
+          service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'BUYER', BUYER),
+        ).rejects.toThrow(ConflictException);
+        expect(payoutsService.payOrder).not.toHaveBeenCalled();
+      });
+
+      it.each(['SHIPPED', 'DISPUTED'])('records and pays no payout when an order becomes %s', async (status) => {
+        mockOrderAt('ESCROW_HELD');
+
+        await service.updateOrderStatus(
+          'ord-1',
+          { status: status as any, reason: 'The device never arrived at all.' },
+          'ADMIN',
+        );
+
+        expect(payoutsService.recordOwed).not.toHaveBeenCalled();
+        expect(payoutsService.payOrder).not.toHaveBeenCalled();
+      });
+
+      it('pays the seller when ADMIN resolves a dispute in their favour', async () => {
+        mockOrderAt('DISPUTED');
+
+        await service.updateOrderStatus('ord-1', { status: 'COMPLETED' as any }, 'ADMIN');
+
+        expect(payoutsService.recordOwed).toHaveBeenCalled();
+        expect(payoutsService.payOrder).toHaveBeenCalledWith('ord-1');
       });
 
       it('qualifies referral and increments referrer balance when seller completes first sale', async () => {

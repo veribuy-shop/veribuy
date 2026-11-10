@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -13,7 +14,7 @@ import { openLegalPage } from '@/src/lib/legal';
 import { GuestGate } from '@/src/components/GuestGate';
 import { Button, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
-import { usersService } from '@/src/services';
+import { PayoutAccountStatus, payoutsService, usersService } from '@/src/services';
 import { ReferralSummary } from '@/src/types/entities';
 
 export default function ProfileScreen() {
@@ -37,6 +38,38 @@ export default function ProfileScreen() {
   useEffect(() => {
     loadReferrals();
   }, [loadReferrals]);
+
+  const [payoutAccount, setPayoutAccount] = useState<PayoutAccountStatus | null>(null);
+  const [openingPayouts, setOpeningPayouts] = useState(false);
+
+  const loadPayoutAccount = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      setPayoutAccount(await payoutsService.getAccount());
+    } catch {
+      // Non-fatal: the button still opens setup.
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    loadPayoutAccount();
+  }, [loadPayoutAccount]);
+
+  const onOpenPayouts = async () => {
+    setOpeningPayouts(true);
+    try {
+      const { url } = payoutAccount?.payoutsEnabled
+        ? await payoutsService.createDashboardLink()
+        : await payoutsService.createOnboardingLink();
+      await WebBrowser.openBrowserAsync(url);
+      // The seller may have finished setup in the browser; this also sends anything that was waiting.
+      await loadPayoutAccount();
+    } catch (err: any) {
+      Alert.alert('Bank details', err?.message || 'We could not open the secure form. Please try again.');
+    } finally {
+      setOpeningPayouts(false);
+    }
+  };
 
   const referralCode = summary?.referralCode || user?.referralCode || 'VB-VERIBUY';
 
@@ -208,6 +241,16 @@ export default function ProfileScreen() {
 
         <Button variant="secondary" onPress={() => router.push('/offers')}>
           Offers
+        </Button>
+
+        <View style={{ height: 10 }} />
+
+        <Button variant="secondary" onPress={onOpenPayouts} disabled={openingPayouts}>
+          {payoutAccount?.payoutsEnabled
+            ? 'Manage bank details'
+            : payoutAccount?.connected
+              ? 'Finish adding bank details to get paid'
+              : 'Add bank details to get paid'}
         </Button>
 
         <View style={{ height: 10 }} />

@@ -29,6 +29,10 @@ model User {
   passwordResetExpiry      DateTime?      @map("password_reset_expiry")
   referralCode             String?        @unique @map("referral_code")
   referredById             String?        @map("referred_by_id")
+  /// Stripe Connect Express account that seller payouts are transferred to.
+  stripeAccountId          String?        @unique @map("stripe_account_id")
+  /// Whether Stripe has finished verifying the seller and can pay them. Refreshed from Stripe.
+  stripePayoutsEnabled     Boolean        @default(false) @map("stripe_payouts_enabled")
   createdAt                DateTime       @default(now()) @map("created_at")
   updatedAt                DateTime       @updatedAt @map("updated_at")
 
@@ -53,6 +57,7 @@ model User {
   buyerInvoices        Invoice[]             @relation("BuyerInvoices")
   sellerInvoices       Invoice[]             @relation("SellerInvoices")
   adminAuditLogs       AdminAuditLog[]
+  payouts              Payout[]
 
   @@index([role])
   @@index([isActive])
@@ -442,6 +447,7 @@ model Order {
   escrow          EscrowRecord?
   invoice         Invoice[]
   refunds         RefundRecord[]
+  payout          Payout?
   rating          Rating?
   referralReward  Referral?             @relation("QualifyingOrder")
 
@@ -519,6 +525,36 @@ model RefundRecord {
 
   @@index([orderId])
   @@map("refund_records")
+}
+
+/// The money owed to a seller for one completed order, and the Stripe transfer that paid it.
+model Payout {
+  id               String       @id @default(uuid())
+  orderId          String       @unique @map("order_id")
+  order            Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  sellerId         String       @map("seller_id")
+  seller           User         @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  amount           Decimal      @db.Decimal(10, 2)
+  currency         String       @default("GBP")
+  status           PayoutStatus @default(PENDING)
+  stripeTransferId String?      @unique @map("stripe_transfer_id")
+  stripeAccountId  String?      @map("stripe_account_id")
+  failureReason    String?      @map("failure_reason")
+  attempts         Int          @default(0)
+  lastAttemptAt    DateTime?    @map("last_attempt_at")
+  paidAt           DateTime?    @map("paid_at")
+  /// Set when the buyer's money was charged back or refunded after the seller was paid; cleared once an admin decides.
+  flaggedAt        DateTime?    @map("flagged_at")
+  flaggedReason    String?      @map("flagged_reason")
+  stripeReversalId String?      @unique @map("stripe_reversal_id")
+  reversedAt       DateTime?    @map("reversed_at")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@index([flaggedAt])
+  @@index([sellerId, createdAt(sort: Desc)])
+  @@map("payouts")
 }
 
 model Rating {
@@ -706,6 +742,21 @@ enum EscrowStatus {
   RELEASED
   REFUNDED
   DISPUTED
+}
+
+enum PayoutStatus {
+  /// Owed, transfer not yet made.
+  PENDING
+  /// Owed, but the seller has not finished setting up payouts with Stripe.
+  AWAITING_SELLER
+  /// Transferred to the seller's Stripe account.
+  PAID
+  /// Stripe refused the transfer; an admin needs to retry.
+  FAILED
+  /// The buyer's payment was refunded or charged back, so nothing is sent without an admin decision.
+  ON_HOLD
+  /// Paid, then taken back from the seller by an admin after a chargeback or refund.
+  REVERSED
 }
 
 enum InvoiceType {

@@ -14,6 +14,9 @@ const AUDITED_ACTIONS: { method: string; path: RegExp; action: string; targetTyp
   { method: 'PATCH', path: new RegExp(`^/transactions/orders/(${UUID})/status$`), action: 'Changed order status', targetType: 'order' },
   { method: 'POST', path: new RegExp(`^/transactions/orders/(${UUID})/refund$`), action: 'Refunded order', targetType: 'order' },
   { method: 'DELETE', path: new RegExp(`^/transactions/orders/(${UUID})$`), action: 'Deleted unpaid order', targetType: 'order' },
+  { method: 'POST', path: new RegExp(`^/transactions/payouts/(${UUID})/retry$`), action: 'Retried seller payout', targetType: 'payout' },
+  { method: 'POST', path: new RegExp(`^/transactions/payouts/(${UUID})/reverse$`), action: 'Took payout back from seller', targetType: 'payout' },
+  { method: 'POST', path: new RegExp(`^/transactions/payouts/(${UUID})/dismiss-flag$`), action: 'Left payout with seller', targetType: 'payout' },
   { method: 'PATCH', path: new RegExp(`^/auth/admin/users/(${UUID})$`), action: 'Changed user', targetType: 'user' },
   { method: 'DELETE', path: new RegExp(`^/auth/admin/users/(${UUID})$`), action: 'Deleted user', targetType: 'user' },
 ];

@@ -25,6 +25,7 @@ describe('validateEnv', () => {
     NODE_ENV: 'production',
     ALLOWED_ORIGINS: 'https://www.veribuy.shop',
     STRIPE_SECRET_KEY: 'sk_live_abc123',
+    APP_URL: 'https://www.veribuy.shop',
   };
 
   it('accepts a valid development configuration', () => {
@@ -33,6 +34,11 @@ describe('validateEnv', () => {
 
   it('accepts a valid production configuration', () => {
     expect(() => validateEnv(baseProd)).not.toThrow();
+  });
+
+  it('requires the public website address in production, for Stripe payout setup', () => {
+    expect(() => validateEnv({ ...baseProd, APP_URL: undefined })).toThrow(/APP_URL/);
+    expect(() => validateEnv({ ...baseProd, APP_URL: 'http://localhost:3010' })).toThrow(/APP_URL/);
   });
 
   it('rejects missing required secrets', () => {

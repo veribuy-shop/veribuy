@@ -74,7 +74,7 @@ export default function HowItWorksPage() {
         'Hands-on check by the buyer before payment is released',
         'Timestamped evidence photos used for objective dispute support',
         'Report a problem if the device isn\'t as described; we review it and can refund',
-        'Instant seller payout upon buyer confirmation',
+        'Seller paid out as soon as the buyer confirms',
       ],
     },
   ];

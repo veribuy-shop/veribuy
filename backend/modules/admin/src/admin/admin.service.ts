@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ListingStatus, OrderStatus, Prisma, ReviewStatus, TrustLensStatus } from '.prisma/veribuy-client';
 import { checkoutHoldMinutes, postingOverdueDays } from '../../../../src/config/marketplace.config';
 import { PrismaService } from '../../../../src/database/prisma.service';
+import { PAYOUT_ATTENTION_WHERE } from '../../../transactions/src/payouts/payouts.service';
 
 const MAX_PAGE_SIZE = 100;
 
@@ -151,7 +152,7 @@ export class AdminService {
   }
 
   async getSummary() {
-    const [reviewWaiting, oldestReview, disputes, overdue, heldAmount, unpaid, groups] = await Promise.all([
+    const [reviewWaiting, oldestReview, disputes, overdue, heldAmount, unpaid, groups, payoutIssues] = await Promise.all([
       this.prisma.listing.count({ where: REVIEW_QUEUE_WHERE }),
       this.prisma.listing.findFirst({
         where: REVIEW_QUEUE_WHERE,
@@ -163,6 +164,7 @@ export class AdminService {
       this.prisma.order.aggregate({ where: { status: { in: HELD_STATUSES } }, _sum: { totalAmount: true } }),
       this.prisma.order.count({ where: { status: OrderStatus.PENDING } }),
       this.duplicateGroups(),
+      this.prisma.payout.count({ where: PAYOUT_ATTENTION_WHERE }),
     ]);
 
     return {
@@ -175,6 +177,7 @@ export class AdminService {
       unpaidCheckouts: unpaid,
       checkoutHoldMinutes: checkoutHoldMinutes(),
       duplicateGroups: groups.length,
+      payoutIssues,
     };
   }
 

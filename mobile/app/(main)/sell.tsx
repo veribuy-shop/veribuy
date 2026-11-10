@@ -11,7 +11,7 @@ import { Button, Input, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
 import { resolveDeviceWeightProfile } from '@/src/lib/shipping';
-import { evidenceService, listingDraftService, listingsService, trustLensService } from '@/src/services';
+import { evidenceService, listingDraftService, listingsService, payoutsService, trustLensService } from '@/src/services';
 
 const DEVICE_TYPES = ['SMARTPHONE', 'TABLET', 'LAPTOP', 'SMARTWATCH', 'AIRPODS', 'DESKTOP', 'GAMING_CONSOLE', 'OTHER'];
 const CONDITION_GRADES = ['A', 'B', 'C'];
@@ -143,6 +143,19 @@ export default function SellScreen() {
   const [error, setError] = useState('');
 
   const scrollRef = useRef<ScrollViewInstance>(null);
+  const [needsBankDetails, setNeedsBankDetails] = useState(false);
+  useEffect(() => {
+    let current = true;
+    payoutsService
+      .getAccount()
+      .then((account) => {
+        if (current) setNeedsBankDetails(!account.payoutsEnabled);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, []);
   const touched = useRef(false);
   const submitted = useRef(false);
   const draftChecked = useRef(false);
@@ -422,6 +435,17 @@ export default function SellScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {needsBankDetails ? (
+            <Pressable
+              onPress={() => router.push('/(main)/profile')}
+              accessibilityRole="button"
+              className="bg-surface border border-borderc rounded-2xl p-3.5 mb-4"
+            >
+              <Text className="text-[13px] text-text-muted leading-[18px]">
+                Add your bank details in Profile to get paid. You can list now; money from a sale waits safely until they are added.
+              </Text>
+            </Pressable>
+          ) : null}
           {draftRestored ? (
             <View className="bg-surface border border-borderc rounded-2xl p-3.5 mb-4 flex-row items-center">
               <Text className="flex-1 text-[13px] text-text-muted leading-[18px] mr-3">

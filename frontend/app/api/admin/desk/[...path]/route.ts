@@ -3,7 +3,7 @@ import { getBackendUrl } from '@/lib/backend-url';
 import { requireRole, createAuthHeaders } from '@/lib/api-auth';
 import { friendlyApiError } from '@/lib/api-errors';
 
-const ALLOWED_PATHS = new Set(['summary', 'review-queue', 'listings', 'orders', 'audit-log']);
+const ALLOWED_PATHS = new Set(['summary', 'review-queue', 'listings', 'orders', 'payouts', 'audit-log']);
 
 /** Read-only pass-through to the backend's admin endpoints, which select their own fields. */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {

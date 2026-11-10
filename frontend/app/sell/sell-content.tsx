@@ -35,8 +35,8 @@ export default function SellContent() {
     },
     {
       icon: Zap,
-      title: '24-Hour Fast Payouts',
-      desc: 'Funds held in escrow are released directly to your UK bank account within 24 hours of buyer inspection approval.',
+      title: 'Fast Payouts',
+      desc: 'Funds held in escrow are paid out as soon as the buyer confirms their order, and reach your UK bank account in a few working days.',
     },
     {
       icon: Lock,

@@ -37,7 +37,7 @@ interface AuthenticatedUser {
 }
 
 /** Timing-safe comparison for internal service tokens. */
-function validateInternalToken(provided: string | undefined): void {
+export function validateInternalToken(provided: string | undefined): void {
   const expected = process.env.INTERNAL_SERVICE_TOKEN;
   if (!expected) {
     throw new UnauthorizedException('Server misconfiguration: INTERNAL_SERVICE_TOKEN not set');

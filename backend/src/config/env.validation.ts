@@ -90,6 +90,11 @@ export function validateEnv(config: Record<string, unknown>): ValidatedEnv {
       errors.push('JWT_SECRET and JWT_REFRESH_SECRET must not be identical.');
     }
 
+    // Stripe sends sellers back here after payout setup; a wrong value strands them.
+    if (!/^https:\/\//.test(get('APP_URL') ?? '')) {
+      errors.push('APP_URL must be set to the public https:// address of the website in production.');
+    }
+
     // Development conveniences that must never be active in production.
     if (String(config.AUTO_VERIFY_EMAIL ?? '').toLowerCase() === 'true') {
       errors.push('AUTO_VERIFY_EMAIL must not be enabled in production.');
