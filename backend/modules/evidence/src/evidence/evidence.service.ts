@@ -1,6 +1,7 @@
 import {
   Injectable,
   Logger,
+  BadGatewayException,
   NotFoundException,
   ForbiddenException,
   BadRequestException,
@@ -122,12 +123,17 @@ export class EvidenceService {
     const publicId = uuidv4();
 
     // Upload to Cloudinary — returns the permanent secure_url
-    const url = await this.cloudinaryService.uploadFile(
-      file.buffer,
-      folder,
-      publicId,
-      file.mimetype,
-    );
+    const size = `${Math.round(file.size / 1024)} KB ${file.mimetype}`;
+    this.logger.log(`Uploading ${dto.type} (${size}) for listing ${dto.listingId}`);
+    let url: string;
+    try {
+      url = await this.cloudinaryService.uploadFile(file.buffer, folder, publicId, file.mimetype);
+    } catch (err: any) {
+      this.logger.error(
+        `Photo storage rejected ${dto.type} (${size}) for listing ${dto.listingId}: ${err?.message ?? err} (http ${err?.http_code ?? 'n/a'})`,
+      );
+      throw new BadGatewayException('We couldn’t store that photo just now. Please try again.');
+    }
 
     const cloudinaryPublicId = `${folder}/${publicId}`;
 

@@ -8,6 +8,15 @@ export type RoyalMailService = 'TRACKED_24' | 'TRACKED_48' | 'SPECIAL_DELIVERY_1
 export type RoyalMailServiceTier = RoyalMailService;
 export type ShippingZone = 'UK_MAINLAND' | 'UK_REMOTE';
 
+/**
+ * VeriBuy's handling charge per parcel, on top of the Royal Mail rate. Set by
+ * the backend's environment; web and mobile get it from the marketplace config.
+ */
+export interface ShippingHandlingFees {
+  smallParcelGbp: number;
+  mediumParcelGbp: number;
+}
+
 export interface RoyalMailRateBreakdown {
   service: RoyalMailService;
   label: string;
@@ -16,6 +25,8 @@ export interface RoyalMailRateBreakdown {
   weightProfile: DeviceWeightProfile;
   baseFee: number;
   surcharge: number;
+  /** VeriBuy's handling charge for the parcel, included in totalFee. */
+  handlingFee: number;
   insuranceCover: number;
   totalFee: number;
   isRecommended: boolean;
@@ -104,6 +115,7 @@ export function calculateRoyalMailRate(options: {
   itemPrice?: number;
   postcode?: string;
   service?: RoyalMailService;
+  handlingFees: ShippingHandlingFees;
 }): RoyalMailRateBreakdown {
   const {
     deviceType,
@@ -113,6 +125,7 @@ export function calculateRoyalMailRate(options: {
     itemPrice = 0,
     postcode = '',
     service = 'TRACKED_48',
+    handlingFees,
   } = options;
 
   const weightProfile = resolveDeviceWeightProfile(deviceType, brand, model, quantity);
@@ -125,7 +138,9 @@ export function calculateRoyalMailRate(options: {
     weightProfile.totalWeightGrams,
   );
 
-  const totalFee = Math.round((baseFee + surcharge) * 100) / 100;
+  const handlingFee =
+    weightProfile.parcelFormat === 'SMALL_PARCEL' ? handlingFees.smallParcelGbp : handlingFees.mediumParcelGbp;
+  const totalFee = Math.round((baseFee + surcharge + handlingFee) * 100) / 100;
   // Recommend Special Delivery if device is high-value (> £750)
   const isRecommended = itemPrice > 750 ? service === 'SPECIAL_DELIVERY_1PM' : service === 'TRACKED_48';
 
@@ -137,6 +152,7 @@ export function calculateRoyalMailRate(options: {
     weightProfile,
     baseFee,
     surcharge,
+    handlingFee,
     insuranceCover,
     totalFee,
     isRecommended,
@@ -153,6 +169,7 @@ export function getRoyalMailShippingOptions(options: {
   quantity?: number;
   itemPrice?: number;
   postcode?: string;
+  handlingFees: ShippingHandlingFees;
 }): RoyalMailRateBreakdown[] {
   const services: RoyalMailService[] = ['TRACKED_48', 'TRACKED_24'];
   if ((options.itemPrice ?? 0) >= 350) {

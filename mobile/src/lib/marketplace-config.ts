@@ -9,6 +9,8 @@ export interface MarketplaceConfig {
   auctionPaymentWindowHours: number;
   offerPaymentWindowHours: number;
   charityDonationGbp: number;
+  /** VeriBuy's handling charge per parcel, added to the Royal Mail rate. */
+  shippingHandlingFees: { smallParcelGbp: number; mediumParcelGbp: number };
 }
 
 /** Null until the server has answered. Nothing is guessed in the meantime. */
@@ -26,6 +28,7 @@ export function getMarketplaceConfig(): MarketplaceConfig {
       auctionPaymentWindowHours: 0,
       offerPaymentWindowHours: 0,
       charityDonationGbp: 0,
+      shippingHandlingFees: { smallParcelGbp: 0, mediumParcelGbp: 0 },
     }
   );
 }

@@ -7,6 +7,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../../../src/database/prisma.service';
+import { PUBLIC_USER_SELECT, toPublicUser } from '../../../../src/common/public-name';
+import { Prisma } from '.prisma/veribuy-client';
 import { CreateOfferDto, RespondToOfferDto } from './dto/offer.dto';
 import { offerPaymentWindowHours } from '../../../../src/config/marketplace.config';
 
@@ -25,9 +27,16 @@ const OFFER_SELECT = {
   createdAt: true,
   updatedAt: true,
   listing: { select: { id: true, title: true, price: true, currency: true, status: true } },
-  buyer: { select: { id: true, name: true } },
-  seller: { select: { id: true, name: true } },
+  buyer: { select: PUBLIC_USER_SELECT },
+  seller: { select: PUBLIC_USER_SELECT },
 } as const;
+
+type OfferRow = Prisma.OfferGetPayload<{ select: typeof OFFER_SELECT }>;
+
+/** Buyer and seller see each other's public name, not their real one. */
+function toPublicOffer<T extends OfferRow | null>(offer: T) {
+  return offer && { ...offer, buyer: toPublicUser(offer.buyer), seller: toPublicUser(offer.seller) };
+}
 
 /**
  * Price offers on fixed-price listings.
@@ -85,17 +94,18 @@ export class OffersService {
         (offer.note ? `\n\nBuyer note: "${offer.note}"` : '') +
         `\n\nAccept or decline it from your Offers page.`);
 
-    return offer;
+    return toPublicOffer(offer);
   }
 
   async listForUser(userId: string, role: 'buyer' | 'seller') {
     await this.expireStaleOffers();
-    return this.prisma.offer.findMany({
+    const offers = await this.prisma.offer.findMany({
       where: role === 'buyer' ? { buyerId: userId } : { sellerId: userId },
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: OFFER_SELECT,
     });
+    return offers.map(toPublicOffer);
   }
 
   async respond(offerId: string, userId: string, dto: RespondToOfferDto) {
@@ -139,7 +149,7 @@ export class OffersService {
         `The seller declined your offer of £${amount}. You can make a new offer or buy at the asking price.`);
     }
 
-    return this.prisma.offer.findUnique({ where: { id: offerId }, select: OFFER_SELECT });
+    return toPublicOffer(await this.prisma.offer.findUnique({ where: { id: offerId }, select: OFFER_SELECT }));
   }
 
   /** Accepted offers that were not paid in time lapse back to the asking price. */

@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../../src/database/prisma.service';
+import { PUBLIC_USER_SELECT, toPublicUser } from '../../../../src/common/public-name';
+import { Prisma } from '.prisma/veribuy-client';
 import { PaginationDto, PaginatedResponse } from '@veribuy/common';
 import { RedisService } from '@veribuy/redis-cache';
 import { EmailService } from './email.service';
@@ -16,10 +18,17 @@ const MESSAGE_SELECT = {
   isRead: true,
   readAt: true,
   createdAt: true,
-  sender: { select: { id: true, name: true } },
-  recipient: { select: { id: true, name: true } },
+  sender: { select: PUBLIC_USER_SELECT },
+  recipient: { select: PUBLIC_USER_SELECT },
   listing: { select: { id: true, title: true } },
 } as const;
+
+type MessageRow = Prisma.MessageGetPayload<{ select: typeof MESSAGE_SELECT }>;
+
+/** People messaging each other see public names, not real ones. */
+function toPublicMessage(message: MessageRow) {
+  return { ...message, sender: toPublicUser(message.sender), recipient: toPublicUser(message.recipient) };
+}
 
 @Injectable()
 export class NotificationsService {
@@ -59,7 +68,7 @@ export class NotificationsService {
       }),
       this.prisma.user.findUnique({
         where: { id: data.senderId },
-        select: { name: true },
+        select: PUBLIC_USER_SELECT,
       }),
       data.listingId
         ? this.prisma.listing.findUnique({
@@ -97,7 +106,7 @@ export class NotificationsService {
       .sendContactSellerEmail({
         sellerEmail: recipient.email,
         sellerName: recipient.name ?? '',
-        buyerName: sender?.name ?? '',
+        buyerName: toPublicUser(sender)?.name ?? '',
         listingTitle: listing?.title ?? '',
         subject: data.subject || 'New message',
         message: data.content,
@@ -136,7 +145,7 @@ export class NotificationsService {
     ]);
 
     return {
-      data,
+      data: data.map(toPublicMessage),
       pagination: {
         page,
         limit,
@@ -179,7 +188,7 @@ export class NotificationsService {
     ]);
 
     return {
-      data,
+      data: data.map(toPublicMessage),
       pagination: {
         page,
         limit,
@@ -218,7 +227,7 @@ export class NotificationsService {
     ]);
 
     return {
-      data,
+      data: data.map(toPublicMessage),
       pagination: {
         page,
         limit,

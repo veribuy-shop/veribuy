@@ -5,6 +5,9 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  accountType?: 'INDIVIDUAL' | 'BUSINESS';
+  /** Public handle shown to other people instead of the user's name. */
+  username?: string | null;
   isEmailVerified?: boolean;
   referralCode?: string;
   referralBonusBalance?: number;
@@ -127,6 +130,8 @@ export interface Listing {
     country?: string;
     trustScore?: number;
     sellerRating?: number | null;
+    feedbackPercent?: number | null;
+    feedbackCount?: number | null;
   };
 }
 

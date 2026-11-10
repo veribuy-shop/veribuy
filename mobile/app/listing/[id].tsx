@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, Input, Screen } from '@/src/components/ui';
 import { useAuth } from '@/src/context/AuthContext';
 import { formatPrice } from '@/src/lib/currency';
-import { buyerFacingPrice, calculateBuyerProtectionFee, getBuyerProtectionFeePercent } from '@/src/lib/fees';
+import { buyerFacingPrice, getBuyerProtectionFeePercent } from '@/src/lib/fees';
 import { evidenceService, listingsService, offersService, ordersService, trustService } from '@/src/services';
 import { EvidenceItem, Listing, TrustLensCheckSummary } from '@/src/types/entities';
 
@@ -230,7 +230,6 @@ export default function ListingDetailScreen() {
   const askingPrice = Number(listing.price);
   const feePercent = getBuyerProtectionFeePercent();
   const buyerPrice = buyerFacingPrice(askingPrice, feePercent);
-  const protectionFee = calculateBuyerProtectionFee(askingPrice, feePercent);
   const images = galleryImages(listing, evidence);
   const isOwn = user?.id === listing.sellerId;
   const isAuction = listing.format === 'AUCTION';
@@ -244,7 +243,6 @@ export default function ListingDetailScreen() {
   const specs = [listing.storageCapacity, listing.color].filter(Boolean).join(' · ');
   const sellerName = listing.seller?.displayName || listing.seller?.name || 'VeriBuy seller';
   const sellerPlace = listing.seller?.city || listing.seller?.location;
-  const sellerRating = listing.seller?.sellerRating;
 
   return (
     <Screen>
@@ -318,8 +316,7 @@ export default function ListingDetailScreen() {
             <>
               <Text className="text-3xl font-black text-text">{formatPrice(buyerPrice, currency)}</Text>
               <Text className="text-xs text-text-muted mt-1">
-                Includes {formatPrice(protectionFee, currency)} Buyer Protection ({feePercent}%).
-                {listing.freeShipping ? ' Free UK delivery.' : ' Royal Mail shipping calculated at checkout.'}
+                {listing.freeShipping ? 'Free UK delivery.' : 'Royal Mail shipping calculated at checkout.'}
               </Text>
             </>
           )}
@@ -380,11 +377,11 @@ export default function ListingDetailScreen() {
                 .join(' · ')}
             </Text>
           </View>
-          {sellerRating ? (
-            <View className="bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-              <Text className="text-xs font-black text-amber-900">{Number(sellerRating).toFixed(1)}</Text>
-            </View>
-          ) : null}
+          <View className="bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+            <Text className="text-xs font-black text-emerald-900">
+              {listing.seller?.feedbackPercent ?? 100}% positive ({listing.seller?.feedbackCount ?? 0})
+            </Text>
+          </View>
           {!isOwn ? (
             <TouchableOpacity onPress={onMessage} accessibilityRole="button" className="ml-2 px-3 py-2 rounded-xl border border-borderc">
               <Text className="text-xs font-bold text-text">Message</Text>

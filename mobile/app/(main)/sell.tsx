@@ -233,7 +233,9 @@ export default function SellScreen() {
       if (fields.description.trim().length < MIN_DESCRIPTION) {
         return `The description needs at least ${MIN_DESCRIPTION} characters.`;
       }
-      if (fields.deviceType === 'SMARTPHONE' && !imeiCheck.valid) {
+      // Business sellers may leave the IMEI out; the listing then goes to manual review.
+      const imeiOptional = user?.accountType === 'BUSINESS' && imeiCheck.status === 'empty';
+      if (fields.deviceType === 'SMARTPHONE' && !imeiCheck.valid && !imeiOptional) {
         if (imeiCheck.status === 'empty') return 'Enter the phone’s 15-digit IMEI. Dial *#06# to find it.';
         return imeiCheck.status === 'incomplete' ? `The IMEI is too short: ${imeiCheck.message}.` : imeiCheck.message;
       }

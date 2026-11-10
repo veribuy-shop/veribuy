@@ -184,6 +184,15 @@ function paymentMethodTypesFor(totalAmount: number): string[] {
     : ['card', 'klarna'];
 }
 
+/**
+ * What the seller is owed for an order. VeriBuy buys the Royal Mail label, so
+ * the buyer's shipping charge is not the seller's; on a free-delivery order
+ * the postage comes out of the seller's money instead.
+ */
+export function sellerPayoutFor(order: { amount: unknown; sellerShippingFee?: unknown }): number {
+  return Math.round((Number(order.amount) - Number(order.sellerShippingFee || 0)) * 100) / 100;
+}
+
 @Injectable()
 export class TransactionsService implements OnModuleInit {
   private readonly logger = new Logger(TransactionsService.name);
@@ -345,12 +354,15 @@ export class TransactionsService implements OnModuleInit {
 
     // Authoritative shipping fee — recomputed server-side from the resolved
     // device weight profile and the buyer's destination postcode.
-    const numericShipping = this.resolveShippingFee(listing, {
+    // Postage and handling for this parcel. The buyer pays it, unless the
+    // seller offers free delivery: then it comes off the seller's payout.
+    const shippingQuote = this.resolveShippingFee(listing, {
       serviceTier: shippingService,
       destinationPostcode: shippingAddress?.postal_code,
       itemValue: numericAmount,
-      isFreeShipping,
     });
+    const numericShipping = isFreeShipping ? 0 : shippingQuote;
+    const sellerShippingFee = isFreeShipping ? shippingQuote : null;
 
     // Buyer Protection Fee, from BUYER_PROTECTION_FEE_PERCENT
     const rate = getBuyerProtectionFeeRate();
@@ -429,6 +441,7 @@ export class TransactionsService implements OnModuleInit {
               amount: numericAmount,
               protectionFee,
               shippingFee: numericShipping > 0 ? numericShipping : null,
+              sellerShippingFee,
               shippingService: isFreeShipping ? (shippingService || 'Free Delivery (Covered by Seller)') : shippingService,
               freeShipping: isFreeShipping,
               totalAmount,
@@ -516,6 +529,7 @@ export class TransactionsService implements OnModuleInit {
         amount: numericAmount,
         protectionFee,
         shippingFee: numericShipping > 0 ? numericShipping : null,
+        sellerShippingFee,
         shippingService: isFreeShipping ? (shippingService || 'Free Delivery (Covered by Seller)') : shippingService,
         freeShipping: isFreeShipping,
         totalAmount,
@@ -607,12 +621,12 @@ export class TransactionsService implements OnModuleInit {
         : {}),
     };
 
-    const effectiveShippingFee = this.resolveShippingFee(listing, {
+    const shippingQuote = this.resolveShippingFee(listing, {
       serviceTier: dto.shippingService,
       destinationPostcode: (enrichedShippingAddress as any).postal_code || (enrichedShippingAddress as any).postcode,
       itemValue: Number(order.amount),
-      isFreeShipping: !!order.freeShipping,
     });
+    const effectiveShippingFee = order.freeShipping ? 0 : shippingQuote;
 
     const newTotal = Math.round((Number(order.amount) + protectionFee + effectiveShippingFee + effectiveDonation) * 100) / 100;
 
@@ -634,6 +648,7 @@ export class TransactionsService implements OnModuleInit {
       where: { id: orderId },
       data: {
         shippingFee: effectiveShippingFee > 0 ? effectiveShippingFee : null,
+        sellerShippingFee: order.freeShipping ? shippingQuote : null,
         shippingService: dto.shippingService,
         totalAmount: newTotal,
         shippingAddress: enrichedShippingAddress as any,
@@ -1666,7 +1681,7 @@ export class TransactionsService implements OnModuleInit {
     const protectionFeeStr = order.protectionFee ? `${order.currency} ${Number(order.protectionFee).toFixed(2)}` : null;
     const shippingFeeStr = order.shippingFee ? `${order.currency} ${Number(order.shippingFee).toFixed(2)}` : null;
     const totalAmountStr = `${order.currency} ${(Number(order.totalAmount ?? order.amount)).toFixed(2)}`;
-    const sellerPayoutStr = `${order.currency} ${(Number(order.amount) + Number(order.shippingFee || 0)).toFixed(2)}`;
+    const sellerPayoutStr = `${order.currency} ${sellerPayoutFor(order).toFixed(2)}`;
 
     // 1. Email to Buyer: Order Complete & Itemized Receipt
     if (buyerUser?.email) {
@@ -1868,7 +1883,7 @@ export class TransactionsService implements OnModuleInit {
         break;
 
       case 'COMPLETED': {
-        const sellerPayout = Math.round((Number(order.amount) + (Number(order.shippingFee) || 0)) * 100) / 100;
+        const sellerPayout = sellerPayoutFor(order).toFixed(2);
         await this.sendOrderNotification({
           orderId: order.id,
           buyerId: order.buyerId,
@@ -2356,10 +2371,8 @@ export class TransactionsService implements OnModuleInit {
       serviceTier?: string | null;
       destinationPostcode?: string;
       itemValue: number;
-      isFreeShipping: boolean;
     },
   ): number {
-    if (options.isFreeShipping) return 0;
 
     const tier: RoyalMailServiceTier =
       options.serviceTier === 'TRACKED_24' ||

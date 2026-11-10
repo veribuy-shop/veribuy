@@ -9,11 +9,13 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { PrismaService } from '../../../../src/database/prisma.service';
+import { generateUsername } from '../../../../src/common/username';
+import { publicSellerName } from '../../../../src/common/public-name';
 import { CreateListingDto } from './dto/create-listing.dto';
 import { UpdateListingDto } from './dto/update-listing.dto';
 import { GetListingsQueryDto } from './dto/get-listings-query.dto';
 import { ALLOWED_TRANSITIONS, SELLER_TRANSITIONS } from './dto/update-status.dto';
-import { Prisma, Listing, ListingStatus, TrustLensStatus, ReviewStatus, IntegrityFlag, ListingFormat } from '.prisma/veribuy-client';
+import { Prisma, Listing, ListingStatus, TrustLensStatus, ReviewStatus, IntegrityFlag, ListingFormat, DeviceType } from '.prisma/veribuy-client';
 import {
   PaginationDto,
   PaginatedResponse,
@@ -61,31 +63,13 @@ const PUBLIC_SELECT = {
   // imei and serialNumber intentionally excluded from public shape
 } as const;
 
-/**
- * Name shown for a seller on public listing pages. Individuals appear as
- * first name + last initial ("John S."), never their full name (the profile
- * display name defaults to it at sign-up); businesses by their company name.
- */
-export function publicSellerName(profile: {
-  accountType?: string | null;
-  companyName?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  displayName?: string | null;
-} | null | undefined): string {
-  if (!profile) return 'Verified Seller';
-  if (profile.accountType === 'BUSINESS' && profile.companyName?.trim()) {
-    return profile.companyName.trim();
-  }
-  let first = profile.firstName?.trim() || '';
-  let last = profile.lastName?.trim() || '';
-  if (!first) {
-    const parts = (profile.displayName || '').trim().split(/\s+/).filter(Boolean);
-    first = parts[0] || '';
-    last = parts.slice(1).join(' ');
-  }
-  if (!first) return 'Verified Seller';
-  return last ? `${first} ${last.charAt(0).toUpperCase()}.` : first;
+export { publicSellerName };
+
+/** Share of a seller's ratings that are 4 or 5 stars. New sellers start at 100%. */
+export function feedbackSummary(ratings: number[]): { feedbackPercent: number; feedbackCount: number } {
+  if (ratings.length === 0) return { feedbackPercent: 100, feedbackCount: 0 };
+  const positive = ratings.filter((rating) => rating >= 4).length;
+  return { feedbackPercent: Math.round((positive / ratings.length) * 100), feedbackCount: ratings.length };
 }
 
 /**
@@ -178,13 +162,20 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
     // Bulk inventory is a business-account feature, and it is NOT pre-verified:
     // business status is self-declared, so every listing (bulk included) goes
     // through Trust Lens / manual review before it can be sold.
-    if (dto.isBulkListing) {
+    const needsImei = dto.deviceType === DeviceType.SMARTPHONE && !dto.isBulkListing && !dto.imei?.trim();
+    if (dto.isBulkListing || needsImei) {
       const profile = await this.prisma.profile.findUnique({
         where: { userId: dto.sellerId! },
         select: { accountType: true },
       });
-      if (profile?.accountType !== 'BUSINESS') {
+      const isBusiness = profile?.accountType === 'BUSINESS';
+      if (dto.isBulkListing && !isBusiness) {
         throw new ForbiddenException('Bulk inventory listings are only available to business accounts');
+      }
+      // Private sellers must give a phone's IMEI. Businesses may list without
+      // one; those listings go to manual review instead of the IMEI check.
+      if (needsImei && !isBusiness) {
+        throw new BadRequestException('Please enter the phone’s 15-digit IMEI. Dial *#06# to find it.');
       }
     }
     // A seller retrying after a failed photo upload carries on with the same listing.
@@ -290,6 +281,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         },
         create: {
           userId: dto.sellerId,
+          username: generateUsername(),
           displayName: 'Seller',
           address: {
             create: {
@@ -304,19 +296,28 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
       }).catch((err: Error) => this.logger.warn(`Failed to update seller dispatch location: ${err?.message}`));
     }
 
-    // Fire-and-forget: notify seller of successful listing submission
-    this.getSellerInfo(listing.sellerId).then((seller) => {
-      if (seller) {
-        this.notifications.notifyListingCreated({
-          sellerEmail: seller.email,
-          sellerName: seller.name,
-          listingTitle: listing.title,
-          listingId: listing.id,
-        });
-      }
-    }).catch((err: Error) => this.logger.error(`listing_created notify fetch failed: ${err.message}`));
-
     return listing;
+  }
+
+  /**
+   * Tells the seller their listing is in for verification. Called once the
+   * photos are uploaded and the check has been requested, not when the listing
+   * row is first saved: an upload can still fail at that point.
+   */
+  async notifyListingSubmitted(id: string): Promise<void> {
+    const listing = await this.prisma.listing.findUnique({
+      where: { id },
+      select: { id: true, title: true, sellerId: true },
+    });
+    if (!listing) throw new NotFoundException('Listing not found');
+    const seller = await this.getSellerInfo(listing.sellerId);
+    if (!seller) return;
+    this.notifications.notifyListingCreated({
+      sellerEmail: seller.email,
+      sellerName: seller.name,
+      listingTitle: listing.title,
+      listingId: listing.id,
+    });
   }
 
   /**
@@ -493,9 +494,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
             where: { userId: { in: sellerIds } },
             select: {
               userId: true,
-              displayName: true,
-              firstName: true,
-              lastName: true,
+              username: true,
               accountType: true,
               companyName: true,
               avatarUrl: true,
@@ -549,7 +548,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
       ...l,
       imageUrl: coverImages.get(l.id) ?? null,
       seller: sellersMap.get(l.sellerId) || {
-        displayName: 'Verified Seller',
+        displayName: 'VeriBuy seller',
         joinedYear: new Date(l.createdAt).getFullYear(),
         location: 'London, UK',
         city: 'London',
@@ -754,17 +753,19 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
    */
   async getPublicSellerDetails(sellerId: string) {
     try {
-      const [user, profile] = await Promise.all([
+      const [user, ratings, profile] = await Promise.all([
         this.prisma.user.findUnique({
           where: { id: sellerId },
           select: { createdAt: true },
         }),
+        this.prisma.rating.findMany({
+          where: { order: { sellerId } },
+          select: { rating: true },
+        }),
         this.prisma.profile.findUnique({
           where: { userId: sellerId },
           select: {
-            displayName: true,
-            firstName: true,
-            lastName: true,
+            username: true,
             avatarUrl: true,
             sellerRating: true,
             verificationStatus: true,
@@ -801,10 +802,11 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         country,
         state,
         sellerRating: profile?.sellerRating ?? 5.0,
+        ...feedbackSummary(ratings.map((r) => r.rating)),
       };
     } catch {
       return {
-        displayName: 'Verified Seller',
+        displayName: 'VeriBuy seller',
         accountType: 'INDIVIDUAL',
         companyName: null,
         avatarUrl: null,
@@ -813,6 +815,7 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
         city: 'London',
         country: 'UK',
         sellerRating: 5.0,
+        ...feedbackSummary([]),
       };
     }
   }
@@ -1178,10 +1181,30 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.listingDraft.deleteMany({ where: { userId } });
   }
 
+  /**
+   * Deletes a listing and what hangs off it. A listing someone has paid for,
+   * or is paying for, is a record of a sale and stays; checkouts that were
+   * abandoned unpaid don't hold a listing back and are removed with it.
+   */
   async delete(id: string): Promise<void> {
+    const orders = await this.prisma.order.findMany({
+      where: { listingId: id },
+      select: { status: true, paidAt: true, refundedAt: true },
+    });
+    const abandoned = (o: (typeof orders)[number]) => o.status === 'CANCELLED' && !o.paidAt && !o.refundedAt;
+    if (orders.some((o) => o.status === 'PENDING')) {
+      throw new ConflictException('A buyer is checking out this listing right now. Try again in a little while.');
+    }
+    if (orders.some((o) => !abandoned(o))) {
+      throw new ConflictException('This listing has an order, so it can’t be deleted. It stays in your sales history.');
+    }
     try {
-      await this.prisma.listing.delete({ where: { id } });
+      await this.prisma.$transaction([
+        this.prisma.order.deleteMany({ where: { listingId: id, status: 'CANCELLED', paidAt: null, refundedAt: null } }),
+        this.prisma.listing.delete({ where: { id } }),
+      ]);
       await this.redis.del(`listing:${id}`).catch(() => {});
+      this.logger.log(`Deleted listing ${id}`);
     } catch (err: any) {
       if (err?.code === 'P2025') {
         throw new NotFoundException('Listing not found');

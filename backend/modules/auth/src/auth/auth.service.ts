@@ -17,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../../../src/database/prisma.service';
+import { withUniqueUsername } from '../../../../src/common/username';
 import { RedisService } from '@veribuy/redis-cache';
 import { NotificationService } from './notification.service';
 import { SmsService } from '../../../notifications/src/notifications/sms.service';
@@ -114,6 +115,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   }
 
   async register(dto: RegisterDto) {
+    if (dto.accountType === 'BUSINESS') {
+      if (!dto.companyName?.trim()) {
+        throw new BadRequestException('Please enter your company name.');
+      }
+      if (!dto.companyNumber?.trim()) {
+        throw new BadRequestException('Please enter your company number.');
+      }
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     // Dev-mode bypass: AUTO_VERIFY_EMAIL=true skips email verification entirely
@@ -187,9 +197,10 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Auto-create user profile and address with required full address & phone
-      await this.prisma.profile.create({
+      await withUniqueUsername((username) => this.prisma.profile.create({
         data: {
           userId: user.id,
+          username,
           displayName: dto.companyName && dto.accountType === 'BUSINESS' ? dto.companyName : dto.name,
           phone: dto.phone || null,
           accountType: dto.accountType || 'INDIVIDUAL',
@@ -211,7 +222,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
               }
             : {}),
         },
-      }).catch((profileErr) => {
+      })).catch((profileErr) => {
         this.logger.warn(`Failed to auto-create initial profile for ${user.id}: ${profileErr?.message}`);
       });
     } catch (err: any) {
@@ -298,14 +309,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    await this.prisma.profile.create({
+    await withUniqueUsername((username) => this.prisma.profile.create({
       data: {
         userId: user.id,
+        username,
         displayName: dto.name,
         firstName: dto.name.split(' ')[0],
         lastName: dto.name.split(' ').slice(1).join(' ') || null,
       },
-    });
+    }));
 
     this.logger.log(`Bootstrapped first admin user: ${user.email}`);
     const tokens = await this.generateTokens(user.id, user.role);
@@ -555,16 +567,17 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const firstName = nameParts[0] || 'User';
     const lastName = nameParts.slice(1).join(' ') || null;
 
-    await this.prisma.profile.create({
+    await withUniqueUsername((username) => this.prisma.profile.create({
       data: {
         userId: newUser.id,
+        username,
         displayName,
         firstName,
         lastName,
         avatarUrl,
         accountType: 'INDIVIDUAL',
       },
-    }).catch((profileErr) => {
+    })).catch((profileErr) => {
       this.logger.warn(`Failed to create initial profile for social user ${newUser.id}: ${profileErr?.message}`);
     });
 
@@ -775,6 +788,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       this.prisma.profile.findUnique({
         where: { userId },
         select: {
+          username: true,
           accountType: true,
           companyName: true,
           companyNumber: true,
@@ -794,6 +808,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       name: user.name,
       email: user.email,
       role: user.role,
+      username: profile?.username || null,
       accountType: profile?.accountType || 'INDIVIDUAL',
       companyName: profile?.companyName || null,
       companyNumber: profile?.companyNumber || null,

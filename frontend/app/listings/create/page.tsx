@@ -25,7 +25,7 @@ import {
   Timer,
   Clock,
 } from 'lucide-react';
-import { buyerFacingPrice, getBuyerProtectionFeePercent } from '@/lib/fees';
+import { buyerFacingPrice } from '@/lib/fees';
 import { formatPrice } from '@/lib/currency';
 import { prepareImageForUpload } from '@/lib/prepare-image';
 import { DEVICE_BRANDS } from '@veribuy/common/devices';
@@ -336,7 +336,12 @@ export default function CreateListingPage() {
   const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
   const MAX_RESIZABLE_FILE_BYTES = 40 * 1024 * 1024; // 40 MB before in-browser resize
 
-  const handleFileChange = (field: keyof ListingFormData, files: FileList | null) => {
+  type PhotoField = 'deviceImages' | 'screenImages' | 'settingsScreenshot';
+
+  // Each pick adds to the photos already chosen, so they can be added one at a
+  // time (a phone camera only ever returns one).
+  const handleFileChange = (field: PhotoField, input: HTMLInputElement) => {
+    const files = input.files;
     if (!files) return;
 
     const validFiles: File[] = [];
@@ -362,8 +367,18 @@ export default function CreateListingPage() {
     }
 
     if (validFiles.length > 0) {
-      updateFormData(field, validFiles);
+      setFormData(prev => {
+        const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+        const added = validFiles.filter(file => !prev[field].some(existing => sameFile(existing, file)));
+        return { ...prev, [field]: [...prev[field], ...added] };
+      });
     }
+    // Clear the input so choosing the same photo again still fires a change.
+    input.value = '';
+  };
+
+  const removePhoto = (field: PhotoField, file: File) => {
+    setFormData(prev => ({ ...prev, [field]: prev[field].filter(f => f !== file) }));
   };
 
   const toggleAccessory = (accessory: string) => {
@@ -378,6 +393,7 @@ export default function CreateListingPage() {
   // Only phones are verified by IMEI. Cellular tablets/watches may have one;
   // AirPods, laptops and desktops never do, so the IMEI field is hidden for them.
   const deviceHasImei = !['AIRPODS', 'LAPTOP', 'DESKTOP'].includes(formData.deviceType);
+  const imeiRequired = formData.deviceType === 'SMARTPHONE' && user?.accountType !== 'BUSINESS';
   // Which photos to ask for depends on the device (AirPods have no screen, a
   // console's screen photo is optional…). Shared with the Trust Lens checklist.
   const evidence = getEvidenceRequirements(formData.deviceType);
@@ -453,9 +469,9 @@ export default function CreateListingPage() {
         return true;
       }
 
-      // Smartphones are verified by IMEI only (serial optional). This matches the
-      // server-side Trust Lens requirement.
-      if (formData.deviceType === 'SMARTPHONE') {
+      // Private sellers must give a phone's IMEI; business sellers may leave it
+      // out and go to manual review. This matches the server-side rule.
+      if (imeiRequired) {
         if (!formData.imei) {
           setError('Smartphones require an IMEI for verification');
           return false;
@@ -1261,8 +1277,7 @@ export default function CreateListingPage() {
                     {Number(formData.price) > 0 ? (
                       <p className="mt-2 text-sm text-[var(--color-text-muted)]">
                         You receive {formatPrice(Number(formData.price), 'GBP')}. Buyers will see{' '}
-                        <strong>{formatPrice(buyerFacingPrice(Number(formData.price)), 'GBP')}</strong>{' '}
-                        (includes {getBuyerProtectionFeePercent()}% Buyer Protection, paid by the buyer). Royal Mail shipping is added at checkout.
+                        <strong>{formatPrice(buyerFacingPrice(Number(formData.price)), 'GBP')}</strong>, plus Royal Mail shipping at checkout.
                       </p>
                     ) : (
                       <p className="mt-2 text-sm text-[var(--color-text-muted)]">
@@ -1537,12 +1552,14 @@ export default function CreateListingPage() {
                       <div className="flex items-center justify-between mb-2">
                         <label htmlFor="device-imei" className="block text-sm font-medium text-[var(--color-text)]">
                           IMEI{' '}
-                          {formData.deviceType === 'SMARTPHONE' ? (
-                            <span className="text-red-500" aria-hidden="true">*</span>
+                          {imeiRequired ? (
+                            <>
+                              <span className="text-red-500" aria-hidden="true">*</span>
+                              <span className="sr-only">(required)</span>
+                            </>
                           ) : (
                             <span className="text-xs text-[var(--color-text-muted)]">(optional)</span>
                           )}
-                          <span className="sr-only">(required)</span>
                         </label>
                         <button
                           type="button"
@@ -1671,18 +1688,28 @@ export default function CreateListingPage() {
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={(e) => handleFileChange('deviceImages', e.target.files)}
+                  onChange={(e) => handleFileChange('deviceImages', e.target)}
                   className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   aria-describedby="device-images-hint"
                 />
                 <p id="device-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
                   {evidence.device.hint} Large photos are resized automatically.{' '}
-                  <span aria-live="polite">{formData.deviceImages.length} file(s) selected.</span>
+                  <span aria-live="polite">{formData.deviceImages.length} added. Choose more to add to them.</span>
                 </p>
                 {formData.deviceImages.length > 0 && (
                   <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Selected device image previews">
                     {formData.deviceImages.map((file, idx) => (
                       <div key={idx} className="relative">
+                        {!uploadedFiles.current.has(file) && (
+                          <button
+                            type="button"
+                            onClick={() => removePhoto('deviceImages', file)}
+                            aria-label={`Remove ${file.name}`}
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white text-sm leading-none flex items-center justify-center hover:bg-black"
+                          >
+                            ×
+                          </button>
+                        )}
                         <img
                           src={deviceImageURLs[idx]}
                           alt={`Device image ${idx + 1}: ${file.name}`}
@@ -1715,18 +1742,28 @@ export default function CreateListingPage() {
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={(e) => handleFileChange('screenImages', e.target.files)}
+                  onChange={(e) => handleFileChange('screenImages', e.target)}
                   className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   aria-describedby="screen-images-hint"
                 />
                 <p id="screen-images-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
                   {evidence.screen.hint}{' '}
-                  <span aria-live="polite">{formData.screenImages.length} file(s) selected.</span>
+                  <span aria-live="polite">{formData.screenImages.length} added. Choose more to add to them.</span>
                 </p>
                 {formData.screenImages.length > 0 && (
                   <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Selected screen image previews">
                     {formData.screenImages.map((file, idx) => (
                       <div key={idx} className="relative">
+                        {!uploadedFiles.current.has(file) && (
+                          <button
+                            type="button"
+                            onClick={() => removePhoto('screenImages', file)}
+                            aria-label={`Remove ${file.name}`}
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white text-sm leading-none flex items-center justify-center hover:bg-black"
+                          >
+                            ×
+                          </button>
+                        )}
                         <img
                           src={screenImageURLs[idx]}
                           alt={`Screen image ${idx + 1}: ${file.name}`}
@@ -1751,18 +1788,28 @@ export default function CreateListingPage() {
                   type="file"
                   accept="image/*"
                   multiple
-                  onChange={(e) => handleFileChange('settingsScreenshot', e.target.files)}
+                  onChange={(e) => handleFileChange('settingsScreenshot', e.target)}
                   className="w-full px-4 py-2 border border-[var(--color-border)] rounded-lg focus:ring-2 focus:ring-[var(--color-green)] focus:border-transparent"
                   aria-describedby="settings-screenshot-hint"
                 />
                 <p id="settings-screenshot-hint" className="mt-1 text-xs text-[var(--color-text-muted)]">
                   {evidence.settings.hint}{' '}
-                  <span aria-live="polite">{formData.settingsScreenshot.length} file(s) selected.</span>
+                  <span aria-live="polite">{formData.settingsScreenshot.length} added. Choose more to add to them.</span>
                 </p>
                 {formData.settingsScreenshot.length > 0 && (
                   <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Selected settings screenshot previews">
                     {formData.settingsScreenshot.map((file, idx) => (
                       <div key={idx} className="relative">
+                        {!uploadedFiles.current.has(file) && (
+                          <button
+                            type="button"
+                            onClick={() => removePhoto('settingsScreenshot', file)}
+                            aria-label={`Remove ${file.name}`}
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white text-sm leading-none flex items-center justify-center hover:bg-black"
+                          >
+                            ×
+                          </button>
+                        )}
                         <img
                           src={settingsImageURLs[idx]}
                           alt={`Settings screenshot ${idx + 1}: ${file.name}`}

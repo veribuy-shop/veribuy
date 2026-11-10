@@ -10,6 +10,8 @@ interface User {
   email: string;
   role: 'BUYER' | 'SELLER' | 'ADMIN';
   accountType?: 'INDIVIDUAL' | 'BUSINESS';
+  /** Public handle shown to other people instead of the user's name. */
+  username?: string | null;
   companyName?: string | null;
   referralCode?: string | null;
   isEmailVerified?: boolean;
@@ -31,6 +33,8 @@ export interface RegisterData {
   accountType?: 'INDIVIDUAL' | 'BUSINESS';
   companyName?: string;
   companyNumber?: string;
+  /** Public handle shown to other people instead of the user's name. */
+  username?: string | null;
   vatNumber?: string;
   referralCode?: string;
   acceptedTerms: boolean;

@@ -44,8 +44,14 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
+      // Logged here as well as on the backend: a rejected upload must be
+      // traceable from either service's logs.
+      console.error(
+        `[evidence] upload rejected: backend ${response.status} for listing ${listingId} ` +
+          `(${describeFile(file as File)}): ${JSON.stringify(error?.message ?? error)}`,
+      );
       return NextResponse.json(
-        { message: friendlyApiError(error, 'Failed to upload evidence') },
+        { message: friendlyApiError(error, uploadFailureMessage(response.status)) },
         { status: response.status }
       );
     }
@@ -54,12 +60,32 @@ export async function POST(req: NextRequest) {
     // Return only the safe fields — not file size, mime type, or internal metadata
     return NextResponse.json(sanitizeEvidenceItem(data), { status: 201 });
   } catch (error) {
-    console.error('Error uploading evidence:', error);
+    // Reaching here means the request never got an answer from the backend
+    // (unreachable, timed out, or the upload body couldn't be read), so the
+    // backend has no log of it.
+    const cause = error instanceof Error ? (error.cause as { code?: string } | undefined)?.code : undefined;
+    console.error(
+      `[evidence] upload failed before reaching the backend at ${EVIDENCE_SERVICE_URL}` +
+        `${cause ? ` (${cause})` : ''}:`,
+      error,
+    );
     return NextResponse.json(
-      { message: 'Failed to upload evidence' },
-      { status: 500 },
+      { message: 'We couldn’t reach the photo service. Please try again in a moment.' },
+      { status: 502 },
     );
   }
+}
+
+function describeFile(file: File): string {
+  return `${Math.round(file.size / 1024)} KB ${file.type || 'unknown type'}`;
+}
+
+/** What to tell the seller when the backend gives no usable message. */
+function uploadFailureMessage(status: number): string {
+  if (status === 401) return 'Your session has expired. Sign in again, then press Submit to finish uploading.';
+  if (status === 413) return 'That photo is too large to upload.';
+  if (status === 429) return 'Too many uploads at once. Wait a minute, then press Submit again.';
+  return `The photo couldn’t be saved (error ${status}). Please try again.`;
 }
 
 export async function GET(req: NextRequest) {

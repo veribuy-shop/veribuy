@@ -13,6 +13,8 @@ describe('validateEnv', () => {
     CLEARPAY_MAX_GBP: '1200',
     CANCELLED_ORDER_RETENTION_DAYS: '30',
     ABANDONED_LISTING_RETENTION_DAYS: '30',
+    SHIPPING_HANDLING_FEE_SMALL_GBP: '1.5',
+    SHIPPING_HANDLING_FEE_MEDIUM_GBP: '2',
     JWT_SECRET: 'a'.repeat(40),
     JWT_REFRESH_SECRET: 'b'.repeat(40),
     INTERNAL_SERVICE_TOKEN: 'c'.repeat(40),
@@ -99,6 +101,8 @@ describe('validateEnv', () => {
     'CLEARPAY_MAX_GBP',
     'CANCELLED_ORDER_RETENTION_DAYS',
     'ABANDONED_LISTING_RETENTION_DAYS',
+    'SHIPPING_HANDLING_FEE_SMALL_GBP',
+    'SHIPPING_HANDLING_FEE_MEDIUM_GBP',
   ])('refuses to start when %s is missing or invalid', (name) => {
     const { [name as keyof typeof baseDev]: _omitted, ...config } = baseDev;
     expect(() => validateEnv(config)).toThrow(name);

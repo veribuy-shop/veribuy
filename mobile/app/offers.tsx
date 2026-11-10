@@ -209,7 +209,7 @@ export default function OffersScreen() {
                       router.push({ pathname: '/checkout', params: { listingId: item.listingId, offerId: item.id } })
                     }
                   >
-                    {`Pay ${formatPrice(buyerFacingPrice(amount), currency)} incl. Buyer Protection`}
+                    {`Pay ${formatPrice(buyerFacingPrice(amount), currency)}`}
                   </Button>
                 </View>
               ) : null}

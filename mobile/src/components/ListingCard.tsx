@@ -70,11 +70,11 @@ export function ListingCard({ listing }: { listing: Listing }) {
           <View className="flex-row items-end justify-between pt-2 border-t border-borderc">
             <View>
               <Text className="text-text font-bold text-xl">{formatPrice(displayPrice, listing.currency)}</Text>
-              <Text className="text-[11px] text-text-muted">
-                {isAuction
-                  ? `${listing.bidCount ? `${listing.bidCount} bids` : 'Starting bid'} · + Buyer Protection`
-                  : 'incl. Buyer Protection'}
-              </Text>
+              {isAuction ? (
+                <Text className="text-[11px] text-text-muted">
+                  {`${listing.bidCount ? `${listing.bidCount} bids` : 'Starting bid'} · + Buyer Protection`}
+                </Text>
+              ) : null}
             </View>
             <View className="items-end">
               <Text className="text-[11px] font-bold text-emerald-700">
@@ -180,7 +180,7 @@ export function ExampleListingCard({
         <View className="flex-row items-end justify-between pt-2 border-t border-borderc">
           <View>
             <Text className="text-text font-bold text-xl">{formatPrice(buyerFacingPrice(example.price), 'GBP')}</Text>
-            <Text className="text-[11px] text-text-muted">Example price incl. Buyer Protection</Text>
+            <Text className="text-[11px] text-text-muted">Example price</Text>
           </View>
           <Text className="text-[11px] font-bold text-emerald-700">Browse similar</Text>
         </View>

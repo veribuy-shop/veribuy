@@ -94,18 +94,22 @@ export class TrustLensService {
     // Look up the listing's device type to enforce this server-side.
     const listing = await this.prisma.listing.findUnique({
       where: { id: dto.listingId },
-      select: { deviceType: true },
+      select: { deviceType: true, sellerId: true, isBulkListing: true },
     });
 
     if (!listing) {
       throw new NotFoundException('Listing not found');
     }
 
-    if (listing.deviceType === DeviceType.SMARTPHONE) {
-      if (!dto.imeiProvided) {
-        throw new BadRequestException(
-          'Smartphones require an IMEI for verification',
-        );
+    // Private sellers must give a phone's IMEI. Business sellers may leave it
+    // out; their listing then goes to manual review below.
+    if (listing.deviceType === DeviceType.SMARTPHONE && !dto.imeiProvided && !listing.isBulkListing) {
+      const profile = await this.prisma.profile.findUnique({
+        where: { userId: listing.sellerId },
+        select: { accountType: true },
+      });
+      if (profile?.accountType !== 'BUSINESS') {
+        throw new BadRequestException('Smartphones require an IMEI for verification');
       }
     }
 
@@ -230,6 +234,8 @@ export class TrustLensService {
         .syncTrustLensResult(dto.listingId, 'REQUIRES_REVIEW', undefined, [])
         .catch((err) => this.logger.warn(`Failed to route listing ${dto.listingId} to review: ${(err as Error).message}`));
     }
+
+    this.listingSync.notifySubmitted(dto.listingId).catch(() => {});
 
     // Fetch and return the complete verification request (seller-safe shape)
     return this.prisma.verificationRequest.findUnique({

@@ -30,6 +30,7 @@ export interface SafeAuthUser {
   accountType?: 'INDIVIDUAL' | 'BUSINESS';
   companyName?: string | null;
   referralCode?: string | null;
+  username?: string | null;
 }
 
 /** Admin user record — includes account timestamps for admin user-management views. */
@@ -85,6 +86,8 @@ export interface SafePublicProfile {
   city?: string | null;
   country?: string | null;
   sellerRating?: number | null;
+  feedbackPercent?: number | null;
+  feedbackCount?: number | null;
 }
 
 export interface SafeAdminProfile {
@@ -272,6 +275,7 @@ export function sanitizeAuthUser(input: Record<string, any> | null | undefined):
     accountType: raw.accountType ?? 'INDIVIDUAL',
     companyName: raw.companyName ?? null,
     referralCode: raw.referralCode ?? null,
+    username: raw.username ?? null,
   };
 }
 
@@ -333,13 +337,15 @@ export function sanitizePublicProfile(raw: Record<string, any> | null): SafePubl
   return {
     accountType: raw.accountType ?? 'INDIVIDUAL',
     companyName: raw.companyName ?? null,
-    displayName: raw.displayName ?? raw.name ?? 'Verified Seller',
+    displayName: raw.displayName ?? raw.name ?? 'VeriBuy seller',
     avatarUrl: raw.avatarUrl ?? null,
     joinedYear: raw.joinedYear ?? (raw.createdAt ? new Date(raw.createdAt).getFullYear() : null),
     location: raw.location ?? (raw.city && raw.country ? `${raw.city}, ${raw.country}` : raw.city || raw.country || null),
     city: raw.city ?? null,
     country: raw.country ?? null,
     sellerRating: raw.sellerRating != null ? Number(raw.sellerRating) : null,
+    feedbackPercent: raw.feedbackPercent != null ? Number(raw.feedbackPercent) : null,
+    feedbackCount: raw.feedbackCount != null ? Number(raw.feedbackCount) : null,
   };
 }
 

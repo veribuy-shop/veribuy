@@ -22,6 +22,7 @@ import {
   charityDonationGbp,
   checkoutHoldMinutes,
   offerPaymentWindowHours,
+  shippingHandlingFees,
 } from '../../../../src/config/marketplace.config';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -70,6 +71,7 @@ export class TransactionsController {
       auctionPaymentWindowHours: auctionPaymentWindowHours(),
       offerPaymentWindowHours: offerPaymentWindowHours(),
       charityDonationGbp: charityDonationGbp(),
+      shippingHandlingFees: shippingHandlingFees(),
     };
   }
 

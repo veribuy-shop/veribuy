@@ -12,6 +12,8 @@ export const MARKETPLACE_ENV_VARS = [
   'CLEARPAY_MAX_GBP',
   'CANCELLED_ORDER_RETENTION_DAYS',
   'ABANDONED_LISTING_RETENTION_DAYS',
+  'SHIPPING_HANDLING_FEE_SMALL_GBP',
+  'SHIPPING_HANDLING_FEE_MEDIUM_GBP',
 ] as const;
 
 type MarketplaceEnvVar = (typeof MARKETPLACE_ENV_VARS)[number];
@@ -40,3 +42,8 @@ export const clearpayMaxGbp = () => positiveNumber('CLEARPAY_MAX_GBP');
 export const cancelledOrderRetentionDays = () => positiveNumber('CANCELLED_ORDER_RETENTION_DAYS');
 /** How long a listing abandoned before review, with no photos, is kept before it's deleted. */
 export const abandonedListingRetentionDays = () => positiveNumber('ABANDONED_LISTING_RETENTION_DAYS');
+/** VeriBuy's handling charge per parcel, added to the Royal Mail rate the buyer (or a free-delivery seller) pays. */
+export const shippingHandlingFees = () => ({
+  smallParcelGbp: positiveNumber('SHIPPING_HANDLING_FEE_SMALL_GBP'),
+  mediumParcelGbp: positiveNumber('SHIPPING_HANDLING_FEE_MEDIUM_GBP'),
+});

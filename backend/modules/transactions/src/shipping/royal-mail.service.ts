@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as PDFDocument from 'pdfkit';
+import { shippingHandlingFees } from '../../../../src/config/marketplace.config';
 import {
   DeviceWeightProfile,
   resolveDeviceWeightProfile,
@@ -370,6 +371,7 @@ export class RoyalMailService {
       itemPrice: options?.itemValue,
       postcode: options?.destinationPostcode,
       service: serviceTier,
+      handlingFees: shippingHandlingFees(),
     });
   }
 

@@ -14,6 +14,7 @@ const setFee = (buyerProtectionFeePercent: number) =>
     auctionPaymentWindowHours: 48,
     offerPaymentWindowHours: 48,
     charityDonationGbp: 1,
+    shippingHandlingFees: { smallParcelGbp: 1.5, mediumParcelGbp: 2 },
   });
 
 describe('Fee calculation utilities', () => {

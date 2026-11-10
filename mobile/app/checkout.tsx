@@ -462,8 +462,7 @@ export default function CheckoutScreen() {
           </View>
 
           <View className="gap-2 mb-3">
-            <Row label="Item price" value={formatPrice(itemPrice, currency)} />
-            <Row label={order?.protectionFee != null ? 'Buyer Protection' : `Buyer Protection (${getBuyerProtectionFeePercent()}%)`} value={formatPrice(protectionFee, currency)} />
+            <Row label="Item" value={formatPrice(itemPrice + protectionFee, currency)} />
             <Row
               label={formatShippingService(selectedService)}
               value={listing.freeShipping ? 'Free (seller pays)' : formatPrice(effectiveShippingFee, currency)}

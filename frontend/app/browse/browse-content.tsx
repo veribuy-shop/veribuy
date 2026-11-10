@@ -788,7 +788,7 @@ export default function BrowseContent() {
                             ) : null}
                           </div>
                           <p className="text-[11px] text-emerald-700 font-medium mt-0.5">
-                            {isAuction ? 'Proxy bidding · + buyer protection' : 'Incl. buyer protection · + shipping'}
+                            {isAuction ? 'Proxy bidding · + buyer protection' : '+ shipping'}
                           </p>
                         </div>
                       </div>

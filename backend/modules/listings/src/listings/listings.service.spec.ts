@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { UlistingsService } from './listings.service';
 import { PrismaService } from '../../../../src/database/prisma.service';
@@ -20,6 +20,7 @@ describe('UlistingsService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn(),
         updateMany: jest.fn(),
+        delete: jest.fn(),
       },
       imeiRegistry: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -35,7 +36,10 @@ describe('UlistingsService', () => {
       },
       order: {
         count: jest.fn().mockResolvedValue(0),
+        findMany: jest.fn().mockResolvedValue([]),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
+      $transaction: jest.fn().mockResolvedValue([]),
       message: {
         create: jest.fn().mockResolvedValue({}),
       },
@@ -93,6 +97,7 @@ describe('UlistingsService', () => {
         price: 650,
         currency: 'GBP',
         conditionGrade: 'A',
+        imei: '490154203237518',
         isBulkListing: false,
         freeShipping: false,
       });
@@ -109,6 +114,36 @@ describe('UlistingsService', () => {
         }),
       );
       expect(result).toEqual(mockListing);
+    });
+
+    const phoneWithoutImei = {
+      sellerId: 'seller-1',
+      title: 'iPhone 15',
+      description: 'Excellent condition',
+      deviceType: 'SMARTPHONE',
+      brand: 'Apple',
+      model: 'iPhone 15',
+      price: 650,
+      currency: 'GBP',
+      conditionGrade: 'A',
+      isBulkListing: false,
+      freeShipping: false,
+    };
+
+    it('requires an IMEI for a phone listed by a private seller', async () => {
+      prisma.profile.findUnique.mockResolvedValue({ accountType: 'INDIVIDUAL' });
+
+      await expect(service.create(phoneWithoutImei as any)).rejects.toThrow(BadRequestException);
+      expect(prisma.listing.create).not.toHaveBeenCalled();
+    });
+
+    it('lets a business seller list a phone without an IMEI', async () => {
+      prisma.profile.findUnique.mockResolvedValue({ accountType: 'BUSINESS' });
+      prisma.listing.create.mockResolvedValue({ id: 'lst-2', sellerId: 'seller-1' });
+
+      await service.create(phoneWithoutImei as any);
+
+      expect(prisma.listing.create).toHaveBeenCalled();
     });
 
     it('creates a business bulk listing as unverified (PENDING) with multi-unit quantity', async () => {
@@ -758,6 +793,29 @@ describe('UlistingsService', () => {
       await expect(service.purgeAbandonedListings()).resolves.toBe(0);
 
       expect(prisma.adminAuditLog.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('delete', () => {
+    it('removes a listing along with checkouts that were abandoned unpaid', async () => {
+      prisma.order.findMany.mockResolvedValue([{ status: 'CANCELLED', paidAt: null, refundedAt: null }]);
+
+      await service.delete('lst-1');
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('keeps a listing that has a paid order', async () => {
+      prisma.order.findMany.mockResolvedValue([{ status: 'COMPLETED', paidAt: new Date(), refundedAt: null }]);
+
+      await expect(service.delete('lst-1')).rejects.toThrow(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('keeps a listing while a buyer is checking out', async () => {
+      prisma.order.findMany.mockResolvedValue([{ status: 'PENDING', paidAt: null, refundedAt: null }]);
+
+      await expect(service.delete('lst-1')).rejects.toThrow(ConflictException);
     });
   });
 });

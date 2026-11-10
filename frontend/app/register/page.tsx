@@ -232,6 +232,7 @@ export default function RegisterPage() {
   const phoneValid = ukPhoneRegex.test(phone.trim()) || phone.trim().length >= 10;
 
   const companyNameValid = accountType === 'INDIVIDUAL' || companyName.trim().length >= 2;
+  const companyNumberValid = accountType === 'INDIVIDUAL' || companyNumber.trim().length >= 2;
   const nameValid       = name.trim().length >= 2;
   const emailValid      = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const line1Valid      = line1.trim().length >= 3;
@@ -244,7 +245,7 @@ export default function RegisterPage() {
   const passwordHasSpecial = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password);
   const passwordValid = passwordHasLength && passwordHasUpper && passwordHasLower && passwordHasDigit && passwordHasSpecial;
 
-  const canSubmit = nameValid && companyNameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms;
+  const canSubmit = nameValid && companyNameValid && companyNumberValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -268,7 +269,7 @@ export default function RegisterPage() {
         country: 'United Kingdom',
         accountType,
         companyName: accountType === 'BUSINESS' ? companyName.trim() : undefined,
-        companyNumber: accountType === 'BUSINESS' && companyNumber.trim() ? companyNumber.trim() : undefined,
+        companyNumber: accountType === 'BUSINESS' ? companyNumber.trim() : undefined,
         vatNumber: accountType === 'BUSINESS' && vatNumber.trim() ? vatNumber.trim() : undefined,
         referralCode: referralCode.trim() ? referralCode.trim().toUpperCase() : undefined,
       });
@@ -394,12 +395,14 @@ export default function RegisterPage() {
             onSubmit={(e) => {
               e.preventDefault();
               setError('');
-              if (nameValid && companyNameValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms) {
+              if (nameValid && companyNameValid && companyNumberValid && emailValid && phoneValid && line1Valid && cityValid && isPostalCodeFormatValid && passwordValid && agreedToTerms) {
                 setStep(2);
               } else if (!agreedToTerms) {
                 setError('Please agree to the Terms of Service and Privacy Policy to proceed.');
               } else if (accountType === 'BUSINESS' && !companyNameValid) {
                 setError('Please provide your registered Company / Organization Name.');
+              } else if (accountType === 'BUSINESS' && !companyNumberValid) {
+                setError('Please enter your company number.');
               } else if (!phoneValid) {
                 setError('Please enter a valid UK contact phone number.');
               } else if (!line1Valid || !cityValid || !isPostalCodeFormatValid) {
@@ -484,11 +487,12 @@ export default function RegisterPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label htmlFor="reg-company-number" className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-                      Company Number <span className="text-gray-400 text-[10px] font-normal">(Optional)</span>
+                      Company Number <span className="text-red-500" aria-hidden="true">*</span>
                     </label>
                     <input
                       id="reg-company-number"
                       type="text"
+                      required
                       value={companyNumber}
                       onChange={(e) => setCompanyNumber(e.target.value)}
                       placeholder="e.g. 12345678"

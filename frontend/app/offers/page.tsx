@@ -195,7 +195,7 @@ export default function OffersPage() {
                       href={`/checkout?listingId=${offer.listingId}&offerId=${offer.id}`}
                       className="mt-3 inline-flex items-center px-4 py-2 bg-[var(--color-accent)] text-white text-sm font-semibold rounded-xl hover:opacity-90"
                     >
-                      Pay {formatPrice(buyerFacingPrice(amount), 'GBP')} now (incl. Buyer Protection)
+                      Pay {formatPrice(buyerFacingPrice(amount), 'GBP')} now
                     </Link>
                   )}
                 </li>

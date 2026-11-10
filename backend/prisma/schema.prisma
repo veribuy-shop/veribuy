@@ -87,6 +87,8 @@ model Profile {
   userId             String             @unique @map("user_id")
   user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   displayName        String             @map("display_name")
+  /// Public handle shown instead of the person's real name.
+  username           String?            @unique
   firstName          String?            @map("first_name")
   lastName           String?            @map("last_name")
   avatarUrl          String?            @map("avatar_url")
@@ -410,6 +412,8 @@ model Order {
   amount             Decimal     @db.Decimal(10, 2)
   protectionFee      Decimal?    @db.Decimal(10, 2) @map("protection_fee")
   shippingFee        Decimal?    @db.Decimal(10, 2) @map("shipping_fee")
+  /// Postage the seller covers on a free-delivery order, taken off their payout.
+  sellerShippingFee  Decimal?    @db.Decimal(10, 2) @map("seller_shipping_fee")
   shippingService    String?     @map("shipping_service")
   freeShipping       Boolean     @default(false) @map("free_shipping")
   totalAmount        Decimal?    @db.Decimal(10, 2) @map("total_amount")

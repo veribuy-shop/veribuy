@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../../../src/database/prisma.service';
+import { generateUsername, withUniqueUsername } from '../../../../src/common/username';
 import { RedisService } from '@veribuy/redis-cache';
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -14,6 +15,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 const PROFILE_SELECT = {
   id: true,
   userId: true,
+  username: true,
   displayName: true,
   firstName: true,
   lastName: true,
@@ -110,15 +112,16 @@ export class UsersService {
 
   async createProfile(userId: string, dto: CreateProfileDto) {
     try {
-      const profile = await this.prisma.profile.create({
+      const profile = await withUniqueUsername((username) => this.prisma.profile.create({
         data: {
           userId,
+          username,
           displayName: dto.displayName,
           firstName: dto.firstName,
           lastName: dto.lastName,
         },
         select: PROFILE_SELECT,
-      });
+      }));
 
       // Write-through cache
       try {
@@ -183,6 +186,7 @@ export class UsersService {
       },
       create: {
         userId,
+        username: generateUsername(),
         displayName: dto.displayName || 'User',
         firstName: dto.firstName,
         lastName: dto.lastName,

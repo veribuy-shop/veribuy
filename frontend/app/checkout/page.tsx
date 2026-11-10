@@ -1254,10 +1254,6 @@ function CheckoutPageContent() {
     pendingOrder?.protectionFee != null
       ? Number(pendingOrder.protectionFee)
       : calculateProtectionFee(itemPrice);
-  const feePercent =
-    pendingOrder?.protectionFee != null && itemPrice > 0
-      ? Math.round((protectionFee / itemPrice) * 1000) / 10
-      : serverFeePercent;
   const effectiveShippingFee = listing?.freeShipping
     ? 0
     : (shippingQuote ? shippingQuote.totalFee : 0);
@@ -1371,12 +1367,9 @@ function CheckoutPageContent() {
               <div className="border-t pt-4 space-y-2">
                 {/* Same figure the listing advertised — only shipping is added here. */}
                 <div className="flex justify-between text-sm">
-                  <span className="text-[var(--color-text-muted)]">Item (incl. Buyer Protection):</span>
+                  <span className="text-[var(--color-text-muted)]">Item:</span>
                   <span className="font-medium">{formatPrice(itemPrice + protectionFee, listing.currency)}</span>
                 </div>
-                <p className="text-xs text-[var(--color-text-muted)] -mt-1">
-                  {formatPrice(itemPrice, listing.currency)} + {formatPrice(protectionFee, listing.currency)} Buyer Protection ({feePercent}%)
-                </p>
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--color-text-muted)]">Shipping:</span>
                   {listing.freeShipping ? (
@@ -1453,7 +1446,7 @@ function CheckoutPageContent() {
                   <span>Buyer Protection Included</span>
                 </div>
                 <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                  The {feePercent}% protection fee secures your payment in escrow, covers Trust Lens verification, and lets you report a problem before payment is released.
+                  Buyer Protection secures your payment in escrow, covers Trust Lens verification, and lets you report a problem before payment is released.
                 </p>
               </div>
             </div>

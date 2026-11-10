@@ -1,3 +1,4 @@
+import { getMarketplaceConfig } from '@/src/lib/marketplace-config';
 import {
   calculateRoyalMailRate,
   type RoyalMailService,
@@ -35,7 +36,13 @@ export function calculateShippingFee(
   service: RoyalMailService = 'TRACKED_48',
   options: { brand?: string; model?: string; quantity?: number; itemPrice?: number } = {},
 ): ShippingQuote {
-  const rate = calculateRoyalMailRate({ ...options, deviceType, postcode, service });
+  const rate = calculateRoyalMailRate({
+    ...options,
+    deviceType,
+    postcode,
+    service,
+    handlingFees: getMarketplaceConfig().shippingHandlingFees,
+  });
   return {
     service: rate.service,
     label: rate.label,

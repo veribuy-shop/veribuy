@@ -11,7 +11,7 @@ import ConfirmModal from '@/components/confirm-modal';
 import AuctionBiddingCard from '@/components/AuctionBiddingCard';
 import { formatPrice } from '@/lib/currency';
 import { cn } from '@/lib/utils';
-import { getBuyerProtectionFeePercent, calculateProtectionFee, buyerFacingPrice } from '@/lib/fees';
+import { buyerFacingPrice } from '@/lib/fees';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -82,6 +82,8 @@ interface ListingSeller {
   city?: string | null;
   country?: string | null;
   sellerRating?: number | null;
+  feedbackPercent?: number | null;
+  feedbackCount?: number | null;
 }
 
 interface Listing {
@@ -291,6 +293,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const [showGradeTooltip, setShowGradeTooltip] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [uploadPhotoError, setUploadPhotoError] = useState<string | null>(null);
 
@@ -479,7 +482,6 @@ export default function ListingDetailContent({ id }: { id: string }) {
   const numericPrice = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
   // What the buyer pays for the item: seller price + Buyer Protection. Only
   // Royal Mail shipping is added at checkout.
-  const protectionFee = calculateProtectionFee(numericPrice);
   const buyerPrice = buyerFacingPrice(numericPrice);
   const DeviceIcon = DEVICE_TYPE_ICON[listing.deviceType] || Smartphone;
 
@@ -510,7 +512,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
   // Seller metadata defaults
   const sellerJoinYear = listing.seller?.joinedYear || (listing.createdAt ? new Date(listing.createdAt).getFullYear() : new Date().getFullYear());
   const sellerLocation = listing.seller?.location || listing.seller?.city || 'United Kingdom';
-  const sellerDisplayName = listing.seller?.displayName || 'Verified Seller';
+  const sellerDisplayName = listing.seller?.displayName || 'VeriBuy seller';
 
   // Device specifications
   const specs: { icon: typeof Smartphone; label: string; value: string }[] = [
@@ -540,11 +542,11 @@ export default function ListingDetailContent({ id }: { id: string }) {
         router.push('/dashboard');
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Failed to delete listing. Please try again.');
+        setDeleteError(data.error || 'We couldn’t delete this listing. Please try again.');
         setConfirmDelete(false);
       }
     } catch {
-      setError('Failed to delete listing. Please try again.');
+      setDeleteError('We couldn’t delete this listing. Please try again.');
       setConfirmDelete(false);
     } finally {
       setDeleting(false);
@@ -862,8 +864,7 @@ export default function ListingDetailContent({ id }: { id: string }) {
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
-                    Includes {formatPrice(protectionFee, listing.currency)} Buyer Protection ({getBuyerProtectionFeePercent()}%).
-                    {listing.freeShipping ? ' Free UK delivery.' : ' Royal Mail shipping calculated at checkout.'}
+                    {listing.freeShipping ? 'Free UK delivery.' : 'Royal Mail shipping calculated at checkout.'}
                   </p>
 
                   {/* Delivery & Stock indicators */}
@@ -914,6 +915,9 @@ export default function ListingDetailContent({ id }: { id: string }) {
                         <Calendar className="w-3 h-3 text-gray-400" />
                         Member since {sellerJoinYear}
                       </span>
+                      <span className="font-semibold text-gray-700">
+                        {listing.seller?.feedbackPercent ?? 100}% positive ({listing.seller?.feedbackCount ?? 0})
+                      </span>
                       <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
                         <CheckCircle2 className="w-3 h-3 text-emerald-600" /> UK Verified
                       </span>
@@ -949,8 +953,16 @@ export default function ListingDetailContent({ id }: { id: string }) {
                     <LayoutDashboard className="w-4 h-4" aria-hidden="true" />
                     Go to Dashboard
                   </Link>
+                  {deleteError && (
+                    <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                      {deleteError}
+                    </p>
+                  )}
                   <button
-                    onClick={() => setConfirmDelete(true)}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setConfirmDelete(true);
+                    }}
                     className="flex items-center justify-center gap-2 w-full px-6 py-2.5 border border-red-200 text-red-600 rounded-xl font-medium text-xs hover:bg-red-50 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />

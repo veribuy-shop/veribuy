@@ -151,20 +151,7 @@ export class UlistingsController {
   @Post('internal/settle-auctions')
   @Public()
   async settleAuctions(@Headers('x-internal-service') token: string) {
-    const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
-    if (!internalToken) {
-      throw new UnauthorizedException('Internal token not configured');
-    }
-
-    const tokenBuf = Buffer.from(token ?? '');
-    const expectedBuf = Buffer.from(internalToken);
-    const same =
-      tokenBuf.length === expectedBuf.length &&
-      crypto.timingSafeEqual(tokenBuf, expectedBuf);
-
-    if (!same) {
-      throw new UnauthorizedException('Invalid internal service token');
-    }
+    this.assertInternalCaller(token);
 
     const settled = await this.listingsService.settleExpiredAuctions();
     return { success: true, settled };
@@ -249,6 +236,18 @@ export class UlistingsController {
     return this.listingsService.update(id, dto, user.role === 'ADMIN');
   }
 
+  /** Internal: Trust Lens has accepted the listing for verification. */
+  @Post(':id/submitted')
+  @Public()
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async notifySubmitted(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('x-internal-service') token: string,
+  ) {
+    this.assertInternalCaller(token);
+    await this.listingsService.notifyListingSubmitted(id);
+  }
+
   @Put(':id/trust-lens')
   @Public()
   async updateTrustLensStatus(
@@ -278,6 +277,23 @@ export class UlistingsController {
       dto.integrityFlags,
       dto.reviewNotes,
     );
+  }
+
+  private assertInternalCaller(token: string): void {
+    const internalToken = this.configService.get<string>('INTERNAL_SERVICE_TOKEN');
+    if (!internalToken) {
+      throw new UnauthorizedException('Internal token not configured');
+    }
+
+    const tokenBuf = Buffer.from(token ?? '');
+    const expectedBuf = Buffer.from(internalToken);
+    const same =
+      tokenBuf.length === expectedBuf.length &&
+      crypto.timingSafeEqual(tokenBuf, expectedBuf);
+
+    if (!same) {
+      throw new UnauthorizedException('Invalid internal service token');
+    }
   }
 
   @Delete(':id')

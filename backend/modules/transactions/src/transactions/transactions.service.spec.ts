@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
-import { TransactionsService, getBuyerProtectionFeeRate } from './transactions.service';
+import { TransactionsService, getBuyerProtectionFeeRate, sellerPayoutFor } from './transactions.service';
 import { PrismaService } from '../../../../src/database/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { RoyalMailService } from '../shipping/royal-mail.service';
@@ -150,9 +150,9 @@ describe('TransactionsService', () => {
         listingId: 'listing-1',
         amount: 500,
         protectionFee: 25,
-        shippingFee: 3.55,
+        shippingFee: 5.05,
         freeShipping: false,
-        totalAmount: 528.55,
+        totalAmount: 530.05,
         status: 'PENDING',
         paymentIntentId: 'pi_test_123',
       };
@@ -173,19 +173,19 @@ describe('TransactionsService', () => {
           data: expect.objectContaining({
             amount: 500,
             protectionFee: 25,
-            shippingFee: 3.55,
-            totalAmount: 528.55,
+            shippingFee: 5.05,
+            totalAmount: 530.05,
             freeShipping: false,
           }),
         }),
       );
       expect(mockPaymentIntents.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          amount: 52855,
+          amount: 53005,
           currency: 'gbp',
         }),
       );
-      expect(result.order.totalAmount).toBe(528.55);
+      expect(result.order.totalAmount).toBe(530.05);
     });
 
     // --- SECURITY REGRESSION TESTS -------------------------------------
@@ -221,7 +221,7 @@ describe('TransactionsService', () => {
 
       it('ignores a tampered shippingFee and charges the recomputed rate', async () => {
         (service as any).fetchListing = jest.fn().mockResolvedValue(tamperListing);
-        prisma.order.create.mockResolvedValue({ id: 'ord-1', totalAmount: 528.55 });
+        prisma.order.create.mockResolvedValue({ id: 'ord-1', totalAmount: 530.05 });
 
         await service.createOrder({
           buyerId: 'buyer-1',
@@ -235,11 +235,11 @@ describe('TransactionsService', () => {
 
         expect(prisma.order.create).toHaveBeenCalledWith(
           expect.objectContaining({
-            data: expect.objectContaining({ shippingFee: 3.55, totalAmount: 528.55 }),
+            data: expect.objectContaining({ shippingFee: 5.05, totalAmount: 530.05 }),
           }),
         );
         expect(mockPaymentIntents.create).toHaveBeenCalledWith(
-          expect.objectContaining({ amount: 52855 }),
+          expect.objectContaining({ amount: 53005 }),
         );
       });
 
@@ -564,6 +564,16 @@ describe('TransactionsService', () => {
     });
   });
 
+  describe('sellerPayoutFor', () => {
+    it('pays the seller the item price, not the buyer’s shipping charge', () => {
+      expect(sellerPayoutFor({ amount: 500, sellerShippingFee: null })).toBe(500);
+    });
+
+    it('takes postage off the payout on a free-delivery order', () => {
+      expect(sellerPayoutFor({ amount: 500, sellerShippingFee: 5.05 })).toBe(494.95);
+    });
+  });
+
   describe('updateShipping', () => {
     it('recomputes the shipping fee server-side and ignores the client value', async () => {
       (service as any).fetchListing = jest.fn().mockResolvedValue({
@@ -594,11 +604,11 @@ describe('TransactionsService', () => {
 
       prisma.order.update.mockResolvedValue({
         id: 'ord-1',
-        shippingFee: 4.45,
-        totalAmount: 319.45,
+        shippingFee: 5.95,
+        totalAmount: 320.95,
       });
 
-      // Client claims £0 shipping — the TRACKED_24 rate (£4.45) must win.
+      // Client claims £0 shipping — the TRACKED_24 rate plus handling (£5.95) must win.
       const result = await service.updateShipping('ord-1', 'buyer-1', {
         shippingFee: 0,
         shippingService: 'TRACKED_24',
@@ -608,18 +618,18 @@ describe('TransactionsService', () => {
         expect.objectContaining({
           where: { id: 'ord-1' },
           data: expect.objectContaining({
-            shippingFee: 4.45,
-            totalAmount: 319.45,
+            shippingFee: 5.95,
+            totalAmount: 320.95,
           }),
         }),
       );
       expect(mockPaymentIntents.update).toHaveBeenCalledWith(
         'pi_test_123',
         expect.objectContaining({
-          amount: 31945,
+          amount: 32095,
         }),
       );
-      expect(result.shippingFee).toBe(4.45);
+      expect(result.shippingFee).toBe(5.95);
     });
   });
 

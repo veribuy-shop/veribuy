@@ -11,6 +11,7 @@
  * shipping fee during order creation and ignores any client-supplied figure.
  */
 
+import { getMarketplaceConfig } from '@/lib/marketplace-config';
 import {
   calculateRoyalMailRate,
   getShippingZoneFromPostcode,
@@ -77,6 +78,7 @@ export function calculateShippingFee(
     itemPrice: options.itemPrice,
     postcode,
     service,
+    handlingFees: getMarketplaceConfig().shippingHandlingFees,
   });
 
   return {

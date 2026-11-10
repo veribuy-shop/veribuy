@@ -644,6 +644,14 @@ function DashboardContent() {
                 <p className={cn('text-sm font-bold truncate', isDarkMode ? 'text-white' : 'text-slate-900')}>
                   {user?.name || 'VeriBuy User'}
                 </p>
+                {user?.username && (
+                  <p
+                    className={cn('text-[11px] truncate', isDarkMode ? 'text-neutral-400' : 'text-slate-500')}
+                    title="Other people see this instead of your name"
+                  >
+                    @{user.username}
+                  </p>
+                )}
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   <span className="text-[11px] text-emerald-600 font-semibold">Verified Account</span>

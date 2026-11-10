@@ -21,6 +21,9 @@ describe('TrustLensService', () => {
       listing: {
         findUnique: jest.fn(),
       },
+      profile: {
+        findUnique: jest.fn().mockResolvedValue({ accountType: 'INDIVIDUAL' }),
+      },
       verificationRequest: {
         create: jest.fn(),
         findUnique: jest.fn(),
@@ -51,6 +54,7 @@ describe('TrustLensService', () => {
     listingSync = {
       syncTrustLensStatus: jest.fn().mockResolvedValue(undefined),
       syncTrustLensResult: jest.fn().mockResolvedValue(undefined),
+      notifySubmitted: jest.fn().mockResolvedValue(undefined),
     };
 
     userSync = {

@@ -79,4 +79,20 @@ export class ListingSyncService {
       );
     }
   }
+
+  /** Tells listing-service the listing is now in for verification, so it can email the seller. */
+  async notifySubmitted(listingId: string): Promise<void> {
+    try {
+      const res = await fetch(`${this.url}/listings/${listingId}/submitted`, {
+        method: 'POST',
+        headers: { 'x-internal-service': this.token },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        this.logger.error(`listing-service responded ${res.status} to the submitted notice for listing ${listingId}`);
+      }
+    } catch (err: any) {
+      this.logger.error(`Failed to send the submitted notice for listing ${listingId}: ${err?.message}`);
+    }
+  }
 }
