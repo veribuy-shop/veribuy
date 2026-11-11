@@ -121,7 +121,7 @@ export class UsersService {
           lastName: dto.lastName,
         },
         select: PROFILE_SELECT,
-      }));
+      }), [dto.firstName, dto.lastName].filter(Boolean).join(' ') || dto.displayName);
 
       // Write-through cache
       try {
@@ -186,7 +186,7 @@ export class UsersService {
       },
       create: {
         userId,
-        username: generateUsername(),
+        username: generateUsername([dto.firstName, dto.lastName].filter(Boolean).join(' ') || dto.displayName),
         displayName: dto.displayName || 'User',
         firstName: dto.firstName,
         lastName: dto.lastName,

@@ -222,7 +222,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
               }
             : {}),
         },
-      })).catch((profileErr) => {
+      }), dto.name).catch((profileErr) => {
         this.logger.warn(`Failed to auto-create initial profile for ${user.id}: ${profileErr?.message}`);
       });
     } catch (err: any) {
@@ -317,7 +317,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         firstName: dto.name.split(' ')[0],
         lastName: dto.name.split(' ').slice(1).join(' ') || null,
       },
-    }));
+    }), dto.name);
 
     this.logger.log(`Bootstrapped first admin user: ${user.email}`);
     const tokens = await this.generateTokens(user.id, user.role);
@@ -577,7 +577,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         avatarUrl,
         accountType: 'INDIVIDUAL',
       },
-    })).catch((profileErr) => {
+    }), displayName).catch((profileErr) => {
       this.logger.warn(`Failed to create initial profile for social user ${newUser.id}: ${profileErr?.message}`);
     });
 

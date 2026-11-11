@@ -114,7 +114,7 @@ const STEPS = [
   { id: 1, name: 'Device Details', description: 'Basic device information' },
   { id: 2, name: 'Condition', description: 'Device condition assessment' },
   { id: 3, name: 'Pricing', description: 'Set your price' },
-  { id: 4, name: 'Verification', description: 'IMEI/Serial & Evidence' },
+  { id: 4, name: 'Verification', description: 'Photos & device identifiers' },
 ];
 
 // Display labels for device types; the accepted values come from the backend
@@ -391,9 +391,8 @@ export default function CreateListingPage() {
     }
   };
 
-  // Only phones are verified by IMEI. Cellular tablets/watches may have one;
-  // AirPods, laptops and desktops never do, so the IMEI field is hidden for them.
-  const deviceHasImei = !['AIRPODS', 'LAPTOP', 'DESKTOP'].includes(formData.deviceType);
+  // Only phones are verified by IMEI, so the field is shown for phones alone.
+  const deviceHasImei = formData.deviceType === 'SMARTPHONE';
   const imeiRequired = formData.deviceType === 'SMARTPHONE' && user?.accountType !== 'BUSINESS';
   // Which photos to ask for depends on the device (AirPods have no screen, a
   // console's screen photo is optional…). Shared with the Trust Lens checklist.
@@ -478,9 +477,8 @@ export default function CreateListingPage() {
           return false;
         }
       }
-      // Other devices don't need an IMEI: without one they are routed to manual
-      // Trust & Safety review of the photos and (optional) serial number.
-      if (formData.imei && !validateImeiChecksum(formData.imei).valid) {
+      // A business may leave a phone's IMEI blank, but one that is entered must be valid.
+      if (deviceHasImei && formData.imei && !validateImeiChecksum(formData.imei).valid) {
         setError('Please enter a valid 15-digit IMEI, or leave it blank');
         return false;
       }
@@ -672,7 +670,7 @@ export default function CreateListingPage() {
       // stage so the seller sees the live check run and the pass/fail outcome.
       // Other device types keep going to the listing detail page.
       clearDraft();
-      if (formData.deviceType === 'SMARTPHONE' && formData.imei) {
+      if (deviceHasImei && formData.imei) {
         router.push(`/verification/${listing.id}`);
       } else {
         router.push(`/listings/${listing.id}${verificationFailed ? '?verification=failed' : ''}`);
@@ -1538,7 +1536,11 @@ export default function CreateListingPage() {
                       <AlertTriangle className="w-4 h-4 inline mr-1" aria-hidden="true" /> Verification Requirements
                     </h3>
                     <ul className="text-sm text-[var(--color-text-muted)] space-y-1">
-                      <li>• IMEI required for smartphones only. Other devices: add an IMEI (cellular tablets/watches) or serial number if you have one — devices without an IMEI are reviewed manually by our team</li>
+                      <li>• {deviceHasImei
+                        ? imeiRequired
+                          ? 'IMEI required. We check it with our verification partner; a clean result is listed straight away, and a flagged one goes to our team for review'
+                          : 'IMEI optional for business accounts. With one, a clean check is listed straight away; without one, our team reviews the listing'
+                        : 'No IMEI needed for this device. Your listing goes live once your photos and details are in'}</li>
                       <li>• At least {evidence.device.minCount} device photos: {evidence.device.hint.charAt(0).toLowerCase() + evidence.device.hint.slice(1)}</li>
                       {screenShown && (
                         <li>• {screenRequired ? 'At least 1' : 'Optional:'} screen photo — {evidence.screen.hint.charAt(0).toLowerCase() + evidence.screen.hint.slice(1)}</li>

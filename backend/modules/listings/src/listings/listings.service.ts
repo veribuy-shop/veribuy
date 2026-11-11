@@ -159,6 +159,8 @@ export class UlistingsService implements OnModuleInit, OnModuleDestroy {
 
   async create(dto: CreateListingDto): Promise<Listing> {
     const initialFlags: IntegrityFlag[] = [IntegrityFlag.CLEAN];
+    // Only phones carry an IMEI on VeriBuy; one sent with any other device is dropped.
+    if (dto.deviceType !== DeviceType.SMARTPHONE) dto.imei = undefined;
     // Bulk inventory is a business-account feature, and it is NOT pre-verified:
     // business status is self-declared, so every listing (bulk included) goes
     // through Trust Lens / manual review before it can be sold.

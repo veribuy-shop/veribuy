@@ -289,7 +289,7 @@ export default function HomeScreen() {
             <View className="flex-1">
               <Text className="text-text font-semibold text-sm">Trust Lens checks</Text>
               <Text className="text-text-muted text-[13px] leading-[18px] mt-0.5">
-                Phone IMEIs are checked against stolen and blacklist registries; other devices are reviewed by our team.
+                Phone IMEIs are checked against stolen and blacklist registries; anything flagged is reviewed by our team before it is listed.
               </Text>
             </View>
           </View>

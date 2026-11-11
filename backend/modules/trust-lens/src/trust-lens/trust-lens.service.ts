@@ -101,9 +101,14 @@ export class TrustLensService {
       throw new NotFoundException('Listing not found');
     }
 
+    // Only phones are checked against the third-party IMEI registries. An IMEI
+    // sent with any other device is ignored, so it can never trigger a check.
+    const isPhone = listing.deviceType === DeviceType.SMARTPHONE;
+    const imeiProvided = isPhone && !!dto.imeiProvided && !!dto.imei;
+
     // Private sellers must give a phone's IMEI. Business sellers may leave it
     // out; their listing then goes to manual review below.
-    if (listing.deviceType === DeviceType.SMARTPHONE && !dto.imeiProvided && !listing.isBulkListing) {
+    if (isPhone && !imeiProvided && !listing.isBulkListing) {
       const profile = await this.prisma.profile.findUnique({
         where: { userId: listing.sellerId },
         select: { accountType: true },
@@ -120,29 +125,29 @@ export class TrustLensService {
         data: {
           listingId: dto.listingId,
           conditionGrade: dto.conditionGrade || null,
-          // Devices without an IMEI (AirPods, laptops, …) can't be checked
-          // against carrier/GSMA registries — a Trust & Safety reviewer verifies
-          // them from the photos and (optional) serial number instead.
-          status: dto.imeiProvided ? 'PENDING' : 'REQUIRES_REVIEW',
-          ...(dto.imeiProvided
+          // A phone without an IMEI (business sellers only) can't be checked
+          // against carrier/GSMA registries, so a reviewer looks at it. Other
+          // devices start here too and are listed below once their photos are in.
+          status: imeiProvided ? 'PENDING' : 'REQUIRES_REVIEW',
+          ...(imeiProvided
             ? {}
             : {
-                reviewNotes: dto.serialProvided
-                  ? 'No IMEI for this device type — manual review of photos and serial number.'
-                  : 'No IMEI or serial provided — manual review of photos.',
+                reviewNotes: isPhone
+                  ? 'Phone listed by a business without an IMEI — manual review of photos.'
+                  : 'No photos yet — manual review.',
               }),
           integrityFlags: [],
         },
       });
 
       // Create identifier validation if IMEI or serial was provided
-      if (dto.imeiProvided || dto.serialProvided) {
+      if (imeiProvided || dto.serialProvided) {
         await tx.identifierValidation.create({
           data: {
             verificationRequestId: verificationRequest.id,
-            imei: dto.imei ?? null,
+            imei: imeiProvided ? dto.imei : null,
             serialNumber: dto.serialNumber ?? null,
-            imeiProvided: dto.imeiProvided || false,
+            imeiProvided,
             serialProvided: dto.serialProvided || false,
           },
         });
@@ -214,14 +219,14 @@ export class TrustLensService {
         })),
       });
 
-      return verificationRequest;
+      return { ...verificationRequest, hasUploadedImages };
     });
 
     // Enqueue the IMEI check for the durable Redis-backed worker (network call
     // runs outside the request). The job persists in Redis so it is never lost.
     // Only an IMEI can be checked — a serial-only job would fail and auto-reject
     // a legitimate non-phone listing.
-    if (dto.imeiProvided && dto.imei) {
+    if (imeiProvided && dto.imei) {
       await this.enqueueImeiCheck({
         verificationRequestId: result.id,
         listingId: dto.listingId,
@@ -229,6 +234,22 @@ export class TrustLensService {
         serialNumber: dto.serialNumber,
         brand: dto.brand,
       });
+    } else if (!isPhone && result.hasUploadedImages) {
+      // Nothing to check with a third party: with its photos and details in
+      // place the listing goes live straight away. The seller is not marked
+      // as verified, because nothing was verified.
+      await this.prisma.verificationRequest.update({
+        where: { id: result.id },
+        data: {
+          status: 'PASSED',
+          completedAt: new Date(),
+          reviewNotes: 'No third-party check for this device type. Listed once photos and details were complete.',
+        },
+        select: { id: true },
+      });
+      await this.listingSync
+        .syncTrustLensResult(dto.listingId, 'PASSED', dto.conditionGrade || undefined, [])
+        .catch((err) => this.logger.warn(`Failed to publish listing ${dto.listingId}: ${(err as Error).message}`));
     } else {
       await this.listingSync
         .syncTrustLensResult(dto.listingId, 'REQUIRES_REVIEW', undefined, [])

@@ -140,7 +140,44 @@ describe('TrustLensService', () => {
       expect(result).toEqual(mockCreatedRequest);
     });
 
-    it('routes a serial-only non-phone device to manual review without an IMEI check', async () => {
+    it('lists a non-phone straight away once its photos are in, with no third-party check', async () => {
+      prisma.listing.findUnique.mockResolvedValue({ deviceType: 'LAPTOP' });
+      prisma.evidencePack.findUnique.mockResolvedValue({ items: [{ type: 'DEVICE_IMAGE' }] });
+      const created = { id: 'vr-4', listingId: 'lst-4', status: 'REQUIRES_REVIEW' };
+      prisma.verificationRequest.create.mockResolvedValue(created);
+      prisma.verificationRequest.findUnique.mockResolvedValue(created);
+      prisma.verificationRequest.update.mockResolvedValue(created);
+
+      await service.createVerificationRequest({
+        listingId: 'lst-4',
+        sellerId: 'seller-1',
+        // An IMEI sent with a non-phone must be ignored.
+        imeiProvided: true,
+        imei: '356938035643803',
+      } as any);
+
+      expect(imeiWorker.enqueue).not.toHaveBeenCalled();
+      expect(prisma.verificationRequest.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'PASSED' }) }),
+      );
+      expect(listingSync.syncTrustLensResult).toHaveBeenCalledWith('lst-4', 'PASSED', undefined, []);
+    });
+
+    it('sends a business phone without an IMEI to manual review even when photos are in', async () => {
+      prisma.listing.findUnique.mockResolvedValue({ deviceType: 'SMARTPHONE', sellerId: 'seller-1' });
+      prisma.profile.findUnique.mockResolvedValue({ accountType: 'BUSINESS' });
+      prisma.evidencePack.findUnique.mockResolvedValue({ items: [{ type: 'DEVICE_IMAGE' }] });
+      const created = { id: 'vr-5', listingId: 'lst-5', status: 'REQUIRES_REVIEW' };
+      prisma.verificationRequest.create.mockResolvedValue(created);
+      prisma.verificationRequest.findUnique.mockResolvedValue(created);
+
+      await service.createVerificationRequest({ listingId: 'lst-5', sellerId: 'seller-1', imeiProvided: false } as any);
+
+      expect(imeiWorker.enqueue).not.toHaveBeenCalled();
+      expect(listingSync.syncTrustLensResult).toHaveBeenCalledWith('lst-5', 'REQUIRES_REVIEW', undefined, []);
+    });
+
+    it('keeps a non-phone with no photos in manual review', async () => {
       prisma.listing.findUnique.mockResolvedValue({ deviceType: 'AIRPODS' });
       const created = { id: 'vr-3', listingId: 'lst-3', status: 'REQUIRES_REVIEW' };
       prisma.verificationRequest.create.mockResolvedValue(created);

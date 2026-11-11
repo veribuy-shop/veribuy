@@ -287,7 +287,7 @@ describe('UlistingsService', () => {
   });
 
   describe('duplicate listings', () => {
-    const dto: any = { sellerId: 'seller-1', title: 'iPhone 13', imei: '35-693803-564380-9', price: 100 };
+    const dto: any = { sellerId: 'seller-1', title: 'iPhone 13', deviceType: 'SMARTPHONE', imei: '35-693803-564380-9', price: 100 };
 
     it('refuses a second open listing for the same IMEI', async () => {
       prisma.listing.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'existing' });
@@ -295,6 +295,15 @@ describe('UlistingsService', () => {
       await expect(service.create(dto)).rejects.toThrow('already have a listing');
       expect(prisma.listing.findFirst.mock.calls[1][0].where.OR).toEqual([{ imei: '356938035643809' }]);
       expect(prisma.listing.create).not.toHaveBeenCalled();
+    });
+
+    it('drops an IMEI sent with a device that is not a phone', async () => {
+      prisma.listing.findFirst.mockResolvedValue(null);
+      prisma.listing.create.mockResolvedValue({ id: 'new' });
+
+      await service.create({ sellerId: 'seller-1', title: 'MacBook Air', deviceType: 'LAPTOP', imei: '356938035643809', price: 500 } as any);
+
+      expect(prisma.listing.create.mock.calls[0][0].data.imei).toBeUndefined();
     });
 
     it('only treats a repeated title as a duplicate within minutes when there is no identifier', async () => {
